@@ -1,0 +1,105 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{8BB2DD8D-4E0C-4B9D-9F5A-7E3D2F1A8C5B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Services", "Services", "{9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{1AA2BB3C-4DD5-6EE7-8FF9-0AAB1CC2DD3E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Data", "src\CoOwnershipVehicle.Data\CoOwnershipVehicle.Data.csproj", "{A1B2C3D4-E5F6-7890-ABCD-123456789012}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Domain", "src\CoOwnershipVehicle.Domain\CoOwnershipVehicle.Domain.csproj", "{B2C3D4E5-F6G7-8901-BCDE-234567890123}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Api", "src\Services\CoOwnershipVehicle.Api\CoOwnershipVehicle.Api.csproj", "{C3D4E5F6-G7H8-9012-CDEF-345678901234}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Shared.Contracts", "src\Shared\CoOwnershipVehicle.Shared.Contracts\CoOwnershipVehicle.Shared.Contracts.csproj", "{D4E5F6G7-H8I9-0123-DEFG-456789012345}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Auth.Api", "src\Services\Auth\CoOwnershipVehicle.Auth.Api\CoOwnershipVehicle.Auth.Api.csproj", "{E5F6G7H8-I9J0-1234-EFGH-567890123456}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.User.Api", "src\Services\User\CoOwnershipVehicle.User.Api\CoOwnershipVehicle.User.Api.csproj", "{F6G7H8I9-J0K1-2345-FGHI-678901234567}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Group.Api", "src\Services\Group\CoOwnershipVehicle.Group.Api\CoOwnershipVehicle.Group.Api.csproj", "{G7H8I9J0-K1L2-3456-GHIJ-789012345678}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Vehicle.Api", "src\Services\Vehicle\CoOwnershipVehicle.Vehicle.Api\CoOwnershipVehicle.Vehicle.Api.csproj", "{H8I9J0K1-L2M3-4567-HIJK-890123456789}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Booking.Api", "src\Services\Booking\CoOwnershipVehicle.Booking.Api\CoOwnershipVehicle.Booking.Api.csproj", "{I9J0K1L2-M3N4-5678-IJKL-901234567890}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Payment.Api", "src\Services\Payment\CoOwnershipVehicle.Payment.Api\CoOwnershipVehicle.Payment.Api.csproj", "{J0K1L2M3-N4O5-6789-JKLM-012345678901}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.ApiGateway", "src\ApiGateway\CoOwnershipVehicle.ApiGateway\CoOwnershipVehicle.ApiGateway.csproj", "{K1L2M3N4-O5P6-7890-KLMN-123456789012}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A1B2C3D4-E5F6-7890-ABCD-123456789012}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-E5F6-7890-ABCD-123456789012}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-E5F6-7890-ABCD-123456789012}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-E5F6-7890-ABCD-123456789012}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2C3D4E5-F6G7-8901-BCDE-234567890123}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2C3D4E5-F6G7-8901-BCDE-234567890123}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2C3D4E5-F6G7-8901-BCDE-234567890123}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2C3D4E5-F6G7-8901-BCDE-234567890123}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C3D4E5F6-G7H8-9012-CDEF-345678901234}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C3D4E5F6-G7H8-9012-CDEF-345678901234}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C3D4E5F6-G7H8-9012-CDEF-345678901234}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C3D4E5F6-G7H8-9012-CDEF-345678901234}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4E5F6G7-H8I9-0123-DEFG-456789012345}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4E5F6G7-H8I9-0123-DEFG-456789012345}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4E5F6G7-H8I9-0123-DEFG-456789012345}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4E5F6G7-H8I9-0123-DEFG-456789012345}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E5F6G7H8-I9J0-1234-EFGH-567890123456}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5F6G7H8-I9J0-1234-EFGH-567890123456}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5F6G7H8-I9J0-1234-EFGH-567890123456}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5F6G7H8-I9J0-1234-EFGH-567890123456}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6G7H8I9-J0K1-2345-FGHI-678901234567}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6G7H8I9-J0K1-2345-FGHI-678901234567}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6G7H8I9-J0K1-2345-FGHI-678901234567}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6G7H8I9-J0K1-2345-FGHI-678901234567}.Release|Any CPU.Build.0 = Release|Any CPU
+		{G7H8I9J0-K1L2-3456-GHIJ-789012345678}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{G7H8I9J0-K1L2-3456-GHIJ-789012345678}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{G7H8I9J0-K1L2-3456-GHIJ-789012345678}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{G7H8I9J0-K1L2-3456-GHIJ-789012345678}.Release|Any CPU.Build.0 = Release|Any CPU
+		{H8I9J0K1-L2M3-4567-HIJK-890123456789}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{H8I9J0K1-L2M3-4567-HIJK-890123456789}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{H8I9J0K1-L2M3-4567-HIJK-890123456789}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{H8I9J0K1-L2M3-4567-HIJK-890123456789}.Release|Any CPU.Build.0 = Release|Any CPU
+		{I9J0K1L2-M3N4-5678-IJKL-901234567890}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{I9J0K1L2-M3N4-5678-IJKL-901234567890}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{I9J0K1L2-M3N4-5678-IJKL-901234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{I9J0K1L2-M3N4-5678-IJKL-901234567890}.Release|Any CPU.Build.0 = Release|Any CPU
+		{J0K1L2M3-N4O5-6789-JKLM-012345678901}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{J0K1L2M3-N4O5-6789-JKLM-012345678901}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{J0K1L2M3-N4O5-6789-JKLM-012345678901}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{J0K1L2M3-N4O5-6789-JKLM-012345678901}.Release|Any CPU.Build.0 = Release|Any CPU
+		{K1L2M3N4-O5P6-7890-KLMN-123456789012}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{K1L2M3N4-O5P6-7890-KLMN-123456789012}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{K1L2M3N4-O5P6-7890-KLMN-123456789012}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{K1L2M3N4-O5P6-7890-KLMN-123456789012}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C} = {8BB2DD8D-4E0C-4B9D-9F5A-7E3D2F1A8C5B}
+		{1AA2BB3C-4DD5-6EE7-8FF9-0AAB1CC2DD3E} = {8BB2DD8D-4E0C-4B9D-9F5A-7E3D2F1A8C5B}
+		{A1B2C3D4-E5F6-7890-ABCD-123456789012} = {8BB2DD8D-4E0C-4B9D-9F5A-7E3D2F1A8C5B}
+		{B2C3D4E5-F6G7-8901-BCDE-234567890123} = {8BB2DD8D-4E0C-4B9D-9F5A-7E3D2F1A8C5B}
+		{C3D4E5F6-G7H8-9012-CDEF-345678901234} = {9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C}
+		{D4E5F6G7-H8I9-0123-DEFG-456789012345} = {1AA2BB3C-4DD5-6EE7-8FF9-0AAB1CC2DD3E}
+		{E5F6G7H8-I9J0-1234-EFGH-567890123456} = {9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C}
+		{F6G7H8I9-J0K1-2345-FGHI-678901234567} = {9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C}
+		{G7H8I9J0-K1L2-3456-GHIJ-789012345678} = {9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C}
+		{H8I9J0K1-L2M3-4567-HIJK-890123456789} = {9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C}
+		{I9J0K1L2-M3N4-5678-IJKL-901234567890} = {9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C}
+		{J0K1L2M3-N4O5-6789-JKLM-012345678901} = {9CC3EE4E-5F1D-4C6E-AF6B-8F4E3G2B9D6C}
+		{K1L2M3N4-O5P6-7890-KLMN-123456789012} = {8BB2DD8D-4E0C-4B9D-9F5A-7E3D2F1A8C5B}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D4E5F6G7-H8I9-0123-DEFG-456789012345}
+	EndGlobalSection
+EndGlobal

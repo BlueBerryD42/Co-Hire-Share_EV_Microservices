@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "CoOwnershipVehicle.Payment.Api": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:61605;http://localhost:61614"
+    }
+  }
+}
