@@ -12,6 +12,8 @@ public class BookingCreatedEvent : BaseEvent
     public DateTime EndAt { get; set; }
     public decimal PriorityScore { get; set; }
     public BookingStatus Status { get; set; }
+    public bool IsEmergency { get; set; }
+    public BookingPriority Priority { get; set; }
     
     public BookingCreatedEvent()
     {
@@ -41,6 +43,7 @@ public class BookingCancelledEvent : BaseEvent
     public DateTime StartAt { get; set; }
     public DateTime EndAt { get; set; }
     public string? CancellationReason { get; set; }
+    public string? Reason { get; set; }
     public Guid CancelledBy { get; set; }
     
     public BookingCancelledEvent()
@@ -77,5 +80,37 @@ public class VehicleCheckedInEvent : BaseEvent
     public VehicleCheckedInEvent()
     {
         EventType = nameof(VehicleCheckedInEvent);
+    }
+}
+
+public class BookingApprovedEvent : BaseEvent
+{
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid ApprovedBy { get; set; }
+    public DateTime StartAt { get; set; }
+    public DateTime EndAt { get; set; }
+    
+    public BookingApprovedEvent()
+    {
+        EventType = nameof(BookingApprovedEvent);
+    }
+}
+
+public class BookingPendingApprovalEvent : BaseEvent
+{
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid UserId { get; set; }
+    public DateTime StartAt { get; set; }
+    public DateTime EndAt { get; set; }
+    public bool IsEmergency { get; set; }
+    public BookingPriority Priority { get; set; }
+    public int ConflictCount { get; set; }
+    
+    public BookingPendingApprovalEvent()
+    {
+        EventType = nameof(BookingPendingApprovalEvent);
     }
 }

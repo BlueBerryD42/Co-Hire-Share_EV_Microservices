@@ -18,6 +18,9 @@ public class BookingDto
     public BookingStatus Status { get; set; }
     public decimal PriorityScore { get; set; }
     public string? Notes { get; set; }
+    public string? Purpose { get; set; }
+    public bool IsEmergency { get; set; }
+    public BookingPriority Priority { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
@@ -33,6 +36,12 @@ public class CreateBookingDto
     public DateTime EndAt { get; set; }
     
     public string? Notes { get; set; }
+    
+    public string? Purpose { get; set; }
+    
+    public bool IsEmergency { get; set; } = false;
+    
+    public BookingPriority Priority { get; set; } = BookingPriority.Normal;
     
     // These will be set by the system
     public Guid UserId { get; set; }
@@ -67,9 +76,18 @@ public class PriorityCalculationDto
 public enum BookingStatus
 {
     Pending = 0,
-    Confirmed = 1,
-    InProgress = 2,
-    Completed = 3,
-    Cancelled = 4,
-    NoShow = 5
+    PendingApproval = 1,
+    Confirmed = 2,
+    InProgress = 3,
+    Completed = 4,
+    Cancelled = 5,
+    NoShow = 6
+}
+
+public enum BookingPriority
+{
+    Low = 0,
+    Normal = 1,
+    High = 2,
+    Emergency = 3
 }

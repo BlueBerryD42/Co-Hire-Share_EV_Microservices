@@ -53,10 +53,10 @@ public class BookingService : IBookingService
         if (conflicts.HasConflicts)
         {
             // Get user's priority in the group
-            var userPriority = await GetUserPriorityAsync(userId, createDto.VehicleId);
+            var userPriority = (Domain.Entities.BookingPriority)await GetUserPriorityAsync(userId, createDto.VehicleId);
             
             // If user has higher priority, mark as priority request
-            var requiresApproval = conflicts.ConflictingBookings.Any(cb => cb.Priority >= userPriority);
+            var requiresApproval = conflicts.ConflictingBookings.Any(cb => cb.Priority >= (Shared.Contracts.DTOs.BookingPriority)userPriority);
             
             if (requiresApproval && !createDto.IsEmergency)
             {
@@ -81,7 +81,7 @@ public class BookingService : IBookingService
             Purpose = createDto.Purpose,
             Notes = createDto.Notes,
             IsEmergency = createDto.IsEmergency,
-            Priority = await GetUserPriorityAsync(userId, createDto.VehicleId),
+            Priority = (Domain.Entities.BookingPriority)await GetUserPriorityAsync(userId, createDto.VehicleId),
             Status = Domain.Entities.BookingStatus.Confirmed,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -100,7 +100,7 @@ public class BookingService : IBookingService
             EndAt = booking.EndAt,
             Status = BookingStatus.Confirmed,
             IsEmergency = booking.IsEmergency,
-            Priority = booking.Priority
+            Priority = (Shared.Contracts.DTOs.BookingPriority)(int)booking.Priority
         });
 
         _logger.LogInformation("Booking {BookingId} created for vehicle {VehicleId} by user {UserId}", 
@@ -139,7 +139,7 @@ public class BookingService : IBookingService
                 Purpose = b.Purpose,
                 Notes = b.Notes,
                 Status = (BookingStatus)b.Status,
-                Priority = b.Priority,
+                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
                 IsEmergency = b.IsEmergency,
                 CreatedAt = b.CreatedAt
             })
@@ -172,7 +172,7 @@ public class BookingService : IBookingService
                 Purpose = b.Purpose,
                 Notes = b.Notes,
                 Status = (BookingStatus)b.Status,
-                Priority = b.Priority,
+                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
                 IsEmergency = b.IsEmergency,
                 CreatedAt = b.CreatedAt
             })
@@ -200,7 +200,7 @@ public class BookingService : IBookingService
                 StartAt = b.StartAt,
                 EndAt = b.EndAt,
                 Status = (BookingStatus)b.Status,
-                Priority = b.Priority,
+                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
                 IsEmergency = b.IsEmergency
             })
             .ToListAsync();
@@ -241,7 +241,7 @@ public class BookingService : IBookingService
             StartAt = b.StartAt,
             EndAt = b.EndAt,
             Status = (BookingStatus)b.Status,
-            Priority = b.Priority,
+            Priority = (int)b.Priority,
             IsEmergency = b.IsEmergency,
             PriorityScore = CalculatePriorityScore(b),
             OwnershipPercentage = GetUserOwnershipPercentage(b.UserId, b.Vehicle!.Group!.Members)
@@ -368,7 +368,7 @@ public class BookingService : IBookingService
                 Purpose = b.Purpose,
                 Notes = b.Notes,
                 Status = (BookingStatus)b.Status,
-                Priority = b.Priority,
+                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
                 IsEmergency = b.IsEmergency,
                 CreatedAt = b.CreatedAt
             })
@@ -387,7 +387,7 @@ public class BookingService : IBookingService
             Purpose = createDto.Purpose,
             Notes = createDto.Notes,
             IsEmergency = createDto.IsEmergency,
-            Priority = await GetUserPriorityAsync(userId, createDto.VehicleId),
+            Priority = (Domain.Entities.BookingPriority)await GetUserPriorityAsync(userId, createDto.VehicleId),
             Status = Domain.Entities.BookingStatus.PendingApproval,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -429,7 +429,7 @@ public class BookingService : IBookingService
 
     private int CalculatePriorityScore(Domain.Entities.Booking booking)
     {
-        var score = booking.Priority; // Base priority from ownership
+        var score = (int)booking.Priority; // Base priority from ownership
 
         // Emergency bookings get highest priority
         if (booking.IsEmergency)
@@ -471,7 +471,7 @@ public class BookingService : IBookingService
                 Purpose = b.Purpose,
                 Notes = b.Notes,
                 Status = (BookingStatus)b.Status,
-                Priority = b.Priority,
+                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
                 IsEmergency = b.IsEmergency,
                 CreatedAt = b.CreatedAt
             })

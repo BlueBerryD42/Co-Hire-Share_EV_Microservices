@@ -11,13 +11,16 @@ using MassTransit;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+var connectionString = $"Server={Environment.GetEnvironmentVariable("DB_SERVER")};Database={Environment.GetEnvironmentVariable("DB_PAYMENT")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_CERT")};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULTS")}";
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+    options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Payment.Api")));
 
 // Add JWT Authentication
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey not configured");
+var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? throw new InvalidOperationException("JWT SecretKey not configured");
+var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "CoOwnershipVehicle.Auth.Api";
+var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "CoOwnershipVehicleApp";
 
 builder.Services.AddAuthentication(options =>
 {
@@ -31,9 +34,9 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ValidateIssuer = true,
-        ValidIssuer = jwtSettings["Issuer"],
+        ValidIssuer = issuer,
         ValidateAudience = true,
-        ValidAudience = jwtSettings["Audience"],
+        ValidAudience = audience,
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
@@ -44,7 +47,7 @@ builder.Services.AddMassTransit(x =>
 {
     x.UsingRabbitMq((context, cfg) =>
     {
-        cfg.Host(builder.Configuration.GetConnectionString("RabbitMQ") ?? "rabbitmq://localhost");
+        cfg.Host(Environment.GetEnvironmentVariable("RABBITMQ_CONNECTION") ?? "amqp://guest:guest@localhost:5672/");
         cfg.ConfigureEndpoints(context);
     });
 });

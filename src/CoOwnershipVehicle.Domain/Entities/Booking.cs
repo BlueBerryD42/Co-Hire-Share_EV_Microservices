@@ -23,6 +23,13 @@ public class Booking : BaseEntity
     [StringLength(500)]
     public string? Notes { get; set; }
     
+    [StringLength(200)]
+    public string? Purpose { get; set; }
+    
+    public bool IsEmergency { get; set; } = false;
+    
+    public BookingPriority Priority { get; set; } = BookingPriority.Normal;
+    
     // Navigation properties
     public virtual Vehicle Vehicle { get; set; } = null!;
     public virtual OwnershipGroup Group { get; set; } = null!;
@@ -33,9 +40,18 @@ public class Booking : BaseEntity
 public enum BookingStatus
 {
     Pending = 0,
-    Confirmed = 1,
-    InProgress = 2,
-    Completed = 3,
-    Cancelled = 4,
-    NoShow = 5
+    PendingApproval = 1,
+    Confirmed = 2,
+    InProgress = 3,
+    Completed = 4,
+    Cancelled = 5,
+    NoShow = 6
+}
+
+public enum BookingPriority
+{
+    Low = 0,
+    Normal = 1,
+    High = 2,
+    Emergency = 3
 }
