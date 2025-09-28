@@ -8,12 +8,17 @@ using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.User.Api.Services;
 using CoOwnershipVehicle.User.Api.Consumers;
+using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-var connectionString = $"Server={Environment.GetEnvironmentVariable("DB_SERVER")};Database={Environment.GetEnvironmentVariable("DB_USER_SERVICE")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_CERT")};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULTS")}";
+var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
+dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_USER_SERVICE", builder.Configuration) ?? dbParams.Database;
+var connectionString = dbParams.GetConnectionString();
+
+EnvironmentHelper.LogEnvironmentStatus("User Service", builder.Configuration);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString,
@@ -36,9 +41,7 @@ builder.Services.AddIdentity<CoOwnershipVehicle.Domain.Entities.User, IdentityRo
     .AddDefaultTokenProviders();
 
 // Add JWT Authentication
-var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? throw new InvalidOperationException("JWT SecretKey not configured");
-var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "CoOwnershipVehicle.Auth.Api";
-var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "CoOwnershipVehicleApp";
+var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -50,11 +53,11 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig.SecretKey)),
         ValidateIssuer = true,
-        ValidIssuer = issuer,
+        ValidIssuer = jwtConfig.Issuer,
         ValidateAudience = true,
-        ValidAudience = audience,
+        ValidAudience = jwtConfig.Audience,
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
@@ -67,7 +70,7 @@ builder.Services.AddMassTransit(x =>
     
     x.UsingRabbitMq((context, cfg) =>
     {
-        cfg.Host(Environment.GetEnvironmentVariable("RABBITMQ_CONNECTION") ?? "amqp://guest:guest@localhost:5672/");
+        cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
         
         cfg.ReceiveEndpoint("user-service", e =>
         {

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,7 +10,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Add Entity Framework
-var connectionString = $"Server={Environment.GetEnvironmentVariable("DB_SERVER")};Database={Environment.GetEnvironmentVariable("DB_VEHICLE")};User Id={Environment.GetEnvironmentVariable("DB_USER")};Password={Environment.GetEnvironmentVariable("DB_PASSWORD")};TrustServerCertificate={Environment.GetEnvironmentVariable("DB_TRUST_CERT")};MultipleActiveResultSets={Environment.GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULTS")}";
+var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
+dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_VEHICLE", builder.Configuration) ?? dbParams.Database;
+var connectionString = dbParams.GetConnectionString();
+
+EnvironmentHelper.LogEnvironmentStatus("Vehicle Service", builder.Configuration);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString,

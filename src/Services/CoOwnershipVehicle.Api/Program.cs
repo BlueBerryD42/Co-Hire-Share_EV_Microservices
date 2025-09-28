@@ -3,12 +3,18 @@ using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Data.Seeding;
 using CoOwnershipVehicle.Domain.Entities;
+using CoOwnershipVehicle.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? dbParams.GetConnectionString();
+
+EnvironmentHelper.LogEnvironmentStatus("Main API Service", builder.Configuration);
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+    options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Api")));
 
 // Add Identity services
