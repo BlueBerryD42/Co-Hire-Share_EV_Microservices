@@ -41,6 +41,10 @@ local-config.json
 *credentials*
 *secrets*
 
+# Environment variable files (contain sensitive data)
+environment-variables.txt
+setup-environment.ps1
+
 # EXCEPT template files
 !*template*
 

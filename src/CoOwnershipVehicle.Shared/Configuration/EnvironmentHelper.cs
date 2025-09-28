@@ -40,9 +40,6 @@ public static class EnvironmentHelper
             var currentDir = Directory.GetCurrentDirectory();
             var envFile = Path.Combine(currentDir, ".env");
             
-            Console.WriteLine($"[DEBUG] Looking for .env file. Current directory: {currentDir}");
-            Console.WriteLine($"[DEBUG] Checking .env file at: {envFile}");
-            
             // If not found in current directory, try going up to find project root
             if (!File.Exists(envFile))
             {
@@ -54,12 +51,7 @@ public static class EnvironmentHelper
                 if (dir != null)
                 {
                     envFile = Path.Combine(dir.FullName, ".env");
-                    Console.WriteLine($"[DEBUG] Found .env file at: {envFile}");
                 }
-            }
-            else
-            {
-                Console.WriteLine($"[DEBUG] Found .env file at: {envFile}");
             }
             
             if (File.Exists(envFile))
