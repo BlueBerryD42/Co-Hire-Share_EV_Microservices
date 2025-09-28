@@ -28,6 +28,16 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
     public DbSet<LedgerEntry> LedgerEntries { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<KycDocument> KycDocuments { get; set; }
+    
+    // Notification entities
+    public DbSet<Notification> Notifications { get; set; }
+    public DbSet<NotificationTemplate> NotificationTemplates { get; set; }
+    
+    // Analytics entities
+    public DbSet<AnalyticsSnapshot> AnalyticsSnapshots { get; set; }
+    public DbSet<UserAnalytics> UserAnalytics { get; set; }
+    public DbSet<VehicleAnalytics> VehicleAnalytics { get; set; }
+    public DbSet<GroupAnalytics> GroupAnalytics { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -365,6 +375,154 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.CreatedAt);
+        });
+
+        // Notification entity configuration
+        builder.Entity<Notification>(entity =>
+        {
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Priority).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.ActionUrl).HasMaxLength(500);
+            entity.Property(e => e.ActionText).HasMaxLength(100);
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.ScheduledFor);
+        });
+
+        // NotificationTemplate entity configuration
+        builder.Entity<NotificationTemplate>(entity =>
+        {
+            entity.Property(e => e.TemplateKey).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.TitleTemplate).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.MessageTemplate).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Priority).HasConversion<int>();
+            entity.Property(e => e.ActionUrlTemplate).HasMaxLength(500);
+            entity.Property(e => e.ActionText).HasMaxLength(100);
+
+            entity.HasIndex(e => e.TemplateKey).IsUnique();
+        });
+
+        // AnalyticsSnapshot entity configuration
+        builder.Entity<AnalyticsSnapshot>(entity =>
+        {
+            entity.Property(e => e.Period).HasConversion<int>();
+            entity.Property(e => e.TotalDistance).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.TotalRevenue).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TotalExpenses).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.NetProfit).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.AverageCostPerHour).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.AverageCostPerKm).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.UtilizationRate).HasColumnType("decimal(5,4)");
+            entity.Property(e => e.MaintenanceEfficiency).HasColumnType("decimal(5,4)");
+            entity.Property(e => e.UserSatisfactionScore).HasColumnType("decimal(5,4)");
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.Vehicle)
+                  .WithMany()
+                  .HasForeignKey(e => e.VehicleId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.SnapshotDate);
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.Period);
+        });
+
+        // UserAnalytics entity configuration
+        builder.Entity<UserAnalytics>(entity =>
+        {
+            entity.Property(e => e.Period).HasConversion<int>();
+            entity.Property(e => e.TotalDistance).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.OwnershipShare).HasColumnType("decimal(5,4)");
+            entity.Property(e => e.UsageShare).HasColumnType("decimal(5,4)");
+            entity.Property(e => e.TotalPaid).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TotalOwed).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.NetBalance).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.BookingSuccessRate).HasColumnType("decimal(5,4)");
+            entity.Property(e => e.PunctualityScore).HasColumnType("decimal(5,4)");
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.PeriodStart);
+        });
+
+        // VehicleAnalytics entity configuration
+        builder.Entity<VehicleAnalytics>(entity =>
+        {
+            entity.Property(e => e.Period).HasConversion<int>();
+            entity.Property(e => e.TotalDistance).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.UtilizationRate).HasColumnType("decimal(5,4)");
+            entity.Property(e => e.AvailabilityRate).HasColumnType("decimal(5,4)");
+            entity.Property(e => e.Revenue).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.MaintenanceCost).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.OperatingCost).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.NetProfit).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.CostPerKm).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.CostPerHour).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ReliabilityScore).HasColumnType("decimal(5,4)");
+
+            entity.HasOne(e => e.Vehicle)
+                  .WithMany()
+                  .HasForeignKey(e => e.VehicleId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.PeriodStart);
+        });
+
+        // GroupAnalytics entity configuration
+        builder.Entity<GroupAnalytics>(entity =>
+        {
+            entity.Property(e => e.Period).HasConversion<int>();
+            entity.Property(e => e.TotalRevenue).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TotalExpenses).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.NetProfit).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.AverageMemberContribution).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ParticipationRate).HasColumnType("decimal(5,4)");
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.PeriodStart);
         });
 
         // Configure automatic timestamp updates
