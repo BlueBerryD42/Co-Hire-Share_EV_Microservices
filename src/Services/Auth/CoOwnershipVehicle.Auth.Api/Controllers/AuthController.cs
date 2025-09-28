@@ -292,7 +292,19 @@ public class AuthController : ControllerBase
                 return BadRequest(new { message = "Invalid user" });
             }
 
-            var result = await _userManager.ConfirmEmailAsync(user, request.Token);
+            // Decode the base64 encoded token
+            string decodedToken;
+            try
+            {
+                decodedToken = Encoding.UTF8.GetString(Convert.FromBase64String(request.Token));
+            }
+            catch (FormatException)
+            {
+                // If base64 decoding fails, try using the token as-is
+                decodedToken = request.Token;
+            }
+
+            var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
             if (result.Succeeded)
             {
                 // Send welcome email

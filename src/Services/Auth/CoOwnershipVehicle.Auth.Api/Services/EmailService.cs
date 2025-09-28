@@ -4,6 +4,7 @@ using System.Net.Mail;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using CoOwnershipVehicle.Shared.Configuration;
 
 namespace CoOwnershipVehicle.Auth.Api.Services
 {
@@ -108,26 +109,22 @@ namespace CoOwnershipVehicle.Auth.Api.Services
         {
             try
             {
-                var smtpHost = GetSmtpHost();
-                var smtpPort = GetSmtpPort();
-                var smtpUsername = GetSmtpUsername();
-                var smtpPassword = GetSmtpPassword();
-                var fromEmail = GetFromEmail();
-                var fromName = GetFromName();
-
-                if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(fromEmail))
+                var emailConfig = EnvironmentHelper.GetEmailConfigParams(_configuration);
+                
+                if (string.IsNullOrEmpty(emailConfig.SmtpHost) || string.IsNullOrEmpty(emailConfig.FromEmail))
                 {
-                    _logger.LogWarning("Email configuration is incomplete. Email not sent to {Email}", to);
+                    _logger.LogWarning("Email configuration is incomplete. SmtpHost: '{SmtpHost}', FromEmail: '{FromEmail}'. Email not sent to {Email}", 
+                        emailConfig.SmtpHost ?? "NULL", emailConfig.FromEmail ?? "NULL", to);
                     return false;
                 }
 
-                using var client = new SmtpClient(smtpHost, smtpPort);
-                client.EnableSsl = GetSmtpUseSsl();
-                client.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
+                using var client = new SmtpClient(emailConfig.SmtpHost, emailConfig.SmtpPort);
+                client.EnableSsl = emailConfig.UseSsl;
+                client.Credentials = new NetworkCredential(emailConfig.SmtpUsername, emailConfig.SmtpPassword);
 
                 var message = new MailMessage
                 {
-                    From = new MailAddress(fromEmail, fromName),
+                    From = new MailAddress(emailConfig.FromEmail, emailConfig.FromName),
                     Subject = subject,
                     Body = body,
                     IsBodyHtml = isHtml
@@ -146,13 +143,10 @@ namespace CoOwnershipVehicle.Auth.Api.Services
             }
         }
 
-        private string GetSmtpHost() => _configuration["EmailSettings:SmtpHost"] ?? Environment.GetEnvironmentVariable("SMTP_HOST");
-        private int GetSmtpPort() => int.Parse(_configuration["EmailSettings:SmtpPort"] ?? Environment.GetEnvironmentVariable("SMTP_PORT") ?? "587");
-        private string GetSmtpUsername() => _configuration["EmailSettings:SmtpUsername"] ?? Environment.GetEnvironmentVariable("SMTP_USERNAME");
-        private string GetSmtpPassword() => _configuration["EmailSettings:SmtpPassword"] ?? Environment.GetEnvironmentVariable("SMTP_PASSWORD");
-        private string GetFromEmail() => _configuration["EmailSettings:FromEmail"] ?? Environment.GetEnvironmentVariable("EMAIL_FROM");
-        private string GetFromName() => _configuration["EmailSettings:FromName"] ?? Environment.GetEnvironmentVariable("EMAIL_FROM_NAME") ?? "Co-Ownership Vehicle";
-        private bool GetSmtpUseSsl() => bool.Parse(_configuration["EmailSettings:UseSsl"] ?? Environment.GetEnvironmentVariable("SMTP_USE_SSL") ?? "true");
-        private string GetFrontendUrl() => _configuration["EmailSettings:FrontendUrl"] ?? Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
+        private string GetFrontendUrl() 
+        {
+            var emailConfig = EnvironmentHelper.GetEmailConfigParams(_configuration);
+            return emailConfig.FrontendUrl;
+        }
     }
 }
