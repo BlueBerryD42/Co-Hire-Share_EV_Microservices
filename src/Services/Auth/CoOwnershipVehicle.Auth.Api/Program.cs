@@ -7,64 +7,18 @@ using System.Text;
 using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Auth.Api.Services;
+using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
 using System.Linq;
-
-// Helper function to load .env file as fallback
-static string GetEnvironmentVariable(string key, IConfiguration configuration = null)
-{
-    // 1. Try system environment variable (production)
-    var value = Environment.GetEnvironmentVariable(key);
-    if (!string.IsNullOrEmpty(value)) return value;
-    
-    // 2. Try configuration (appsettings.json)
-    if (configuration != null)
-    {
-        value = configuration[key];
-        if (!string.IsNullOrEmpty(value)) return value;
-    }
-    
-    // 3. Try .env file (development fallback)
-    try
-    {
-        var envFile = Path.Combine(Directory.GetCurrentDirectory(), ".env");
-        if (File.Exists(envFile))
-        {
-            var lines = File.ReadAllLines(envFile);
-            foreach (var line in lines)
-            {
-                if (line.StartsWith($"{key}=") && !line.StartsWith("#"))
-                {
-                    return line.Substring(key.Length + 1).Trim();
-                }
-            }
-        }
-    }
-    catch
-    {
-        // Ignore .env file errors
-    }
-    
-    return null;
-}
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-var dbServer = GetEnvironmentVariable("DB_SERVER", builder.Configuration);
-var dbAuth = GetEnvironmentVariable("DB_AUTH", builder.Configuration);
-var dbUser = GetEnvironmentVariable("DB_USER", builder.Configuration);
-var dbPassword = GetEnvironmentVariable("DB_PASSWORD", builder.Configuration);
-var dbTrustCert = GetEnvironmentVariable("DB_TRUST_CERT", builder.Configuration) ?? "true";
-var dbMultipleResults = GetEnvironmentVariable("DB_MULTIPLE_ACTIVE_RESULTS", builder.Configuration) ?? "true";
+var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
+dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_AUTH", builder.Configuration) ?? dbParams.Database;
+var connectionString = dbParams.GetConnectionString();
 
-Console.WriteLine($"[DEBUG] Auth Service Environment Check:");
-Console.WriteLine($"[DEBUG] DB_SERVER: {dbServer}");
-Console.WriteLine($"[DEBUG] DB_AUTH: {dbAuth}");
-Console.WriteLine($"[DEBUG] DB_USER: {dbUser}");
-Console.WriteLine($"[DEBUG] DB_PASSWORD: {(string.IsNullOrEmpty(dbPassword) ? "NOT SET" : "*****")}");
-
-var connectionString = $"Server={dbServer};Database={dbAuth};User Id={dbUser};Password={dbPassword};TrustServerCertificate={dbTrustCert};MultipleActiveResultSets={dbMultipleResults}";
+EnvironmentHelper.LogEnvironmentStatus("Auth Service", builder.Configuration);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString,
@@ -92,10 +46,7 @@ builder.Services.AddIdentity<User, IdentityRole<Guid>>(options =>
     .AddDefaultTokenProviders();
 
 // Add JWT Authentication
-var secretKey = GetEnvironmentVariable("JWT_SECRET_KEY", builder.Configuration)
-    ?? throw new InvalidOperationException($"JWT SecretKey not configured. Checked: Environment variables, appsettings.json, and .env file");
-var issuer = GetEnvironmentVariable("JWT_ISSUER", builder.Configuration) ?? "CoOwnershipVehicle.Auth.Api";
-var audience = GetEnvironmentVariable("JWT_AUDIENCE", builder.Configuration) ?? "CoOwnershipVehicleApp";
+var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -107,11 +58,11 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig.SecretKey)),
         ValidateIssuer = true,
-        ValidIssuer = issuer,
+        ValidIssuer = jwtConfig.Issuer,
         ValidateAudience = true,
-        ValidAudience = audience,
+        ValidAudience = jwtConfig.Audience,
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
@@ -122,7 +73,7 @@ builder.Services.AddMassTransit(x =>
 {
     x.UsingRabbitMq((context, cfg) =>
     {
-        cfg.Host(GetEnvironmentVariable("RABBITMQ_CONNECTION", builder.Configuration) ?? "amqp://guest:guest@localhost:5672/");
+        cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
         cfg.ConfigureEndpoints(context);
     });
 });

@@ -36,7 +36,32 @@ public static class EnvironmentHelper
         // 3. Try .env file (development fallback)
         try
         {
-            var envFile = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+            // Look for .env file in project root (go up from current directory)
+            var currentDir = Directory.GetCurrentDirectory();
+            var envFile = Path.Combine(currentDir, ".env");
+            
+            Console.WriteLine($"[DEBUG] Looking for .env file. Current directory: {currentDir}");
+            Console.WriteLine($"[DEBUG] Checking .env file at: {envFile}");
+            
+            // If not found in current directory, try going up to find project root
+            if (!File.Exists(envFile))
+            {
+                var dir = new DirectoryInfo(currentDir);
+                while (dir != null && !File.Exists(Path.Combine(dir.FullName, ".env")))
+                {
+                    dir = dir.Parent;
+                }
+                if (dir != null)
+                {
+                    envFile = Path.Combine(dir.FullName, ".env");
+                    Console.WriteLine($"[DEBUG] Found .env file at: {envFile}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"[DEBUG] Found .env file at: {envFile}");
+            }
+            
             if (File.Exists(envFile))
             {
                 var lines = File.ReadAllLines(envFile);
