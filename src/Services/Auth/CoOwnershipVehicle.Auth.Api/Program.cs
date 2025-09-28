@@ -86,6 +86,7 @@ builder.Services.AddMassTransit(x =>
 
 // Add application services
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

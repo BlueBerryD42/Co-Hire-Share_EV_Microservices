@@ -5,6 +5,7 @@ using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Auth.Api.Services;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using MassTransit;
+using System.Text;
 
 namespace CoOwnershipVehicle.Auth.Api.Controllers;
 
@@ -16,6 +17,7 @@ public class AuthController : ControllerBase
     private readonly SignInManager<User> _signInManager;
     private readonly IJwtTokenService _tokenService;
     private readonly IPublishEndpoint _publishEndpoint;
+    private readonly IEmailService _emailService;
     private readonly ILogger<AuthController> _logger;
 
     public AuthController(
@@ -23,12 +25,14 @@ public class AuthController : ControllerBase
         SignInManager<User> signInManager,
         IJwtTokenService tokenService,
         IPublishEndpoint publishEndpoint,
+        IEmailService emailService,
         ILogger<AuthController> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _tokenService = tokenService;
         _publishEndpoint = publishEndpoint;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -89,19 +93,32 @@ public class AuthController : ControllerBase
 
             _logger.LogInformation("User {Email} registered successfully", user.Email);
 
-            // Generate tokens for immediate login
-            var loginResponse = await _tokenService.GenerateTokenAsync(user);
+            // Send email confirmation
+            try
+            {
+                var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                var confirmationLink = GenerateConfirmationLink(user.Id, token);
+                var emailSent = await _emailService.SendEmailConfirmationAsync(user.Email, confirmationLink);
+                
+                if (emailSent)
+                {
+                    _logger.LogInformation("Email confirmation sent to {Email}", user.Email);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send email confirmation to {Email}", user.Email);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending email confirmation to {Email}", user.Email);
+            }
 
             return Ok(new
             {
-                message = "User registered successfully",
-                user = loginResponse.User,
-                tokens = new
-                {
-                    accessToken = loginResponse.AccessToken,
-                    refreshToken = loginResponse.RefreshToken,
-                    expiresAt = loginResponse.ExpiresAt
-                }
+                message = "User registered successfully. Please check your email to confirm your account.",
+                email = user.Email,
+                emailConfirmationRequired = true
             });
         }
         catch (Exception ex)
@@ -260,4 +277,93 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { message = "An error occurred while getting user information" });
         }
     }
+
+    /// <summary>
+    /// Confirm email address
+    /// </summary>
+    [HttpPost("confirm-email")]
+    public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailRequest request)
+    {
+        try
+        {
+            var user = await _userManager.FindByIdAsync(request.UserId);
+            if (user == null)
+            {
+                return BadRequest(new { message = "Invalid user" });
+            }
+
+            var result = await _userManager.ConfirmEmailAsync(user, request.Token);
+            if (result.Succeeded)
+            {
+                // Send welcome email
+                await _emailService.SendWelcomeEmailAsync(user.Email!, user.FirstName!);
+                
+                _logger.LogInformation("Email confirmed for user {Email}", user.Email);
+                return Ok(new { message = "Email confirmed successfully" });
+            }
+
+            return BadRequest(new { message = "Invalid confirmation token" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error confirming email for user {UserId}", request.UserId);
+            return StatusCode(500, new { message = "An error occurred during email confirmation" });
+        }
+    }
+
+    /// <summary>
+    /// Resend email confirmation
+    /// </summary>
+    [HttpPost("resend-confirmation")]
+    public async Task<IActionResult> ResendConfirmation([FromBody] ResendConfirmationRequest request)
+    {
+        try
+        {
+            var user = await _userManager.FindByEmailAsync(request.Email);
+            if (user == null)
+            {
+                return BadRequest(new { message = "User not found" });
+            }
+
+            if (user.EmailConfirmed)
+            {
+                return BadRequest(new { message = "Email already confirmed" });
+            }
+
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var confirmationLink = GenerateConfirmationLink(user.Id, token);
+            var emailSent = await _emailService.SendEmailConfirmationAsync(user.Email!, confirmationLink);
+
+            if (emailSent)
+            {
+                _logger.LogInformation("Confirmation email resent to {Email}", user.Email);
+                return Ok(new { message = "Confirmation email sent" });
+            }
+
+            return StatusCode(500, new { message = "Failed to send confirmation email" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resending confirmation email to {Email}", request.Email);
+            return StatusCode(500, new { message = "An error occurred while resending confirmation email" });
+        }
+    }
+
+    private string GenerateConfirmationLink(Guid userId, string token)
+    {
+        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
+        var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
+        return $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
+    }
+}
+
+public class ConfirmEmailRequest
+{
+    public string UserId { get; set; } = string.Empty;
+    public string Token { get; set; } = string.Empty;
+}
+
+public class ResendConfirmationRequest
+{
+    public string Email { get; set; } = string.Empty;
 }

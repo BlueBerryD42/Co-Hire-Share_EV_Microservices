@@ -147,6 +147,24 @@ public static class EnvironmentHelper
     }
 
     /// <summary>
+    /// Gets email configuration parameters
+    /// </summary>
+    public static EmailConfigParams GetEmailConfigParams(IConfiguration? configuration = null)
+    {
+        return new EmailConfigParams
+        {
+            SmtpHost = GetEnvironmentVariable("SMTP_HOST", configuration),
+            SmtpPort = int.Parse(GetEnvironmentVariable("SMTP_PORT", configuration) ?? "587"),
+            SmtpUsername = GetEnvironmentVariable("SMTP_USERNAME", configuration),
+            SmtpPassword = GetEnvironmentVariable("SMTP_PASSWORD", configuration),
+            UseSsl = bool.Parse(GetEnvironmentVariable("SMTP_USE_SSL", configuration) ?? "true"),
+            FromEmail = GetEnvironmentVariable("EMAIL_FROM", configuration),
+            FromName = GetEnvironmentVariable("EMAIL_FROM_NAME", configuration) ?? "Co-Ownership Vehicle",
+            FrontendUrl = GetEnvironmentVariable("FRONTEND_URL", configuration) ?? "https://localhost:3000"
+        };
+    }
+
+    /// <summary>
     /// Logs environment variable status for debugging purposes.
     /// </summary>
     /// <param name="serviceName">Name of the service for logging</param>
@@ -200,4 +218,19 @@ public class JwtConfigParams
     public string Issuer { get; set; } = string.Empty;
     public string Audience { get; set; } = string.Empty;
     public int ExpiryMinutes { get; set; } = 60;
+}
+
+/// <summary>
+/// Email configuration parameters
+/// </summary>
+public class EmailConfigParams
+{
+    public string SmtpHost { get; set; } = string.Empty;
+    public int SmtpPort { get; set; } = 587;
+    public string SmtpUsername { get; set; } = string.Empty;
+    public string SmtpPassword { get; set; } = string.Empty;
+    public bool UseSsl { get; set; } = true;
+    public string FromEmail { get; set; } = string.Empty;
+    public string FromName { get; set; } = "Co-Ownership Vehicle";
+    public string FrontendUrl { get; set; } = "https://localhost:3000";
 }
