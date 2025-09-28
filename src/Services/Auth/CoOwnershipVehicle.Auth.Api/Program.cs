@@ -48,6 +48,12 @@ builder.Services.AddIdentity<User, IdentityRole<Guid>>(options =>
 // Add JWT Authentication
 var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
 
+// Configure JWT settings in configuration for the JwtTokenService
+builder.Configuration["JwtSettings:SecretKey"] = jwtConfig.SecretKey;
+builder.Configuration["JwtSettings:Issuer"] = jwtConfig.Issuer;
+builder.Configuration["JwtSettings:Audience"] = jwtConfig.Audience;
+builder.Configuration["JwtSettings:ExpiryMinutes"] = jwtConfig.ExpiryMinutes.ToString();
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
