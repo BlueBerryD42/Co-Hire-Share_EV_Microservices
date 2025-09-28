@@ -165,6 +165,19 @@ public static class EnvironmentHelper
     }
 
     /// <summary>
+    /// Gets Redis configuration parameters
+    /// </summary>
+    public static RedisConfigParams GetRedisConfigParams(IConfiguration? configuration = null)
+    {
+        return new RedisConfigParams
+        {
+            ConnectionString = GetEnvironmentVariable("REDIS_CONNECTION_STRING", configuration) ?? "localhost:6379",
+            Database = int.Parse(GetEnvironmentVariable("REDIS_DATABASE", configuration) ?? "0"),
+            KeyPrefix = GetEnvironmentVariable("REDIS_KEY_PREFIX", configuration) ?? "CoOwnershipVehicle:"
+        };
+    }
+
+    /// <summary>
     /// Logs environment variable status for debugging purposes.
     /// </summary>
     /// <param name="serviceName">Name of the service for logging</param>
@@ -233,4 +246,14 @@ public class EmailConfigParams
     public string FromEmail { get; set; } = string.Empty;
     public string FromName { get; set; } = "Co-Ownership Vehicle";
     public string FrontendUrl { get; set; } = "https://localhost:3000";
+}
+
+/// <summary>
+/// Redis configuration parameters
+/// </summary>
+public class RedisConfigParams
+{
+    public string ConnectionString { get; set; } = "localhost:6379";
+    public int Database { get; set; } = 0;
+    public string KeyPrefix { get; set; } = "CoOwnershipVehicle:";
 }

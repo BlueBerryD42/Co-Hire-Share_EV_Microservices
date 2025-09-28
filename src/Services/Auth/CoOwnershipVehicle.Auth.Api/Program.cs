@@ -84,6 +84,19 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
+// Add Redis
+var redisConfig = EnvironmentHelper.GetRedisConfigParams(builder.Configuration);
+builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
+{
+    var configuration = StackExchange.Redis.ConfigurationOptions.Parse(redisConfig.ConnectionString);
+    return StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
+});
+builder.Services.AddScoped<StackExchange.Redis.IDatabase>(sp =>
+{
+    var redis = sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
+    return redis.GetDatabase(redisConfig.Database);
+});
+
 // Add application services
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>();

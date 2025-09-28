@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using StackExchange.Redis;
 
 namespace CoOwnershipVehicle.Auth.Api.Services;
 
@@ -17,15 +18,20 @@ public class JwtTokenService : IJwtTokenService
     private readonly IConfiguration _configuration;
     private readonly UserManager<User> _userManager;
     private readonly ILogger<JwtTokenService> _logger;
+    private readonly IDatabase _redisDatabase;
+    private readonly string _keyPrefix;
 
     public JwtTokenService(
         IConfiguration configuration,
         UserManager<User> userManager,
-        ILogger<JwtTokenService> logger)
+        ILogger<JwtTokenService> logger,
+        IDatabase redisDatabase)
     {
         _configuration = configuration;
         _userManager = userManager;
         _logger = logger;
+        _redisDatabase = redisDatabase;
+        _keyPrefix = CoOwnershipVehicle.Shared.Configuration.EnvironmentHelper.GetRedisConfigParams(configuration).KeyPrefix;
     }
 
     public async Task<LoginResponseDto> GenerateTokenAsync(User user)
@@ -77,8 +83,8 @@ public class JwtTokenService : IJwtTokenService
 
     public async Task RevokeTokenAsync(string refreshToken)
     {
-        // In production, remove from secure store
-        await Task.CompletedTask;
+        var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+        await _redisDatabase.KeyDeleteAsync(key);
         _logger.LogInformation("Refresh token revoked");
     }
 
@@ -161,19 +167,24 @@ public class JwtTokenService : IJwtTokenService
 
     private async Task StoreRefreshTokenAsync(Guid userId, string refreshToken)
     {
-        // In production, store in Redis or database with expiration
-        await Task.CompletedTask;
+        var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+        var expiry = TimeSpan.FromDays(7); // 7 days expiry
+        
+        await _redisDatabase.StringSetAsync(key, userId.ToString(), expiry);
         _logger.LogInformation("Refresh token stored for user {UserId}", userId);
     }
 
     private async Task<Guid?> ValidateRefreshTokenAsync(string refreshToken)
     {
-        // In production, validate against secure store
-        await Task.CompletedTask;
+        var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+        var userIdString = await _redisDatabase.StringGetAsync(key);
         
-        // For demo purposes, return a dummy user ID
-        // In real implementation, look up the token in your store
-        return Guid.NewGuid(); // This should be the actual user ID associated with the token
+        if (userIdString.HasValue && Guid.TryParse(userIdString, out var userId))
+        {
+            return userId;
+        }
+        
+        return null; // Token not found or expired
     }
 
     private string GetSecretKey() => _configuration["JwtSettings:SecretKey"] ?? throw new InvalidOperationException("JWT secret key not configured");
