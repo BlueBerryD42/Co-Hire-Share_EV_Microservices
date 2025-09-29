@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Vehicle.Api.Controllers;
 

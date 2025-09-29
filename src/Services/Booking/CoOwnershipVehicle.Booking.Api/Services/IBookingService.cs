@@ -1,6 +1,7 @@
 using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
+using CoOwnershipVehicle.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using MassTransit;
 
@@ -56,7 +57,7 @@ public class BookingService : IBookingService
             var userPriority = (Domain.Entities.BookingPriority)await GetUserPriorityAsync(userId, createDto.VehicleId);
             
             // If user has higher priority, mark as priority request
-            var requiresApproval = conflicts.ConflictingBookings.Any(cb => cb.Priority >= (Shared.Contracts.DTOs.BookingPriority)userPriority);
+            var requiresApproval = conflicts.ConflictingBookings.Any(cb => cb.Priority >= userPriority);
             
             if (requiresApproval && !createDto.IsEmergency)
             {
@@ -100,7 +101,7 @@ public class BookingService : IBookingService
             EndAt = booking.EndAt,
             Status = BookingStatus.Confirmed,
             IsEmergency = booking.IsEmergency,
-            Priority = (Shared.Contracts.DTOs.BookingPriority)(int)booking.Priority
+            Priority = booking.Priority
         });
 
         _logger.LogInformation("Booking {BookingId} created for vehicle {VehicleId} by user {UserId}", 
@@ -139,7 +140,7 @@ public class BookingService : IBookingService
                 Purpose = b.Purpose,
                 Notes = b.Notes,
                 Status = (BookingStatus)b.Status,
-                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
+                Priority = b.Priority,
                 IsEmergency = b.IsEmergency,
                 CreatedAt = b.CreatedAt
             })
@@ -172,7 +173,7 @@ public class BookingService : IBookingService
                 Purpose = b.Purpose,
                 Notes = b.Notes,
                 Status = (BookingStatus)b.Status,
-                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
+                Priority = b.Priority,
                 IsEmergency = b.IsEmergency,
                 CreatedAt = b.CreatedAt
             })
@@ -200,7 +201,7 @@ public class BookingService : IBookingService
                 StartAt = b.StartAt,
                 EndAt = b.EndAt,
                 Status = (BookingStatus)b.Status,
-                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
+                Priority = b.Priority,
                 IsEmergency = b.IsEmergency
             })
             .ToListAsync();
@@ -368,7 +369,7 @@ public class BookingService : IBookingService
                 Purpose = b.Purpose,
                 Notes = b.Notes,
                 Status = (BookingStatus)b.Status,
-                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
+                Priority = b.Priority,
                 IsEmergency = b.IsEmergency,
                 CreatedAt = b.CreatedAt
             })
@@ -471,7 +472,7 @@ public class BookingService : IBookingService
                 Purpose = b.Purpose,
                 Notes = b.Notes,
                 Status = (BookingStatus)b.Status,
-                Priority = (Shared.Contracts.DTOs.BookingPriority)b.Priority,
+                Priority = b.Priority,
                 IsEmergency = b.IsEmergency,
                 CreatedAt = b.CreatedAt
             })

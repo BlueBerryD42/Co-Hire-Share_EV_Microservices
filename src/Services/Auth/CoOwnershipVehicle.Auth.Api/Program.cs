@@ -15,10 +15,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
-dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_AUTH", builder.Configuration) ?? dbParams.Database;
+dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_AUTH", builder.Configuration) ?? "CoOwnershipVehicle_Auth";
 var connectionString = dbParams.GetConnectionString();
 
 EnvironmentHelper.LogEnvironmentStatus("Auth Service", builder.Configuration);
+EnvironmentHelper.LogFinalConnectionDetails("Auth Service", dbParams.Database, builder.Configuration);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString,
@@ -88,13 +89,54 @@ builder.Services.AddMassTransit(x =>
 var redisConfig = EnvironmentHelper.GetRedisConfigParams(builder.Configuration);
 builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
 {
-    var configuration = StackExchange.Redis.ConfigurationOptions.Parse(redisConfig.ConnectionString);
-    return StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
+    var programLogger = sp.GetRequiredService<ILogger<Program>>();
+    programLogger.LogInformation("Redis Connection String: {ConnectionString}", redisConfig.ConnectionString);
+    programLogger.LogInformation("Redis Database: {Database}", redisConfig.Database);
+    
+    // Parse the connection string and create configuration manually
+    var configuration = new StackExchange.Redis.ConfigurationOptions();
+    
+    // Handle redis:// format
+    if (redisConfig.ConnectionString.StartsWith("redis://"))
+    {
+        var uri = new Uri(redisConfig.ConnectionString);
+        configuration.EndPoints.Add(uri.Host, uri.Port);
+        if (uri.UserInfo.Contains(':'))
+        {
+            configuration.Password = uri.UserInfo.Split(':')[1]; // Get password after colon
+        }
+        programLogger.LogInformation("Redis Host: {Host}, Port: {Port}, Has Password: {HasPassword}", 
+            uri.Host, uri.Port, !string.IsNullOrEmpty(configuration.Password));
+    }
+    else
+    {
+        // Handle host:port format
+        configuration = StackExchange.Redis.ConfigurationOptions.Parse(redisConfig.ConnectionString);
+        programLogger.LogInformation("Redis parsed from simple format");
+    }
+    
+    // Add retry and connection settings
+    configuration.AbortOnConnectFail = false;
+    configuration.ConnectRetry = 3;
+    configuration.ConnectTimeout = 15000;
+    configuration.SyncTimeout = 5000;
+    
+    try
+    {
+        return StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
+    }
+    catch (Exception ex)
+    {
+        programLogger.LogError(ex, "Failed to connect to Redis. Using in-memory fallback for refresh tokens.");
+        
+        // Return a null multiplexer - we'll handle this in the JWT service
+        return null;
+    }
 });
 builder.Services.AddScoped<StackExchange.Redis.IDatabase>(sp =>
 {
     var redis = sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
-    return redis.GetDatabase(redisConfig.Database);
+    return redis?.GetDatabase(redisConfig.Database);
 });
 
 // Add application services
@@ -117,7 +159,7 @@ builder.Services.AddSwaggerGen(c =>
     // Add JWT Authentication to Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token.",
+        Description = "JWT Authorization header using the Bearer scheme. Enter your token below (without 'Bearer ' prefix).",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,

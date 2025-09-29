@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Shared.Contracts.DTOs;
 
@@ -104,45 +105,3 @@ public class GroupMemberCostDto
     public decimal AmountOwed { get; set; }
 }
 
-public enum ExpenseType
-{
-    Fuel = 0,
-    Maintenance = 1,
-    Insurance = 2,
-    Registration = 3,
-    Cleaning = 4,
-    Repair = 5,
-    Upgrade = 6,
-    Parking = 7,
-    Toll = 8,
-    Other = 9
-}
-
-public enum InvoiceStatus
-{
-    Pending = 0,
-    Sent = 1,
-    Paid = 2,
-    Overdue = 3,
-    Cancelled = 4
-}
-
-public enum PaymentMethod
-{
-    Cash = 0,
-    BankTransfer = 1,
-    CreditCard = 2,
-    DebitCard = 3,
-    EWallet = 4,
-    Other = 5
-}
-
-public enum PaymentStatus
-{
-    Pending = 0,
-    Processing = 1,
-    Completed = 2,
-    Failed = 3,
-    Refunded = 4,
-    Cancelled = 5
-}

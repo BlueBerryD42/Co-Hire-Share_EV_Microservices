@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Text;
 using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Notification.Api.Hubs;
@@ -8,6 +9,7 @@ using CoOwnershipVehicle.Notification.Api.Services;
 using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
 using CoOwnershipVehicle.Shared.Contracts.Events;
+using CoOwnershipVehicle.Notification.Api.Consumers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,7 +18,40 @@ builder.Services.AddControllers();
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo 
+    { 
+        Title = "Co-Ownership Vehicle Notification API", 
+        Version = "v1",
+        Description = "Notification management service for the Co-Ownership Vehicle Management System"
+    });
+    
+    // Add JWT Authentication to Swagger
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter your token below (without 'Bearer ' prefix).",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+    
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
+    });
+});
 
 // Database Configuration
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
@@ -24,6 +59,7 @@ dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_NOTIFICATION", 
 var connectionString = EnvironmentHelper.GetEnvironmentVariable("DB_CONNECTION_STRING", builder.Configuration) ?? dbParams.GetConnectionString();
 
 EnvironmentHelper.LogEnvironmentStatus("Notification Service", builder.Configuration);
+EnvironmentHelper.LogFinalConnectionDetails("Notification Service", dbParams.Database, builder.Configuration);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CoOwnershipVehicle.Notification.Api")));

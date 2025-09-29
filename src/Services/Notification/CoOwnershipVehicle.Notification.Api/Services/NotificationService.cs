@@ -25,7 +25,7 @@ public class NotificationService : INotificationService
 
     public async Task<NotificationDto> CreateNotificationAsync(CreateNotificationDto dto)
     {
-        var notification = new Notification
+        var notification = new CoOwnershipVehicle.Domain.Entities.Notification
         {
             UserId = dto.UserId,
             GroupId = dto.GroupId,
@@ -49,12 +49,12 @@ public class NotificationService : INotificationService
 
     public async Task<List<NotificationDto>> CreateBulkNotificationAsync(CreateBulkNotificationDto dto)
     {
-        var notifications = new List<Notification>();
+        var notifications = new List<CoOwnershipVehicle.Domain.Entities.Notification>();
         var notificationDtos = new List<NotificationDto>();
 
         foreach (var userId in dto.UserIds)
         {
-            var notification = new Notification
+            var notification = new CoOwnershipVehicle.Domain.Entities.Notification
             {
                 UserId = userId,
                 GroupId = dto.GroupId,
@@ -242,7 +242,7 @@ public class NotificationService : INotificationService
         return await CreateNotificationAsync(dto);
     }
 
-    private async Task SendRealTimeNotification(Notification notification)
+    private async Task SendRealTimeNotification(CoOwnershipVehicle.Domain.Entities.Notification notification)
     {
         var dto = MapToDto(notification);
         
@@ -266,7 +266,7 @@ public class NotificationService : INotificationService
         return result;
     }
 
-    private static NotificationDto MapToDto(Notification notification)
+    private static NotificationDto MapToDto(CoOwnershipVehicle.Domain.Entities.Notification notification)
     {
         return new NotificationDto
         {

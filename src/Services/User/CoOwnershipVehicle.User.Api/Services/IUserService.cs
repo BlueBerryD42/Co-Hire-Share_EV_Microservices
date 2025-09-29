@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
+using CoOwnershipVehicle.Domain.Entities;
 using MassTransit;
 
 namespace CoOwnershipVehicle.User.Api.Services;
@@ -40,9 +41,19 @@ public class UserService : IUserService
 
     public async Task<UserProfileDto?> GetUserProfileAsync(Guid userId)
     {
+        _logger.LogInformation("Attempting to get user profile for {UserId}", userId);
+        
+        // Clear any cached entities to ensure fresh data
+        _context.ChangeTracker.Clear();
+        
+        // Use AsNoTracking to ensure we get fresh data from database
         var user = await _context.Users
             .Include(u => u.KycDocuments)
+            .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == userId);
+
+        _logger.LogInformation("User profile query result for {UserId}: {UserFound}", 
+            userId, user != null ? "FOUND" : "NOT FOUND");
 
         if (user == null)
             return null;

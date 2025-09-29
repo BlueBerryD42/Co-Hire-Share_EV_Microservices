@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.User.Api.Services;
 
 namespace CoOwnershipVehicle.User.Api.Controllers;
@@ -11,11 +12,13 @@ namespace CoOwnershipVehicle.User.Api.Controllers;
 public class UserController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly IUserSyncService _userSyncService;
     private readonly ILogger<UserController> _logger;
 
-    public UserController(IUserService userService, ILogger<UserController> logger)
+    public UserController(IUserService userService, IUserSyncService userSyncService, ILogger<UserController> logger)
     {
         _userService = userService;
+        _userSyncService = userSyncService;
         _logger = logger;
     }
 
@@ -28,10 +31,27 @@ public class UserController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
+            
+            // First, ensure user is synced from Auth service
+            var syncedUser = await _userSyncService.SyncUserAsync(userId);
+            
+            if (syncedUser == null)
+            {
+                _logger.LogWarning("User sync returned null for user {UserId}", userId);
+                return NotFound(new { message = "User profile not found" });
+            }
+            
+            // Small delay to ensure database transaction is committed
+            await Task.Delay(100);
+            
+            // Then get the full profile with KYC documents
             var profile = await _userService.GetUserProfileAsync(userId);
             
             if (profile == null)
+            {
+                _logger.LogWarning("User profile not found after sync for user {UserId}", userId);
                 return NotFound(new { message = "User profile not found" });
+            }
 
             return Ok(profile);
         }

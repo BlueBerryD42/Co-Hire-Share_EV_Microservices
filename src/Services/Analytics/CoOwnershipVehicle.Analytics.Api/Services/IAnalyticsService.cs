@@ -1,4 +1,5 @@
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Analytics.Api.Services;
 

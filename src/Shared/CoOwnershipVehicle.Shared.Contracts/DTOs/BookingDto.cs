@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Shared.Contracts.DTOs;
 
@@ -73,21 +74,4 @@ public class PriorityCalculationDto
     public decimal CalculatedScore { get; set; }
 }
 
-public enum BookingStatus
-{
-    Pending = 0,
-    PendingApproval = 1,
-    Confirmed = 2,
-    InProgress = 3,
-    Completed = 4,
-    Cancelled = 5,
-    NoShow = 6
-}
 
-public enum BookingPriority
-{
-    Low = 0,
-    Normal = 1,
-    High = 2,
-    Emergency = 3
-}

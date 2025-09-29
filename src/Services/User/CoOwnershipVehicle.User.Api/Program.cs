@@ -15,10 +15,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
-dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_USER_SERVICE", builder.Configuration) ?? dbParams.Database;
+dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_USER_SERVICE", builder.Configuration) ?? "CoOwnershipVehicle_User";
 var connectionString = dbParams.GetConnectionString();
 
 EnvironmentHelper.LogEnvironmentStatus("User Service", builder.Configuration);
+EnvironmentHelper.LogFinalConnectionDetails("User Service", dbParams.Database, builder.Configuration);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString,
@@ -81,8 +82,19 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
+// Add HttpClient for service-to-service communication
+builder.Services.AddHttpClient<UserSyncService>(client =>
+{
+    // Configure HttpClient to ignore SSL certificate errors for development
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+// Add a separate HttpClient for other uses
+builder.Services.AddHttpClient();
+
 // Add application services
 builder.Services.AddScoped<IUserService, CoOwnershipVehicle.User.Api.Services.UserService>();
+builder.Services.AddScoped<IUserSyncService, CoOwnershipVehicle.User.Api.Services.UserSyncService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -100,7 +112,7 @@ builder.Services.AddSwaggerGen(c =>
     // Add JWT Authentication to Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token.",
+        Description = "JWT Authorization header using the Bearer scheme. Enter your token below (without 'Bearer ' prefix).",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,

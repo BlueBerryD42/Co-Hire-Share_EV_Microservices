@@ -186,17 +186,91 @@ public static class EnvironmentHelper
     {
         Console.WriteLine($"[DEBUG] {serviceName} Environment Check:");
         
+        // Database configuration
         var dbParams = GetDatabaseConnectionParams(configuration);
         Console.WriteLine($"[DEBUG] DB_SERVER: {dbParams.Server}");
         Console.WriteLine($"[DEBUG] DB_DATABASE: {dbParams.Database}");
         Console.WriteLine($"[DEBUG] DB_USER: {dbParams.User}");
         Console.WriteLine($"[DEBUG] DB_PASSWORD: {(string.IsNullOrEmpty(dbParams.Password) ? "NOT SET" : "*****")}");
+        Console.WriteLine($"[DEBUG] DB_TRUST_CERT: {dbParams.TrustServerCertificate}");
+        Console.WriteLine($"[DEBUG] DB_MULTIPLE_ACTIVE_RESULTS: {dbParams.MultipleActiveResultSets}");
+        Console.WriteLine($"[DEBUG] ACTUAL_CONNECTION_STRING: {dbParams.GetConnectionString()}");
         
-        var jwtSecret = GetEnvironmentVariable("JWT_SECRET_KEY", configuration);
-        Console.WriteLine($"[DEBUG] JWT_SECRET_KEY: {(string.IsNullOrEmpty(jwtSecret) ? "NOT SET" : "*****")}");
+        // Service-specific database names
+        var dbAuth = GetEnvironmentVariable("DB_AUTH", configuration);
+        var dbUser = GetEnvironmentVariable("DB_USER_SERVICE", configuration);
+        var dbGroup = GetEnvironmentVariable("DB_GROUP", configuration);
+        var dbVehicle = GetEnvironmentVariable("DB_VEHICLE", configuration);
+        var dbPayment = GetEnvironmentVariable("DB_PAYMENT", configuration);
+        var dbBooking = GetEnvironmentVariable("DB_BOOKING", configuration);
+        var dbNotification = GetEnvironmentVariable("DB_NOTIFICATION", configuration);
+        var dbAnalytics = GetEnvironmentVariable("DB_ANALYTICS", configuration);
         
+        Console.WriteLine($"[DEBUG] DB_AUTH: {dbAuth ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] DB_USER_SERVICE: {dbUser ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] DB_GROUP: {dbGroup ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] DB_VEHICLE: {dbVehicle ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] DB_PAYMENT: {dbPayment ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] DB_BOOKING: {dbBooking ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] DB_NOTIFICATION: {dbNotification ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] DB_ANALYTICS: {dbAnalytics ?? "NOT SET"}");
+        
+        // JWT configuration
+        var jwtConfig = GetJwtConfigParams(configuration);
+        Console.WriteLine($"[DEBUG] JWT_SECRET_KEY: {(string.IsNullOrEmpty(jwtConfig.SecretKey) ? "NOT SET" : "*****")}");
+        Console.WriteLine($"[DEBUG] JWT_ISSUER: {jwtConfig.Issuer}");
+        Console.WriteLine($"[DEBUG] JWT_AUDIENCE: {jwtConfig.Audience}");
+        Console.WriteLine($"[DEBUG] JWT_EXPIRY_MINUTES: {jwtConfig.ExpiryMinutes}");
+        
+        // RabbitMQ configuration
         var rabbitMq = GetEnvironmentVariable("RABBITMQ_CONNECTION", configuration);
         Console.WriteLine($"[DEBUG] RABBITMQ_CONNECTION: {(string.IsNullOrEmpty(rabbitMq) ? "NOT SET" : "SET")}");
+        
+        // Redis configuration
+        var redisConfig = GetRedisConfigParams(configuration);
+        Console.WriteLine($"[DEBUG] REDIS_CONNECTION_STRING: {(string.IsNullOrEmpty(redisConfig.ConnectionString) ? "NOT SET" : "SET")}");
+        Console.WriteLine($"[DEBUG] REDIS_DATABASE: {redisConfig.Database}");
+        Console.WriteLine($"[DEBUG] REDIS_KEY_PREFIX: {redisConfig.KeyPrefix}");
+        
+        // Email configuration
+        var emailConfig = GetEmailConfigParams(configuration);
+        Console.WriteLine($"[DEBUG] SMTP_HOST: {emailConfig.SmtpHost ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] SMTP_PORT: {emailConfig.SmtpPort}");
+        Console.WriteLine($"[DEBUG] SMTP_USERNAME: {(string.IsNullOrEmpty(emailConfig.SmtpUsername) ? "NOT SET" : "SET")}");
+        Console.WriteLine($"[DEBUG] SMTP_PASSWORD: {(string.IsNullOrEmpty(emailConfig.SmtpPassword) ? "NOT SET" : "SET")}");
+        Console.WriteLine($"[DEBUG] SMTP_USE_SSL: {emailConfig.UseSsl}");
+        Console.WriteLine($"[DEBUG] EMAIL_FROM: {emailConfig.FromEmail ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] EMAIL_FROM_NAME: {emailConfig.FromName}");
+        Console.WriteLine($"[DEBUG] FRONTEND_URL: {emailConfig.FrontendUrl}");
+        
+        // VNPay configuration (for Payment service)
+        var vnpayTmnCode = GetEnvironmentVariable("VNPAY_TMN_CODE", configuration);
+        var vnpayHashSecret = GetEnvironmentVariable("VNPAY_HASH_SECRET", configuration);
+        var vnpayPaymentUrl = GetEnvironmentVariable("VNPAY_PAYMENT_URL", configuration);
+        var vnpayReturnUrl = GetEnvironmentVariable("VNPAY_RETURN_URL", configuration);
+        
+        Console.WriteLine($"[DEBUG] VNPAY_TMN_CODE: {(string.IsNullOrEmpty(vnpayTmnCode) ? "NOT SET" : "SET")}");
+        Console.WriteLine($"[DEBUG] VNPAY_HASH_SECRET: {(string.IsNullOrEmpty(vnpayHashSecret) ? "NOT SET" : "SET")}");
+        Console.WriteLine($"[DEBUG] VNPAY_PAYMENT_URL: {vnpayPaymentUrl ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] VNPAY_RETURN_URL: {vnpayReturnUrl ?? "NOT SET"}");
+    }
+
+    /// <summary>
+    /// Logs the final database connection details that a service will use.
+    /// </summary>
+    /// <param name="serviceName">Name of the service for logging</param>
+    /// <param name="databaseName">The specific database name the service will use</param>
+    /// <param name="configuration">Optional configuration object</param>
+    public static void LogFinalConnectionDetails(string serviceName, string databaseName, IConfiguration? configuration = null)
+    {
+        Console.WriteLine($"[DEBUG] {serviceName} Final Connection Details:");
+        
+        var dbParams = GetDatabaseConnectionParams(configuration);
+        dbParams.Database = databaseName;
+        
+        Console.WriteLine($"[DEBUG] FINAL_DATABASE_NAME: {dbParams.Database}");
+        Console.WriteLine($"[DEBUG] FINAL_CONNECTION_STRING: {dbParams.GetConnectionString()}");
+        Console.WriteLine();
     }
 }
 

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using CoOwnershipVehicle.Booking.Api.Services;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Booking.Api.Controllers;
 
@@ -271,8 +272,8 @@ public class BookingController : ControllerBase
                 EndDate = end,
                 Bookings = bookings,
                 TotalBookings = bookings.Count,
-                ConfirmedBookings = bookings.Count(b => b.Status == Shared.Contracts.DTOs.BookingStatus.Confirmed),
-                PendingBookings = bookings.Count(b => b.Status == Shared.Contracts.DTOs.BookingStatus.PendingApproval)
+                ConfirmedBookings = bookings.Count(b => b.Status == BookingStatus.Confirmed),
+                PendingBookings = bookings.Count(b => b.Status == BookingStatus.PendingApproval)
             };
 
             return Ok(calendar);

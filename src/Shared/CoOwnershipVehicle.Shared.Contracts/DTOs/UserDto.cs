@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Shared.Contracts.DTOs;
 
@@ -56,18 +57,3 @@ public class RefreshTokenDto
     public string RefreshToken { get; set; } = string.Empty;
 }
 
-public enum KycStatus
-{
-    Pending = 0,
-    InReview = 1,
-    Approved = 2,
-    Rejected = 3
-}
-
-public enum UserRole
-{
-    SystemAdmin = 0,
-    Staff = 1,
-    GroupAdmin = 2,
-    CoOwner = 3
-}

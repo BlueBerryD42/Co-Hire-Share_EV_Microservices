@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Shared.Contracts.DTOs;
 
@@ -85,21 +86,4 @@ public class ChangePasswordDto
     public string ConfirmPassword { get; set; } = string.Empty;
 }
 
-public enum KycDocumentType
-{
-    NationalId = 0,
-    Passport = 1,
-    DriverLicense = 2,
-    ProofOfAddress = 3,
-    BankStatement = 4,
-    Other = 5
-}
 
-public enum KycDocumentStatus
-{
-    Pending = 0,
-    UnderReview = 1,
-    Approved = 2,
-    Rejected = 3,
-    RequiresUpdate = 4
-}

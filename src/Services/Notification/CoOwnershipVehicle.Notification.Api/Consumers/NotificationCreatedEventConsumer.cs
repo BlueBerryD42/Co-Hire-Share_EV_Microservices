@@ -1,5 +1,6 @@
 using MassTransit;
 using CoOwnershipVehicle.Shared.Contracts.Events;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Notification.Api.Services;
 
 namespace CoOwnershipVehicle.Notification.Api.Consumers;

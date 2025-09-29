@@ -88,7 +88,7 @@ public class AuthController : ControllerBase
                 Email = user.Email,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                Role = (Shared.Contracts.DTOs.UserRole)user.Role
+                Role = user.Role
             });
 
             _logger.LogInformation("User {Email} registered successfully", user.Email);
@@ -264,8 +264,8 @@ public class AuthController : ControllerBase
                 FirstName = user.FirstName,
                 LastName = user.LastName,
                 Phone = user.Phone,
-                KycStatus = (Shared.Contracts.DTOs.KycStatus)user.KycStatus,
-                Role = (Shared.Contracts.DTOs.UserRole)user.Role,
+                KycStatus = user.KycStatus,
+                Role = user.Role,
                 CreatedAt = user.CreatedAt
             };
 
@@ -320,6 +320,41 @@ public class AuthController : ControllerBase
         {
             _logger.LogError(ex, "Error confirming email for user {UserId}", request.UserId);
             return StatusCode(500, new { message = "An error occurred during email confirmation" });
+        }
+    }
+
+    /// <summary>
+    /// Get user data by ID (for other services)
+    /// </summary>
+    [HttpGet("user/{userId:guid}")]
+    public async Task<IActionResult> GetUser(Guid userId)
+    {
+        try
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+
+            var userData = new
+            {
+                Id = user.Id,
+                Email = user.Email,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Phone = user.Phone,
+                Role = (int)user.Role,
+                KycStatus = (int)user.KycStatus,
+                CreatedAt = user.CreatedAt
+            };
+
+            return Ok(userData);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting user data for {UserId}", userId);
+            return StatusCode(500, new { message = "An error occurred while retrieving user data" });
         }
     }
 

@@ -501,18 +501,18 @@ public class AnalyticsService : IAnalyticsService
             (decimal)bookings.Count / await _context.Bookings.CountAsync(b => b.CreatedAt >= periodStart && b.CreatedAt <= periodEnd) : 0;
 
         var totalPaid = await _context.Payments
-            .Where(p => p.UserId == userId && 
+            .Where(p => p.PayerId == userId && 
                        p.Status == PaymentStatus.Completed &&
                        p.CreatedAt >= periodStart && 
                        p.CreatedAt <= periodEnd)
             .SumAsync(p => p.Amount);
 
         var totalOwed = await _context.Invoices
-            .Where(i => i.UserId == userId && 
+            .Where(i => i.PayerId == userId && 
                        i.Status == InvoiceStatus.Pending &&
                        i.CreatedAt >= periodStart && 
                        i.CreatedAt <= periodEnd)
-            .SumAsync(i => i.TotalAmount);
+            .SumAsync(i => i.Amount);
 
         return new UserAnalyticsDto
         {
@@ -556,7 +556,9 @@ public class AnalyticsService : IAnalyticsService
         var utilizationRate = totalAvailableHours > 0 ? (decimal)totalUsageHours / (decimal)totalAvailableHours : 0;
 
         var revenue = await _context.Payments
-            .Where(p => p.VehicleId == vehicleId && 
+            .Include(p => p.Invoice)
+            .ThenInclude(i => i.Expense)
+            .Where(p => p.Invoice.Expense.VehicleId == vehicleId && 
                        p.Status == PaymentStatus.Completed &&
                        p.CreatedAt >= periodStart && 
                        p.CreatedAt <= periodEnd)
@@ -564,7 +566,7 @@ public class AnalyticsService : IAnalyticsService
 
         var maintenanceCost = await _context.Expenses
             .Where(e => e.VehicleId == vehicleId && 
-                       e.Type == ExpenseType.Maintenance &&
+                       e.ExpenseType == ExpenseType.Maintenance &&
                        e.CreatedAt >= periodStart && 
                        e.CreatedAt <= periodEnd)
             .SumAsync(e => e.Amount);
@@ -593,7 +595,7 @@ public class AnalyticsService : IAnalyticsService
             NetProfit = revenue - operatingCost,
             CostPerKm = 0, // Would need distance calculation
             CostPerHour = totalUsageHours > 0 ? (decimal)operatingCost / (decimal)totalUsageHours : 0,
-            MaintenanceEvents = await _context.Expenses.CountAsync(e => e.VehicleId == vehicleId && e.Type == ExpenseType.Maintenance),
+            MaintenanceEvents = await _context.Expenses.CountAsync(e => e.VehicleId == vehicleId && e.ExpenseType == ExpenseType.Maintenance),
             Breakdowns = 0, // Placeholder
             ReliabilityScore = 0.95m // Placeholder
         };
@@ -616,7 +618,9 @@ public class AnalyticsService : IAnalyticsService
             .CountAsync();
 
         var totalRevenue = await _context.Payments
-            .Where(p => p.GroupId == groupId && 
+            .Include(p => p.Invoice)
+            .ThenInclude(i => i.Expense)
+            .Where(p => p.Invoice.Expense.GroupId == groupId && 
                        p.Status == PaymentStatus.Completed &&
                        p.CreatedAt >= periodStart && 
                        p.CreatedAt <= periodEnd)
@@ -708,13 +712,17 @@ public class AnalyticsService : IAnalyticsService
 
         if (snapshot.GroupId.HasValue)
         {
-            paymentsQuery = paymentsQuery.Where(p => p.GroupId == snapshot.GroupId);
+            paymentsQuery = paymentsQuery.Include(p => p.Invoice)
+                                        .ThenInclude(i => i.Expense)
+                                        .Where(p => p.Invoice.Expense.GroupId == snapshot.GroupId);
             expensesQuery = expensesQuery.Where(e => e.GroupId == snapshot.GroupId);
         }
 
         if (snapshot.VehicleId.HasValue)
         {
-            paymentsQuery = paymentsQuery.Where(p => p.VehicleId == snapshot.VehicleId);
+            paymentsQuery = paymentsQuery.Include(p => p.Invoice)
+                                        .ThenInclude(i => i.Expense)
+                                        .Where(p => p.Invoice.Expense.VehicleId == snapshot.VehicleId);
             expensesQuery = expensesQuery.Where(e => e.VehicleId == snapshot.VehicleId);
         }
 

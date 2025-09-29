@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Shared.Contracts.DTOs;
 
@@ -61,10 +62,3 @@ public class VehicleAvailabilityDto
     public List<BookingDto> ConflictingBookings { get; set; } = new();
 }
 
-public enum VehicleStatus
-{
-    Available = 0,
-    InUse = 1,
-    Maintenance = 2,
-    Unavailable = 3
-}

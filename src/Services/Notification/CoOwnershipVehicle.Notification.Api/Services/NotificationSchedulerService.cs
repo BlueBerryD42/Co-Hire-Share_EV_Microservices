@@ -75,7 +75,7 @@ public class NotificationSchedulerService : BackgroundService
 
             if (!reminderExists)
             {
-                var reminder = new Notification
+                var reminder = new CoOwnershipVehicle.Domain.Entities.Notification
                 {
                     UserId = booking.UserId,
                     GroupId = booking.GroupId,
@@ -93,23 +93,23 @@ public class NotificationSchedulerService : BackgroundService
         // Payment due reminders
         var overduePayments = await context.Payments
             .Include(p => p.Invoice)
-            .ThenInclude(i => i.User)
+            .ThenInclude(i => i.Payer)
             .Where(p => p.Status == PaymentStatus.Pending && 
-                       p.DueDate < DateTime.UtcNow)
+                       p.Invoice.DueDate < DateTime.UtcNow)
             .ToListAsync();
 
         foreach (var payment in overduePayments)
         {
             var reminderExists = await context.Notifications
-                .AnyAsync(n => n.UserId == payment.Invoice.UserId && 
+                .AnyAsync(n => n.UserId == payment.Invoice.PayerId && 
                               n.Type == NotificationType.OverduePayment &&
                               n.CreatedAt.Date == DateTime.UtcNow.Date);
 
             if (!reminderExists)
             {
-                var reminder = new Notification
+                var reminder = new CoOwnershipVehicle.Domain.Entities.Notification
                 {
-                    UserId = payment.Invoice.UserId,
+                    UserId = payment.Invoice.PayerId,
                     Title = "Payment Overdue",
                     Message = $"Payment of {payment.Amount:C} is overdue. Please make payment as soon as possible.",
                     Type = NotificationType.OverduePayment,

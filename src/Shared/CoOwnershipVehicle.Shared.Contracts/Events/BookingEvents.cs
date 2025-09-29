@@ -1,4 +1,5 @@
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Shared.Contracts.Events;
 
@@ -112,5 +113,21 @@ public class BookingPendingApprovalEvent : BaseEvent
     public BookingPendingApprovalEvent()
     {
         EventType = nameof(BookingPendingApprovalEvent);
+    }
+}
+
+public class VehicleStatusChangedEvent : BaseEvent
+{
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public VehicleStatus OldStatus { get; set; }
+    public VehicleStatus NewStatus { get; set; }
+    public Guid ChangedBy { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public string? Reason { get; set; }
+    
+    public VehicleStatusChangedEvent()
+    {
+        EventType = nameof(VehicleStatusChangedEvent);
     }
 }

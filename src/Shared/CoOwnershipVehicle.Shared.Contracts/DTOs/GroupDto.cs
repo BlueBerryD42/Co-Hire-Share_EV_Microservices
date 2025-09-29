@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Shared.Contracts.DTOs;
 
@@ -60,15 +61,3 @@ public class UpdateGroupMemberShareDto
     public decimal SharePercentage { get; set; }
 }
 
-public enum GroupStatus
-{
-    Active = 0,
-    Inactive = 1,
-    Dissolved = 2
-}
-
-public enum GroupRole
-{
-    Member = 0,
-    Admin = 1
-}

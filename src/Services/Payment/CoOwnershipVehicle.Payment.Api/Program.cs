@@ -13,10 +13,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
-dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_PAYMENT", builder.Configuration) ?? dbParams.Database;
+dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_PAYMENT", builder.Configuration) ?? "CoOwnershipVehicle_Payment";
 var connectionString = dbParams.GetConnectionString();
 
 EnvironmentHelper.LogEnvironmentStatus("Payment Service", builder.Configuration);
+EnvironmentHelper.LogFinalConnectionDetails("Payment Service", dbParams.Database, builder.Configuration);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString,
@@ -74,7 +75,7 @@ builder.Services.AddSwaggerGen(c =>
     // Add JWT Authentication to Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token.",
+        Description = "JWT Authorization header using the Bearer scheme. Enter your token below (without 'Bearer ' prefix).",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,

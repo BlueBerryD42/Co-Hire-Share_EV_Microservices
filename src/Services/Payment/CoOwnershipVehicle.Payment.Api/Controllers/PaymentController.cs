@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
+using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Payment.Api.Services;
 using MassTransit;
 

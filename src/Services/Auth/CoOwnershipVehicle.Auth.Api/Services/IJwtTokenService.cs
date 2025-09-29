@@ -18,20 +18,28 @@ public class JwtTokenService : IJwtTokenService
     private readonly IConfiguration _configuration;
     private readonly UserManager<User> _userManager;
     private readonly ILogger<JwtTokenService> _logger;
-    private readonly IDatabase _redisDatabase;
+    private readonly IDatabase? _redisDatabase;
     private readonly string _keyPrefix;
+    
+    // Fallback in-memory storage when Redis is not available
+    private static readonly Dictionary<string, Guid> _inMemoryRefreshTokens = new();
 
     public JwtTokenService(
         IConfiguration configuration,
         UserManager<User> userManager,
         ILogger<JwtTokenService> logger,
-        IDatabase redisDatabase)
+        IDatabase? redisDatabase)
     {
         _configuration = configuration;
         _userManager = userManager;
         _logger = logger;
         _redisDatabase = redisDatabase;
         _keyPrefix = CoOwnershipVehicle.Shared.Configuration.EnvironmentHelper.GetRedisConfigParams(configuration).KeyPrefix;
+        
+        if (_redisDatabase == null)
+        {
+            _logger.LogWarning("Redis database is not available. Refresh tokens will use in-memory storage.");
+        }
     }
 
     public async Task<LoginResponseDto> GenerateTokenAsync(User user)
@@ -55,8 +63,8 @@ public class JwtTokenService : IJwtTokenService
                 FirstName = user.FirstName,
                 LastName = user.LastName,
                 Phone = user.Phone,
-                KycStatus = (Shared.Contracts.DTOs.KycStatus)user.KycStatus,
-                Role = (Shared.Contracts.DTOs.UserRole)user.Role,
+                KycStatus = user.KycStatus,
+                Role = user.Role,
                 CreatedAt = user.CreatedAt
             }
         };
@@ -83,9 +91,17 @@ public class JwtTokenService : IJwtTokenService
 
     public async Task RevokeTokenAsync(string refreshToken)
     {
-        var key = $"{_keyPrefix}refresh_token:{refreshToken}";
-        await _redisDatabase.KeyDeleteAsync(key);
-        _logger.LogInformation("Refresh token revoked");
+        if (_redisDatabase != null)
+        {
+            var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+            await _redisDatabase.KeyDeleteAsync(key);
+            _logger.LogInformation("Refresh token revoked from Redis");
+        }
+        else
+        {
+            _inMemoryRefreshTokens.Remove(refreshToken);
+            _logger.LogInformation("Refresh token revoked from memory (Redis unavailable)");
+        }
     }
 
     public async Task<bool> ValidateTokenAsync(string token)
@@ -167,21 +183,39 @@ public class JwtTokenService : IJwtTokenService
 
     private async Task StoreRefreshTokenAsync(Guid userId, string refreshToken)
     {
-        var key = $"{_keyPrefix}refresh_token:{refreshToken}";
-        var expiry = TimeSpan.FromDays(7); // 7 days expiry
-        
-        await _redisDatabase.StringSetAsync(key, userId.ToString(), expiry);
-        _logger.LogInformation("Refresh token stored for user {UserId}", userId);
+        if (_redisDatabase != null)
+        {
+            var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+            var expiry = TimeSpan.FromDays(7); // 7 days expiry
+            
+            await _redisDatabase.StringSetAsync(key, userId.ToString(), expiry);
+            _logger.LogInformation("Refresh token stored in Redis for user {UserId}", userId);
+        }
+        else
+        {
+            _inMemoryRefreshTokens[refreshToken] = userId;
+            _logger.LogInformation("Refresh token stored in memory for user {UserId} (Redis unavailable)", userId);
+        }
     }
 
     private async Task<Guid?> ValidateRefreshTokenAsync(string refreshToken)
     {
-        var key = $"{_keyPrefix}refresh_token:{refreshToken}";
-        var userIdString = await _redisDatabase.StringGetAsync(key);
-        
-        if (userIdString.HasValue && Guid.TryParse(userIdString, out var userId))
+        if (_redisDatabase != null)
         {
-            return userId;
+            var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+            var userIdString = await _redisDatabase.StringGetAsync(key);
+            
+            if (userIdString.HasValue && Guid.TryParse(userIdString, out var userId))
+            {
+                return userId;
+            }
+        }
+        else
+        {
+            if (_inMemoryRefreshTokens.TryGetValue(refreshToken, out var userId))
+            {
+                return userId;
+            }
         }
         
         return null; // Token not found or expired

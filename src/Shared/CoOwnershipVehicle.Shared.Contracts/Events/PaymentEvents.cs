@@ -1,4 +1,5 @@
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Shared.Contracts.Events;
 
@@ -33,6 +34,24 @@ public class PaymentSettledEvent : BaseEvent
     public PaymentSettledEvent()
     {
         EventType = nameof(PaymentSettledEvent);
+    }
+}
+
+public class PaymentCompletedEvent : BaseEvent
+{
+    public Guid PaymentId { get; set; }
+    public Guid InvoiceId { get; set; }
+    public Guid ExpenseId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid PayerId { get; set; }
+    public decimal Amount { get; set; }
+    public PaymentMethod Method { get; set; }
+    public string? TransactionReference { get; set; }
+    public DateTime CompletedAt { get; set; }
+    
+    public PaymentCompletedEvent()
+    {
+        EventType = nameof(PaymentCompletedEvent);
     }
 }
 
