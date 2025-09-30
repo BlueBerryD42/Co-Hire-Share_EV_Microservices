@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Booking.Api.Data;
 using CoOwnershipVehicle.Booking.Api.Services;
 using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
@@ -18,7 +18,7 @@ var connectionString = dbParams.GetConnectionString();
 EnvironmentHelper.LogEnvironmentStatus("Booking Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("Booking Service", dbParams.Database, builder.Configuration);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Booking.Api")));
 
@@ -133,7 +133,7 @@ app.MapControllers();
 // Ensure database is created
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var context = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
     
     // Ensure database is created
     await context.Database.EnsureCreatedAsync();

@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Auth.Api.Data;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Auth.Api.Services;
 using CoOwnershipVehicle.Shared.Configuration;
@@ -21,7 +21,7 @@ var connectionString = dbParams.GetConnectionString();
 EnvironmentHelper.LogEnvironmentStatus("Auth Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("Auth Service", dbParams.Database, builder.Configuration);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<AuthDbContext>(options =>
     options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Auth.Api")));
 
@@ -43,7 +43,7 @@ builder.Services.AddIdentity<User, IdentityRole<Guid>>(options =>
         // User settings
         options.User.RequireUniqueEmail = true;
     })
-    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddEntityFrameworkStores<AuthDbContext>()
     .AddDefaultTokenProviders();
 
 // Add JWT Authentication
@@ -78,6 +78,9 @@ builder.Services.AddAuthentication(options =>
 // Add MassTransit for message bus
 builder.Services.AddMassTransit(x =>
 {
+    // Add consumers
+    x.AddConsumer<CoOwnershipVehicle.Auth.Api.Consumers.UserProfileUpdatedConsumer>();
+    
     x.UsingRabbitMq((context, cfg) =>
     {
         cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
@@ -218,7 +221,7 @@ app.MapControllers();
 // Ensure database is created and seeded
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
     
@@ -226,7 +229,7 @@ using (var scope = app.Services.CreateScope())
     await context.Database.EnsureCreatedAsync();
     
     // Seed initial data
-    await CoOwnershipVehicle.Data.Seeding.DataSeeder.SeedAsync(context, userManager, roleManager);
+    await CoOwnershipVehicle.Auth.Api.Data.AuthDataSeeder.SeedAsync(context, userManager, roleManager);
 }
 
 app.Run();

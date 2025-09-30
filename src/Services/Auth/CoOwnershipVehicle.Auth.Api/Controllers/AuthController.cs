@@ -396,11 +396,157 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Change user password (requires authentication)
+    /// </summary>
+    [HttpPost("change-password")]
+    [Microsoft.AspNetCore.Authorization.Authorize]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized();
+            }
+
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+
+            var result = await _userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+            if (!result.Succeeded)
+            {
+                var errors = result.Errors.Select(e => e.Description);
+                return BadRequest(new { message = "Failed to change password", errors });
+            }
+
+            _logger.LogInformation("Password changed successfully for user {Email}", user.Email);
+
+            return Ok(new { message = "Password changed successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error changing password");
+            return StatusCode(500, new { message = "An error occurred while changing password" });
+        }
+    }
+
+    /// <summary>
+    /// Request password reset (forgot password)
+    /// </summary>
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var user = await _userManager.FindByEmailAsync(request.Email);
+            if (user == null)
+            {
+                // Don't reveal if user exists or not for security
+                return Ok(new { message = "If the email exists, a password reset link has been sent." });
+            }
+
+            // Generate password reset token
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var resetLink = GeneratePasswordResetLink(user.Id, token);
+
+            // Send password reset email
+            var emailSent = await _emailService.SendPasswordResetAsync(user.Email!, resetLink);
+            
+            if (emailSent)
+            {
+                _logger.LogInformation("Password reset email sent to {Email}", user.Email);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to send password reset email to {Email}", user.Email);
+            }
+
+            // Always return success message for security (don't reveal if email exists)
+            return Ok(new { message = "If the email exists, a password reset link has been sent." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing forgot password request for {Email}", request.Email);
+            return StatusCode(500, new { message = "An error occurred while processing your request" });
+        }
+    }
+
+    /// <summary>
+    /// Reset password using token from email
+    /// </summary>
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var user = await _userManager.FindByIdAsync(request.UserId);
+            if (user == null)
+            {
+                return BadRequest(new { message = "Invalid reset token" });
+            }
+
+            // Decode the base64 encoded token
+            string decodedToken;
+            try
+            {
+                decodedToken = Encoding.UTF8.GetString(Convert.FromBase64String(request.Token));
+            }
+            catch (FormatException)
+            {
+                // If base64 decoding fails, try using the token as-is
+                decodedToken = request.Token;
+            }
+
+            var result = await _userManager.ResetPasswordAsync(user, decodedToken, request.NewPassword);
+            if (!result.Succeeded)
+            {
+                var errors = result.Errors.Select(e => e.Description);
+                return BadRequest(new { message = "Failed to reset password", errors });
+            }
+
+            _logger.LogInformation("Password reset successfully for user {Email}", user.Email);
+
+            return Ok(new { message = "Password reset successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting password");
+            return StatusCode(500, new { message = "An error occurred while resetting password" });
+        }
+    }
+
     private string GenerateConfirmationLink(Guid userId, string token)
     {
         var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
         var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
         return $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
+    }
+
+    private string GeneratePasswordResetLink(Guid userId, string token)
+    {
+        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
+        var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
+        return $"{frontendUrl}/reset-password?userId={userId}&token={encodedToken}";
     }
 }
 

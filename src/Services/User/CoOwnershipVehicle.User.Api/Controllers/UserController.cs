@@ -112,31 +112,8 @@ public class UserController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Change password
-    /// </summary>
-    [HttpPost("change-password")]
-    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto changePasswordDto)
-    {
-        try
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var userId = GetCurrentUserId();
-            var success = await _userService.ChangePasswordAsync(userId, changePasswordDto);
-
-            if (!success)
-                return BadRequest(new { message = "Failed to change password. Please check your current password." });
-
-            return Ok(new { message = "Password changed successfully" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error changing password");
-            return StatusCode(500, new { message = "An error occurred while changing password" });
-        }
-    }
+    // NOTE: Password change endpoint removed - this should be handled by Auth service only
+    // Password changes must be done through the Auth service API for security reasons
 
     /// <summary>
     /// Upload KYC document

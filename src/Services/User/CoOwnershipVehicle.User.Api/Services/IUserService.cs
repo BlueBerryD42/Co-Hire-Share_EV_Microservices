@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.User.Api.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using CoOwnershipVehicle.Domain.Entities;
@@ -12,7 +12,7 @@ public interface IUserService
 {
     Task<UserProfileDto?> GetUserProfileAsync(Guid userId);
     Task<UserProfileDto> UpdateUserProfileAsync(Guid userId, UpdateUserProfileDto updateDto);
-    Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordDto changePasswordDto);
+    // ChangePasswordAsync removed - password changes should be handled by Auth service only
     Task<KycDocumentDto> UploadKycDocumentAsync(Guid userId, UploadKycDocumentDto uploadDto);
     Task<List<KycDocumentDto>> GetUserKycDocumentsAsync(Guid userId);
     Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto reviewDto, Guid reviewerId);
@@ -22,19 +22,16 @@ public interface IUserService
 
 public class UserService : IUserService
 {
-    private readonly ApplicationDbContext _context;
-    private readonly UserManager<Domain.Entities.User> _userManager;
+    private readonly UserDbContext _context;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<UserService> _logger;
 
     public UserService(
-        ApplicationDbContext context,
-        UserManager<Domain.Entities.User> userManager,
+        UserDbContext context,
         IPublishEndpoint publishEndpoint,
         ILogger<UserService> logger)
     {
         _context = context;
-        _userManager = userManager;
         _publishEndpoint = publishEndpoint;
         _logger = logger;
     }
@@ -97,6 +94,16 @@ public class UserService : IUserService
         if (user == null)
             throw new NotFoundException("User not found");
 
+        // Store old values for comparison
+        var oldFirstName = user.FirstName;
+        var oldLastName = user.LastName;
+        var oldPhone = user.Phone;
+        var oldAddress = user.Address;
+        var oldCity = user.City;
+        var oldCountry = user.Country;
+        var oldPostalCode = user.PostalCode;
+        var oldDateOfBirth = user.DateOfBirth;
+
         // Update properties if provided
         if (!string.IsNullOrEmpty(updateDto.FirstName))
             user.FirstName = updateDto.FirstName;
@@ -126,26 +133,43 @@ public class UserService : IUserService
 
         await _context.SaveChangesAsync();
 
+        // Check if any profile data changed and publish event
+        var profileChanged = oldFirstName != user.FirstName ||
+                           oldLastName != user.LastName ||
+                           oldPhone != user.Phone ||
+                           oldAddress != user.Address ||
+                           oldCity != user.City ||
+                           oldCountry != user.Country ||
+                           oldPostalCode != user.PostalCode ||
+                           oldDateOfBirth != user.DateOfBirth;
+
+        if (profileChanged)
+        {
+            // Publish user profile updated event to sync with Auth service
+            await _publishEndpoint.Publish(new UserProfileUpdatedEvent
+            {
+                UserId = user.Id,
+                Email = user.Email!,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Phone = user.Phone,
+                Address = user.Address,
+                City = user.City,
+                Country = user.Country,
+                PostalCode = user.PostalCode,
+                DateOfBirth = user.DateOfBirth,
+                Role = (UserRole)user.Role,
+                KycStatus = (KycStatus)user.KycStatus,
+                UpdatedAt = user.UpdatedAt
+            });
+
+            _logger.LogInformation("User profile updated event published for user {UserId}", userId);
+        }
+
         return (await GetUserProfileAsync(userId))!;
     }
 
-    public async Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordDto changePasswordDto)
-    {
-        var user = await _userManager.FindByIdAsync(userId.ToString());
-        if (user == null)
-            return false;
-
-        var result = await _userManager.ChangePasswordAsync(user, changePasswordDto.CurrentPassword, changePasswordDto.NewPassword);
-        
-        if (result.Succeeded)
-        {
-            _logger.LogInformation("Password changed successfully for user {UserId}", userId);
-            return true;
-        }
-
-        _logger.LogWarning("Password change failed for user {UserId}: {Errors}", userId, string.Join(", ", result.Errors.Select(e => e.Description)));
-        return false;
-    }
+    // ChangePasswordAsync method removed - password changes should be handled by Auth service only
 
     public async Task<KycDocumentDto> UploadKycDocumentAsync(Guid userId, UploadKycDocumentDto uploadDto)
     {

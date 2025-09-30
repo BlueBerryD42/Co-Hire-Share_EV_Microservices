@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Payment.Api.Data;
 using CoOwnershipVehicle.Payment.Api.Services;
 using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
@@ -19,7 +19,7 @@ var connectionString = dbParams.GetConnectionString();
 EnvironmentHelper.LogEnvironmentStatus("Payment Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("Payment Service", dbParams.Database, builder.Configuration);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<PaymentDbContext>(options =>
     options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Payment.Api")));
 
@@ -134,7 +134,7 @@ app.MapControllers();
 // Ensure database is created
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var context = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
     
     // Ensure database is created
     await context.Database.EnsureCreatedAsync();

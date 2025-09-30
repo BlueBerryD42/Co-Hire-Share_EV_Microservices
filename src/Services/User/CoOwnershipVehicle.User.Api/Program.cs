@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.User.Api.Data;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.User.Api.Services;
 using CoOwnershipVehicle.User.Api.Consumers;
@@ -21,25 +21,14 @@ var connectionString = dbParams.GetConnectionString();
 EnvironmentHelper.LogEnvironmentStatus("User Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("User Service", dbParams.Database, builder.Configuration);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<UserDbContext>(options =>
     options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.User.Api")));
 
-// Add Identity services (for UserManager)
-builder.Services.AddIdentity<CoOwnershipVehicle.Domain.Entities.User, IdentityRole<Guid>>(options =>
-    {
-        // Password settings
-        options.Password.RequireDigit = true;
-        options.Password.RequireLowercase = true;
-        options.Password.RequireNonAlphanumeric = false;
-        options.Password.RequireUppercase = true;
-        options.Password.RequiredLength = 8;
-        
-        // User settings
-        options.User.RequireUniqueEmail = true;
-    })
-    .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddDefaultTokenProviders();
+// NOTE: User service should NOT handle authentication
+// Identity services are removed - authentication is handled by Auth service only
+// The UserDbContext still inherits from IdentityDbContext for the User entity structure,
+// but we don't register Identity services since we don't handle passwords/tokens
 
 // Add JWT Authentication
 var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
@@ -171,15 +160,13 @@ app.MapControllers();
 // Ensure database is created
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<CoOwnershipVehicle.Domain.Entities.User>>();
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+    var context = scope.ServiceProvider.GetRequiredService<UserDbContext>();
     
     // Ensure database is created
     await context.Database.EnsureCreatedAsync();
     
-    // Seed initial data
-    await CoOwnershipVehicle.Data.Seeding.DataSeeder.SeedAsync(context, userManager, roleManager);
+    // Seed initial data (User service doesn't need UserManager/RoleManager)
+    await CoOwnershipVehicle.User.Api.Data.UserDataSeeder.SeedAsync(context);
 }
 
 app.Run();

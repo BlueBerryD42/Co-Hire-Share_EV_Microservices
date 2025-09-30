@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Notification.Api.Data;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Notification.Api.Hubs;
@@ -9,12 +9,12 @@ namespace CoOwnershipVehicle.Notification.Api.Services;
 
 public class NotificationService : INotificationService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly NotificationDbContext _context;
     private readonly IHubContext<NotificationHub> _hubContext;
     private readonly INotificationTemplateService _templateService;
 
     public NotificationService(
-        ApplicationDbContext context,
+        NotificationDbContext context,
         IHubContext<NotificationHub> hubContext,
         INotificationTemplateService templateService)
     {

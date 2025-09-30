@@ -1,4 +1,4 @@
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Booking.Api.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using CoOwnershipVehicle.Domain.Entities;
@@ -21,12 +21,12 @@ public interface IBookingService
 
 public class BookingService : IBookingService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly BookingDbContext _context;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<BookingService> _logger;
 
     public BookingService(
-        ApplicationDbContext context,
+        BookingDbContext context,
         IPublishEndpoint publishEndpoint,
         ILogger<BookingService> logger)
     {

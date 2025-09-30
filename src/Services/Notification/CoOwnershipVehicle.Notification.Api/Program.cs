@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Notification.Api.Data;
 using CoOwnershipVehicle.Notification.Api.Hubs;
 using CoOwnershipVehicle.Notification.Api.Services;
 using CoOwnershipVehicle.Shared.Configuration;
@@ -62,7 +62,7 @@ var connectionString = EnvironmentHelper.GetEnvironmentVariable("DB_CONNECTION_S
 EnvironmentHelper.LogEnvironmentStatus("Notification Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("Notification Service", dbParams.Database, builder.Configuration);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<NotificationDbContext>(options =>
     options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CoOwnershipVehicle.Notification.Api")));
 
 // JWT Authentication

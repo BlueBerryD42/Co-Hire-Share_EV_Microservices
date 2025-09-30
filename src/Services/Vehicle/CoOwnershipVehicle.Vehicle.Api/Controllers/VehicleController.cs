@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Vehicle.Api.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Domain.Entities;
 
@@ -12,10 +12,10 @@ namespace CoOwnershipVehicle.Vehicle.Api.Controllers;
 [Authorize]
 public class VehicleController : ControllerBase
 {
-    private readonly ApplicationDbContext _context;
+    private readonly VehicleDbContext _context;
     private readonly ILogger<VehicleController> _logger;
 
-    public VehicleController(ApplicationDbContext context, ILogger<VehicleController> logger)
+    public VehicleController(VehicleDbContext context, ILogger<VehicleController> logger)
     {
         _context = context;
         _logger = logger;

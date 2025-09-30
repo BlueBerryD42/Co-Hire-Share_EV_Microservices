@@ -1,16 +1,16 @@
 using MassTransit;
 using CoOwnershipVehicle.Shared.Contracts.Events;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.User.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace CoOwnershipVehicle.User.Api.Consumers;
 
 public class UserRegisteredConsumer : IConsumer<UserRegisteredEvent>
 {
-    private readonly ApplicationDbContext _context;
+    private readonly UserDbContext _context;
     private readonly ILogger<UserRegisteredConsumer> _logger;
 
-    public UserRegisteredConsumer(ApplicationDbContext context, ILogger<UserRegisteredConsumer> logger)
+    public UserRegisteredConsumer(UserDbContext context, ILogger<UserRegisteredConsumer> logger)
     {
         _context = context;
         _logger = logger;
@@ -27,9 +27,33 @@ public class UserRegisteredConsumer : IConsumer<UserRegisteredEvent>
             
             if (existingUser == null)
             {
-                // User doesn't exist in our local database, which is expected for microservices
-                // We'll sync the user data when they access our service
-                _logger.LogInformation("User registration event received for new user {UserId} - {Email}", 
+                // Create new user in User service database
+                // NOTE: User service should NOT store authentication data (passwords, tokens, etc.)
+                // Authentication is handled exclusively by the Auth service
+                var newUser = new Domain.Entities.User
+                {
+                    Id = message.UserId,
+                    UserName = message.Email,
+                    Email = message.Email,
+                    FirstName = message.FirstName,
+                    LastName = message.LastName,
+                    Role = (Domain.Entities.UserRole)message.Role,
+                    KycStatus = Domain.Entities.KycStatus.Pending,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    // Authentication fields are NOT set - they belong only in Auth service
+                    EmailConfirmed = false,
+                    PhoneNumberConfirmed = false,
+                    TwoFactorEnabled = false,
+                    LockoutEnabled = true,
+                    AccessFailedCount = 0
+                    // PasswordHash, SecurityStamp, etc. are intentionally omitted
+                };
+
+                _context.Users.Add(newUser);
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("User created in User service database for {UserId} - {Email}", 
                     message.UserId, message.Email);
             }
             else

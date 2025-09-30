@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -52,7 +52,7 @@ var connectionString = dbParams.GetConnectionString();
 EnvironmentHelper.LogEnvironmentStatus("Group Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("Group Service", dbParams.Database, builder.Configuration);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<GroupDbContext>(options =>
     options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Group.Api")));
 

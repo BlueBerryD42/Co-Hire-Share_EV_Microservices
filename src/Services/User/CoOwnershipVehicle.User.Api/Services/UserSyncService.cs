@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.User.Api.Data;
 using CoOwnershipVehicle.Domain.Entities;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -15,13 +15,13 @@ public interface IUserSyncService
 
 public class UserSyncService : IUserSyncService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly UserDbContext _context;
     private readonly HttpClient _httpClient;
     private readonly ILogger<UserSyncService> _logger;
     private readonly IConfiguration _configuration;
 
     public UserSyncService(
-        ApplicationDbContext context, 
+        UserDbContext context, 
         HttpClient httpClient, 
         ILogger<UserSyncService> logger,
         IConfiguration configuration)

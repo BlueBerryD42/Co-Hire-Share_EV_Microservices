@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Analytics.Api.Data;
 using CoOwnershipVehicle.Analytics.Api.Services;
 using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
@@ -61,7 +61,7 @@ var connectionString = EnvironmentHelper.GetEnvironmentVariable("DB_CONNECTION_S
 EnvironmentHelper.LogEnvironmentStatus("Analytics Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("Analytics Service", dbParams.Database, builder.Configuration);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<AnalyticsDbContext>(options =>
     options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CoOwnershipVehicle.Analytics.Api")));
 
 // JWT Authentication

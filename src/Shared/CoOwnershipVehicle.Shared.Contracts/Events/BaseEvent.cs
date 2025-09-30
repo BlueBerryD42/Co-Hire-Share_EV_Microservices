@@ -38,6 +38,28 @@ public class UserKycStatusChangedEvent : BaseEvent
     }
 }
 
+public class UserProfileUpdatedEvent : BaseEvent
+{
+    public Guid UserId { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Address { get; set; }
+    public string? City { get; set; }
+    public string? Country { get; set; }
+    public string? PostalCode { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public UserRole Role { get; set; }
+    public KycStatus KycStatus { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    
+    public UserProfileUpdatedEvent()
+    {
+        EventType = nameof(UserProfileUpdatedEvent);
+    }
+}
+
 public class GroupCreatedEvent : BaseEvent
 {
     public Guid GroupId { get; set; }

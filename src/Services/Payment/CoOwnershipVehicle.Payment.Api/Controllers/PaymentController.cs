@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Payment.Api.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using CoOwnershipVehicle.Domain.Entities;
@@ -15,13 +15,13 @@ namespace CoOwnershipVehicle.Payment.Api.Controllers;
 [Authorize]
 public class PaymentController : ControllerBase
 {
-    private readonly ApplicationDbContext _context;
+    private readonly PaymentDbContext _context;
     private readonly IVnPayService _vnPayService;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<PaymentController> _logger;
 
     public PaymentController(
-        ApplicationDbContext context,
+        PaymentDbContext context,
         IVnPayService vnPayService,
         IPublishEndpoint publishEndpoint,
         ILogger<PaymentController> logger)

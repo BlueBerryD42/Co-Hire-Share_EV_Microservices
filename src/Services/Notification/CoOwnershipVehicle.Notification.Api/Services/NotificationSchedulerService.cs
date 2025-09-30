@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Notification.Api.Data;
 using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Notification.Api.Services;
@@ -38,7 +38,7 @@ public class NotificationSchedulerService : BackgroundService
     private async Task ProcessScheduledNotifications()
     {
         using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var context = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
 
         var now = DateTime.UtcNow;
         var scheduledNotifications = await context.Notifications
@@ -55,70 +55,23 @@ public class NotificationSchedulerService : BackgroundService
     private async Task ProcessReminderNotifications()
     {
         using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var context = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
 
-        // Booking reminders (1 hour before)
-        var upcomingBookings = await context.Bookings
-            .Include(b => b.User)
-            .Include(b => b.Vehicle)
-            .Where(b => b.Status == BookingStatus.Confirmed && 
-                       b.StartAt <= DateTime.UtcNow.AddHours(1) && 
-                       b.StartAt > DateTime.UtcNow)
+        // TODO: Reminder notifications should be handled via events from other services
+        // This method should be refactored to only handle notifications that are already
+        // in the NotificationDbContext, not query other services' entities directly
+        
+        _logger.LogInformation("ProcessReminderNotifications - TODO: Implement event-based reminders");
+        
+        // For now, just process any scheduled notifications that are ready
+        var readyNotifications = await context.Notifications
+            .Where(n => n.ScheduledFor <= DateTime.UtcNow && n.Status == NotificationStatus.Unread)
             .ToListAsync();
 
-        foreach (var booking in upcomingBookings)
+        foreach (var notification in readyNotifications)
         {
-            var reminderExists = await context.Notifications
-                .AnyAsync(n => n.UserId == booking.UserId && 
-                              n.Type == NotificationType.BookingReminder &&
-                              n.ScheduledFor.Date == booking.StartAt.Date);
-
-            if (!reminderExists)
-            {
-                var reminder = new CoOwnershipVehicle.Domain.Entities.Notification
-                {
-                    UserId = booking.UserId,
-                    GroupId = booking.GroupId,
-                    Title = "Booking Reminder",
-                    Message = $"Your booking for {booking.Vehicle.Model} starts in 1 hour at {booking.StartAt:HH:mm}",
-                    Type = NotificationType.BookingReminder,
-                    Priority = NotificationPriority.Normal,
-                    ScheduledFor = DateTime.UtcNow
-                };
-
-                context.Notifications.Add(reminder);
-            }
-        }
-
-        // Payment due reminders
-        var overduePayments = await context.Payments
-            .Include(p => p.Invoice)
-            .ThenInclude(i => i.Payer)
-            .Where(p => p.Status == PaymentStatus.Pending && 
-                       p.Invoice.DueDate < DateTime.UtcNow)
-            .ToListAsync();
-
-        foreach (var payment in overduePayments)
-        {
-            var reminderExists = await context.Notifications
-                .AnyAsync(n => n.UserId == payment.Invoice.PayerId && 
-                              n.Type == NotificationType.OverduePayment &&
-                              n.CreatedAt.Date == DateTime.UtcNow.Date);
-
-            if (!reminderExists)
-            {
-                var reminder = new CoOwnershipVehicle.Domain.Entities.Notification
-                {
-                    UserId = payment.Invoice.PayerId,
-                    Title = "Payment Overdue",
-                    Message = $"Payment of {payment.Amount:C} is overdue. Please make payment as soon as possible.",
-                    Type = NotificationType.OverduePayment,
-                    Priority = NotificationPriority.High,
-                    ScheduledFor = DateTime.UtcNow
-                };
-
-                context.Notifications.Add(reminder);
-            }
+            _logger.LogInformation("Processing reminder notification {NotificationId} for user {UserId}", 
+                notification.Id, notification.UserId);
         }
 
         await context.SaveChangesAsync();
@@ -127,7 +80,7 @@ public class NotificationSchedulerService : BackgroundService
     private async Task ProcessCleanup()
     {
         using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var context = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
 
         // Clean up old read notifications (older than 30 days)
         var cutoffDate = DateTime.UtcNow.AddDays(-30);
