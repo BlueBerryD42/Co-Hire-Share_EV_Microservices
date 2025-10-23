@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using CoOwnershipVehicle.Booking.Api.Services;
 using CoOwnershipVehicle.Domain.Entities;
+using System.IdentityModel.Tokens.Jwt;
+
 
 namespace CoOwnershipVehicle.Booking.Api.Controllers;
 
@@ -40,7 +42,7 @@ public class BookingController : ControllerBase
             var userId = GetCurrentUserId();
             var booking = await _bookingService.CreateBookingAsync(createDto, userId);
 
-            _logger.LogInformation("Booking created: {BookingId} for vehicle {VehicleId}", 
+            _logger.LogInformation("Booking created: {BookingId} for vehicle {VehicleId}",
                 booking.Id, booking.VehicleId);
 
             return CreatedAtAction(nameof(GetBooking), new { id = booking.Id }, booking);
@@ -85,8 +87,8 @@ public class BookingController : ControllerBase
     /// </summary>
     [HttpGet("vehicle/{vehicleId:guid}")]
     public async Task<IActionResult> GetVehicleBookings(
-        Guid vehicleId, 
-        [FromQuery] DateTime? from = null, 
+        Guid vehicleId,
+        [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null)
     {
         try

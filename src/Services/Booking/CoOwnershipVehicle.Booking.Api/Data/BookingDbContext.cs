@@ -15,6 +15,8 @@ public class BookingDbContext : DbContext
     public DbSet<User> Users { get; set; } // For user details
     public DbSet<OwnershipGroup> OwnershipGroups { get; set; } // For group access
     public DbSet<GroupMember> GroupMembers { get; set; } // For priority calculation
+    public DbSet<CheckIn> CheckIns { get; set; } // Vehicle handover check-ins
+    public DbSet<CheckInPhoto> CheckInPhotos { get; set; } // Supporting media for check-ins
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -131,6 +133,52 @@ public class BookingDbContext : DbContext
 
             entity.HasIndex(e => new { e.VehicleId, e.StartAt, e.EndAt });
             entity.HasIndex(e => e.StartAt);
+        });
+
+        // Check-in entity configuration
+        builder.Entity<CheckIn>(entity =>
+        {
+            entity.ToTable("CheckIn");
+
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Odometer);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.SignatureReference).HasMaxLength(500);
+            entity.Property(e => e.CheckInTime).HasColumnType("datetime2");
+
+            entity.HasOne(e => e.Booking)
+                  .WithMany(b => b.CheckIns)
+                  .HasForeignKey(e => e.BookingId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Vehicle)
+                  .WithMany(v => v.CheckIns)
+                  .HasForeignKey(e => e.VehicleId)
+                  .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        builder.Entity<CheckInPhoto>(entity =>
+        {
+            entity.ToTable("CheckInPhoto");
+
+            entity.Property(e => e.PhotoUrl).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ThumbnailUrl).HasMaxLength(500);
+            entity.Property(e => e.StoragePath).HasMaxLength(1000);
+            entity.Property(e => e.ThumbnailPath).HasMaxLength(1000);
+            entity.Property(e => e.ContentType).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(200);
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+
+            entity.HasOne(e => e.CheckIn)
+                  .WithMany(c => c.Photos)
+                  .HasForeignKey(e => e.CheckInId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure automatic timestamp updates

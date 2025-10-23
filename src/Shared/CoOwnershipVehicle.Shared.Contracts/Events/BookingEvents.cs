@@ -84,6 +84,51 @@ public class VehicleCheckedInEvent : BaseEvent
     }
 }
 
+public class TripStartedEvent : BaseEvent
+{
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid CheckInId { get; set; }
+    public DateTime CheckOutTime { get; set; }
+    public int Odometer { get; set; }
+    public string? Notes { get; set; }
+    public string? SignatureReference { get; set; }
+    public List<string> PhotoUrls { get; set; } = new();
+
+    public TripStartedEvent()
+    {
+        EventType = nameof(TripStartedEvent);
+    }
+}
+
+public class TripEndedEvent : BaseEvent
+{
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid CheckInId { get; set; }
+    public Guid CheckOutId { get; set; }
+    public DateTime CheckInTime { get; set; }
+    public DateTime CheckOutTime { get; set; }
+    public int TripDistance { get; set; }
+    public double TripDurationMinutes { get; set; }
+    public bool IsLateReturn { get; set; }
+    public double LateByMinutes { get; set; }
+    public int StartOdometer { get; set; }
+    public int EndOdometer { get; set; }
+    public string? Notes { get; set; }
+    public string? SignatureReference { get; set; }
+    public List<string> PhotoUrls { get; set; } = new();
+
+    public TripEndedEvent()
+    {
+        EventType = nameof(TripEndedEvent);
+    }
+}
+
 public class BookingApprovedEvent : BaseEvent
 {
     public Guid BookingId { get; set; }

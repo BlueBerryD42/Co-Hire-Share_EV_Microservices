@@ -5,6 +5,7 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using CoOwnershipVehicle.Booking.Api.Data;
 using CoOwnershipVehicle.Booking.Api.Services;
+using CoOwnershipVehicle.Booking.Api.Storage;
 using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
 
@@ -57,6 +58,13 @@ builder.Services.AddMassTransit(x =>
 
 // Add application services
 builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<ICheckInService, CheckInService>();
+
+builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
+#pragma warning disable CA1416
+builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
+#pragma warning restore CA1416
+builder.Services.AddSingleton<IVirusScanner, NoOpVirusScanner>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -64,24 +72,24 @@ builder.Services.AddEndpointsApiExplorer();
 // Configure Swagger with JWT support
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo 
-    { 
-        Title = "Co-Ownership Vehicle Booking API", 
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Co-Ownership Vehicle Booking API",
         Version = "v1",
         Description = "Intelligent booking system with priority algorithms and conflict resolution for the Co-Ownership Vehicle Management System"
     });
-    
+
     // Add JWT Authentication to Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. Enter your token below (without 'Bearer ' prefix).",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,  
-        Scheme = "bearer",            
-        BearerFormat = "JWT"             
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
-    
+
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -134,9 +142,11 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
-    
+
     // Ensure database is created
     await context.Database.EnsureCreatedAsync();
 }
 
 app.Run();
+
+
