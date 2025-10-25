@@ -11,7 +11,24 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
 dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_MAIN", builder.Configuration) ?? "CoOwnershipVehicle_Main";
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? dbParams.GetConnectionString();
+
+// Try to get connection string from configuration, but handle empty/null values properly
+string? connectionString = null;
+try
+{
+    var configConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrWhiteSpace(configConnectionString))
+    {
+        connectionString = configConnectionString;
+    }
+}
+catch
+{
+    // If GetConnectionString fails, we'll use dbParams below
+}
+
+// Fall back to environment-based connection string
+connectionString ??= EnvironmentHelper.GetEnvironmentVariable("DB_CONNECTION_STRING", builder.Configuration) ?? dbParams.GetConnectionString();
 
 EnvironmentHelper.LogEnvironmentStatus("Main API Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("Main API Service", dbParams.Database, builder.Configuration);
@@ -105,6 +122,7 @@ using (var scope = app.Services.CreateScope())
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
     
     // Ensure database is created
+    
     context.Database.EnsureCreated();
     
     // Seed initial data
