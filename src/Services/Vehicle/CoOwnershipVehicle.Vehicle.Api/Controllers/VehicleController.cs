@@ -16,12 +16,14 @@ public class VehicleController : ControllerBase
     private readonly VehicleDbContext _context;
     private readonly ILogger<VehicleController> _logger;
     private readonly IGroupServiceClient _groupServiceClient; // Injected
+    private readonly IBookingServiceClient _bookingServiceClient; // Injected
 
-    public VehicleController(VehicleDbContext context, ILogger<VehicleController> logger, IGroupServiceClient groupServiceClient)
+    public VehicleController(VehicleDbContext context, ILogger<VehicleController> logger, IGroupServiceClient groupServiceClient, IBookingServiceClient bookingServiceClient)
     {
         _context = context;
         _logger = logger;
         _groupServiceClient = groupServiceClient; // Assigned
+        _bookingServiceClient = bookingServiceClient; // Assigned
     }
 
     [HttpGet]
@@ -138,8 +140,61 @@ public class VehicleController : ControllerBase
     [HttpGet("{id:guid}/availability")]
     public async Task<IActionResult> CheckAvailability(Guid id, [FromQuery] DateTime from, [FromQuery] DateTime to)
     {
-        // Placeholder: This method requires access to the Booking service's data.
-        return StatusCode(501, "Not Implemented");
+        var accessToken = HttpContext.Request.Headers.Authorization.ToString().Replace("Bearer ", "");
+        if (string.IsNullOrEmpty(accessToken))
+        {
+            return Unauthorized(new { message = "Access token not found" });
+        }
+
+        var conflicts = await _bookingServiceClient.CheckAvailabilityAsync(id, from, to, accessToken);
+
+        if (conflicts == null)
+        {
+            return StatusCode(500, new { message = "An error occurred while checking availability" });
+        }
+
+        return Ok(new { Available = !conflicts.HasConflicts, Conflicts = conflicts.ConflictingBookings });
+    }
+
+    /// <summary>
+    /// Update the status of a vehicle (Group Admin or SystemAdmin only)
+    /// </summary>
+    [HttpPut("{id:guid}/status")]
+    [Authorize]
+    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto updateDto)
+    {
+        try
+        {
+            var vehicle = await _context.Vehicles.FindAsync(id);
+            if (vehicle == null) return NotFound();
+
+            var userId = GetCurrentUserId();
+            var roles = User.Claims
+                .Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role)
+                .Select(c => c.Value);
+
+            var isSystemAdmin = roles.Contains("SystemAdmin");
+            var isGroupAdmin = roles.Contains("GroupAdmin");
+
+            if (!isSystemAdmin && !isGroupAdmin)
+            {
+                return Forbidden(new { message = "Insufficient permissions to update vehicle status" });
+            }
+
+            vehicle.Status = updateDto.Status;
+            vehicle.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Vehicle {VehicleId} status updated to {Status} by user {UserId}", vehicle.Id, vehicle.Status, userId);
+
+            return Ok(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating vehicle status");
+            return StatusCode(500, new { message = "An error occurred while updating vehicle status" });
+        }
     }
 
     private async Task<List<Guid>> GetUserGroupIds() // Made async
@@ -162,6 +217,52 @@ public class VehicleController : ControllerBase
         {
             _logger.LogError(ex, "Error fetching user groups for user {UserId}", userId);
             return new List<Guid>();
+        }
+    }
+
+    /// <summary>
+    /// Update the odometer of a vehicle (Group Admin or SystemAdmin only)
+    /// </summary>
+    [HttpPut("{id:guid}/odometer")]
+    [Authorize]
+    public async Task<IActionResult> UpdateOdometer(Guid id, [FromBody] UpdateOdometerDto updateDto)
+    {
+        try
+        {
+            var vehicle = await _context.Vehicles.FindAsync(id);
+            if (vehicle == null) return NotFound();
+
+            var userId = GetCurrentUserId();
+            var roles = User.Claims
+                .Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role)
+                .Select(c => c.Value);
+
+            var isSystemAdmin = roles.Contains("SystemAdmin");
+            var isGroupAdmin = roles.Contains("GroupAdmin");
+
+            if (!isSystemAdmin && !isGroupAdmin)
+            {
+                return Forbidden(new { message = "Insufficient permissions to update vehicle odometer" });
+            }
+
+            if (updateDto.Odometer < vehicle.Odometer)
+            {
+                return BadRequest(new { message = "New odometer reading cannot be less than current reading" });
+            }
+
+            vehicle.Odometer = updateDto.Odometer;
+            vehicle.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Vehicle {VehicleId} odometer updated to {Odometer} by user {UserId}", vehicle.Id, vehicle.Odometer, userId);
+
+            return Ok(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating vehicle odometer");
+            return StatusCode(500, new { message = "An error occurred while updating vehicle odometer" });
         }
     }
 
