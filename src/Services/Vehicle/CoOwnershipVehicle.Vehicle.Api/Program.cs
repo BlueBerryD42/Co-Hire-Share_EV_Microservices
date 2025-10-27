@@ -78,8 +78,12 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidAudience = jwtConfig.Audience,
         ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero
+        ClockSkew = TimeSpan.Zero,
+        RoleClaimType = "role" // Map "role" claim to User.IsInRole()
     };
+
+    // DIAGNOSTIC LOG: Print the configured RoleClaimType
+    Console.WriteLine($"[DIAGNOSTIC_LOG] RoleClaimType is set to: {options.TokenValidationParameters.RoleClaimType}");
 });
 
 builder.Services.AddAuthorization();
@@ -103,5 +107,26 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// ===== TEMPORARY FIX: Force drop the problematic foreign key on startup =====
+try
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<VehicleDbContext>();
+        var dropConstraintSql = @"
+            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Vehicles_OwnershipGroups_GroupId')
+            BEGIN
+                ALTER TABLE dbo.Vehicles DROP CONSTRAINT FK_Vehicles_OwnershipGroups_GroupId;
+            END";
+        dbContext.Database.ExecuteSqlRaw(dropConstraintSql);
+        Console.WriteLine("[TEMP_FIX] Successfully executed command to drop FK constraint.");
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[TEMP_FIX] Could not drop FK constraint: {ex.Message}");
+}
+// ===== END TEMPORARY FIX =====
 
 app.Run();
