@@ -6,6 +6,8 @@ using System.Text;
 using CoOwnershipVehicle.Vehicle.Api.Data;
 using CoOwnershipVehicle.Shared.Configuration;
 
+using CoOwnershipVehicle.Vehicle.Api.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -45,6 +47,12 @@ builder.Services.AddSwaggerGen(c =>
             new string[] {}
         }
     });
+});
+
+// Add HTTP Client for Group Service
+builder.Services.AddHttpClient<IGroupServiceClient, GroupServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["GroupService:BaseUrl"] ?? throw new InvalidOperationException("GroupService:BaseUrl not configured"));
 });
 
 // Add Entity Framework

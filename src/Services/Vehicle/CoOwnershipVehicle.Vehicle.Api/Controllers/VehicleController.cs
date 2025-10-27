@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Vehicle.Api.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Domain.Entities;
+using CoOwnershipVehicle.Vehicle.Api.Services; // Added for IGroupServiceClient
 
 namespace CoOwnershipVehicle.Vehicle.Api.Controllers;
 
@@ -14,33 +15,44 @@ public class VehicleController : ControllerBase
 {
     private readonly VehicleDbContext _context;
     private readonly ILogger<VehicleController> _logger;
+    private readonly IGroupServiceClient _groupServiceClient; // Injected
 
-    public VehicleController(VehicleDbContext context, ILogger<VehicleController> logger)
+    public VehicleController(VehicleDbContext context, ILogger<VehicleController> logger, IGroupServiceClient groupServiceClient)
     {
         _context = context;
         _logger = logger;
+        _groupServiceClient = groupServiceClient; // Assigned
     }
 
-    /// <summary>
-    /// Get all vehicles (temporary placeholder)
-    /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetVehicles()
     {
-        // Placeholder: Returns all vehicles from this service's DB
-        var vehicles = await _context.Vehicles.ToListAsync();
+        var userGroupIds = await GetUserGroupIds(); // Await the async method
+
+        if (!userGroupIds.Any())
+        {
+            // If the user is not part of any group, they shouldn't see any vehicles
+            return Ok(new List<Domain.Entities.Vehicle>());
+        }
+
+        var vehicles = await _context.Vehicles
+                                     .Where(v => userGroupIds.Contains((Guid)v.GroupId))
+                                     .ToListAsync();
         return Ok(vehicles);
     }
 
-    /// <summary>
-    /// Get vehicle by ID (temporary placeholder)
-    /// </summary>
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetVehicle(Guid id)
     {
-        // Placeholder: Returns vehicle by ID from this service's DB
         var vehicle = await _context.Vehicles.FindAsync(id);
         if (vehicle == null) return NotFound();
+
+        var userGroupIds = await GetUserGroupIds(); // Await the async method
+        if (!userGroupIds.Contains((Guid)vehicle.GroupId))
+        {
+            return Forbidden(new { message = "You do not have permission to access this vehicle." });
+        }
+
         return Ok(vehicle);
     }
 
@@ -128,6 +140,29 @@ public class VehicleController : ControllerBase
     {
         // Placeholder: This method requires access to the Booking service's data.
         return StatusCode(501, "Not Implemented");
+    }
+
+    private async Task<List<Guid>> GetUserGroupIds() // Made async
+    {
+        var userId = GetCurrentUserId();
+        var accessToken = HttpContext.Request.Headers.Authorization.ToString().Replace("Bearer ", "");
+
+        if (string.IsNullOrEmpty(accessToken))
+        {
+            _logger.LogWarning("Access token not found for user {UserId}", userId);
+            return new List<Guid>();
+        }
+
+        try
+        {
+            var groups = await _groupServiceClient.GetUserGroups(accessToken);
+            return groups.Select(g => g.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching user groups for user {UserId}", userId);
+            return new List<Guid>();
+        }
     }
 
     private Guid GetCurrentUserId()

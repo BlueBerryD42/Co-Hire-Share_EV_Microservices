@@ -37,6 +37,7 @@ public class GroupController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
+            _logger.LogInformation("GetUserGroups called for UserId: {UserId}", userId); // Added log
             
             var groups = await _context.OwnershipGroups
                 .Include(g => g.Members)
