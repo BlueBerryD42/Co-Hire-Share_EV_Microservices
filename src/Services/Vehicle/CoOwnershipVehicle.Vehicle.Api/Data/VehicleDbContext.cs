@@ -12,6 +12,10 @@ public class VehicleDbContext : DbContext
     // Vehicle service should only manage its own core entities
     public DbSet<Domain.Entities.Vehicle> Vehicles { get; set; }
 
+    // Maintenance-related entities
+    public DbSet<MaintenanceSchedule> MaintenanceSchedules { get; set; }
+    public DbSet<MaintenanceRecord> MaintenanceRecords { get; set; }
+
     // We might need other entities for validation, but without managing them.
     // For simplicity in fixing the issue, we will define a minimal DbContext.
     // The controller logic that depends on other DbSets will need to be adjusted or will fail.
@@ -39,6 +43,56 @@ public class VehicleDbContext : DbContext
             entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.Vin).IsUnique();
             entity.HasIndex(e => e.PlateNumber).IsUnique();
+        });
+
+        // MaintenanceSchedule entity configuration
+        builder.Entity<MaintenanceSchedule>(entity =>
+        {
+            entity.ToTable("MaintenanceSchedules");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.ServiceType).HasConversion<int>().IsRequired();
+            entity.Property(e => e.Status).HasConversion<int>().IsRequired();
+            entity.Property(e => e.Priority).HasConversion<int>().IsRequired();
+            entity.Property(e => e.EstimatedCost).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ServiceProvider).HasMaxLength(200);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+
+            // Foreign key to Vehicle
+            entity.HasOne(e => e.Vehicle)
+                .WithMany()
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.ScheduledDate);
+            entity.HasIndex(e => e.Status);
+        });
+
+        // MaintenanceRecord entity configuration
+        builder.Entity<MaintenanceRecord>(entity =>
+        {
+            entity.ToTable("MaintenanceRecords");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.ServiceType).HasConversion<int>().IsRequired();
+            entity.Property(e => e.ActualCost).HasColumnType("decimal(18,2)").IsRequired();
+            entity.Property(e => e.ServiceProvider).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.WorkPerformed).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.PartsReplaced).HasMaxLength(1000);
+
+            // Foreign key to Vehicle
+            entity.HasOne(e => e.Vehicle)
+                .WithMany()
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ExpenseId is optional - ignore the navigation property since Expense is in another service
+            entity.Ignore(e => e.Expense);
+
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.ServiceDate);
+            entity.HasIndex(e => e.OdometerReading);
         });
 
         // Ignore all other entities that might be discovered transitively

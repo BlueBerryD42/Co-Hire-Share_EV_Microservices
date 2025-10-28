@@ -6,77 +6,114 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
 {
     /// <inheritdoc />
-    public partial class InitialVehicleSchema : Migration
+    public partial class InitialVehicleAndMaintenanceSchema : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_CheckIn_Bookings_BookingId",
-                table: "CheckIn");
+            // Only create Maintenance tables - don't drop tables from other services
+            // The Vehicle service only manages Vehicles and Maintenance tables
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_CheckIn_Users_UserId",
-                table: "CheckIn");
+            migrationBuilder.CreateTable(
+                name: "MaintenanceRecords",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    VehicleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ServiceType = table.Column<int>(type: "int", nullable: false),
+                    ServiceDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    OdometerReading = table.Column<int>(type: "int", nullable: false),
+                    ActualCost = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    ServiceProvider = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    WorkPerformed = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: false),
+                    PartsReplaced = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    NextServiceDue = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    NextServiceOdometer = table.Column<int>(type: "int", nullable: true),
+                    ExpenseId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    PerformedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_MaintenanceRecords", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_MaintenanceRecords_Vehicles_VehicleId",
+                        column: x => x.VehicleId,
+                        principalTable: "Vehicles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_GroupId",
-                table: "Vehicles");
+            migrationBuilder.CreateTable(
+                name: "MaintenanceSchedules",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    VehicleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ServiceType = table.Column<int>(type: "int", nullable: false),
+                    ScheduledDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    EstimatedCost = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
+                    EstimatedDuration = table.Column<int>(type: "int", nullable: false),
+                    ServiceProvider = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    Notes = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    Priority = table.Column<int>(type: "int", nullable: false),
+                    CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_MaintenanceSchedules", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_MaintenanceSchedules_Vehicles_VehicleId",
+                        column: x => x.VehicleId,
+                        principalTable: "Vehicles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
 
-            migrationBuilder.DropTable(
-                name: "Bookings");
+            migrationBuilder.CreateIndex(
+                name: "IX_MaintenanceRecords_OdometerReading",
+                table: "MaintenanceRecords",
+                column: "OdometerReading");
 
-            migrationBuilder.DropTable(
-                name: "DocumentSignature");
+            migrationBuilder.CreateIndex(
+                name: "IX_MaintenanceRecords_ServiceDate",
+                table: "MaintenanceRecords",
+                column: "ServiceDate");
 
-            migrationBuilder.DropTable(
-                name: "GroupMembers");
+            migrationBuilder.CreateIndex(
+                name: "IX_MaintenanceRecords_VehicleId",
+                table: "MaintenanceRecords",
+                column: "VehicleId");
 
-            migrationBuilder.DropTable(
-                name: "OwnershipGroups");
+            migrationBuilder.CreateIndex(
+                name: "IX_MaintenanceSchedules_ScheduledDate",
+                table: "MaintenanceSchedules",
+                column: "ScheduledDate");
 
-            migrationBuilder.DropTable(
-                name: "Users");
+            migrationBuilder.CreateIndex(
+                name: "IX_MaintenanceSchedules_Status",
+                table: "MaintenanceSchedules",
+                column: "Status");
 
-            migrationBuilder.DropIndex(
-                name: "IX_CheckIn_BookingId",
-                table: "CheckIn");
-
-            migrationBuilder.DropIndex(
-                name: "IX_CheckIn_UserId",
-                table: "CheckIn");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedAt",
-                table: "Vehicles",
-                type: "datetime2",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldDefaultValueSql: "GETUTCDATE()");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedAt",
-                table: "CheckInPhoto",
-                type: "datetime2",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldDefaultValueSql: "GETUTCDATE()");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedAt",
-                table: "CheckIn",
-                type: "datetime2",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldDefaultValueSql: "GETUTCDATE()");
+            migrationBuilder.CreateIndex(
+                name: "IX_MaintenanceSchedules_VehicleId",
+                table: "MaintenanceSchedules",
+                column: "VehicleId");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "MaintenanceRecords");
+
+            migrationBuilder.DropTable(
+                name: "MaintenanceSchedules");
+
             migrationBuilder.AlterColumn<DateTime>(
                 name: "UpdatedAt",
                 table: "Vehicles",

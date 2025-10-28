@@ -94,6 +94,9 @@ namespace CoOwnershipVehicle.Vehicle.Api
                 client.BaseAddress = new Uri(builder.Configuration["ServiceUrls:BookingApi"] ?? throw new InvalidOperationException("ServiceUrls:BookingApi not configured"));
             });
 
+            // Add Maintenance Service
+            builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
+
             // Add Entity Framework
             var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
             dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_VEHICLE", builder.Configuration) ?? "CoOwnershipVehicle_Vehicle";
