@@ -21,6 +21,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
             {
                 AllowAutoRedirect = false
             });
+            _client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "test-token");
         }
 
         [Fact]

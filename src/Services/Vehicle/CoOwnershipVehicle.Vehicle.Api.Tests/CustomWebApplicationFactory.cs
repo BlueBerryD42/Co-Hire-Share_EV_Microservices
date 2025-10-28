@@ -69,14 +69,39 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
                 }
 
                 // Mock IGroupServiceClient
-                services.AddSingleton(Mock.Of<IGroupServiceClient>());
+                var mockGroupService = new Mock<IGroupServiceClient>();
+                mockGroupService.Setup(x => x.GetUserGroups(It.IsAny<string>()))
+                    .ReturnsAsync(new List<CoOwnershipVehicle.Vehicle.Api.Services.GroupServiceGroupDto>
+                    {
+                        new CoOwnershipVehicle.Vehicle.Api.Services.GroupServiceGroupDto
+                        {
+                            Id = new Guid("3fa85f64-5717-4562-b3fc-2c963f66afa7") // Same GroupId as test vehicles
+                        }
+                    });
+                services.AddSingleton(mockGroupService.Object);
 
                 // Mock IBookingServiceClient
-                services.AddSingleton(Mock.Of<IBookingServiceClient>());
+                var mockBookingService = new Mock<IBookingServiceClient>();
+                mockBookingService.Setup(x => x.CheckAvailabilityAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<DateTime>(),
+                    It.IsAny<DateTime>(),
+                    It.IsAny<string>()))
+                    .ReturnsAsync(new CoOwnershipVehicle.Vehicle.Api.Services.BookingConflictDto
+                    {
+                        VehicleId = It.IsAny<Guid>(),
+                        HasConflicts = false,
+                        ConflictingBookings = new List<CoOwnershipVehicle.Vehicle.Api.Services.BookingDto>()
+                    });
+                services.AddSingleton(mockBookingService.Object);
 
-                // Mock Authentication
-                services.AddAuthentication("Test")
-                    .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", options => { });
+                // Mock Authentication - Replace JWT with Test scheme
+                services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = "Test";
+                    options.DefaultChallengeScheme = "Test";
+                })
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", options => { });
             });
         }
     }
@@ -84,8 +109,8 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
     public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
     {
         public TestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> options,
-            ILoggerFactory logger, UrlEncoder encoder, ISystemClock clock)
-            : base(options, logger, encoder, clock)
+            ILoggerFactory logger, UrlEncoder encoder)
+            : base(options, logger, encoder)
         {
         }
 
@@ -93,7 +118,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
         {
             var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier, "testuser-id"),
+                new Claim(ClaimTypes.NameIdentifier, "3fa85f64-5717-4562-b3fc-2c963f66afa9"), // Valid GUID
                 new Claim(ClaimTypes.Name, "testuser"),
                 new Claim(ClaimTypes.Role, "SystemAdmin"), // Default role for tests
             };
