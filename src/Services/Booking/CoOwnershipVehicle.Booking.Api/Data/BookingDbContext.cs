@@ -144,10 +144,8 @@ public class BookingDbContext : DbContext
             entity.Property(e => e.Priority).HasConversion<int>();
             entity.Property(e => e.Notes).HasMaxLength(1000);
 
-            entity.HasOne(e => e.Vehicle)
-                  .WithMany()
-                  .HasForeignKey(e => e.VehicleId)
-                  .OnDelete(DeleteBehavior.Cascade);
+            // Ignore navigation property - no FK constraint in microservices
+            entity.Ignore(e => e.Vehicle);
 
             entity.HasIndex(e => e.MaintenanceScheduleId).IsUnique();
             entity.HasIndex(e => new { e.VehicleId, e.StartTime, e.EndTime });
