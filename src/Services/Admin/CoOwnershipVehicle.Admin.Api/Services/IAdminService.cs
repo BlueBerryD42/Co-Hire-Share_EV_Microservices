@@ -1,0 +1,37 @@
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
+
+namespace CoOwnershipVehicle.Admin.Api.Services;
+
+public interface IAdminService
+{
+    Task<DashboardMetricsDto> GetDashboardMetricsAsync(DashboardRequestDto request);
+    Task<byte[]> ExportDashboardToPdfAsync(DashboardRequestDto request);
+    Task<byte[]> ExportDashboardToExcelAsync(DashboardRequestDto request);
+    Task<List<ActivityFeedItemDto>> GetRecentActivityAsync(int count = 20);
+    Task<List<AlertDto>> GetAlertsAsync();
+    Task<SystemHealthDto> GetSystemHealthAsync();
+    
+    // User Management Methods
+    Task<UserListResponseDto> GetUsersAsync(UserListRequestDto request);
+    Task<UserDetailsDto> GetUserDetailsAsync(Guid userId);
+    Task<bool> UpdateUserStatusAsync(Guid userId, UpdateUserStatusDto request, Guid adminUserId);
+    Task<bool> UpdateUserRoleAsync(Guid userId, UpdateUserRoleDto request, Guid adminUserId);
+    Task<List<PendingKycUserDto>> GetPendingKycUsersAsync();
+    
+    // Group Management Methods
+    Task<GroupListResponseDto> GetGroupsAsync(GroupListRequestDto request);
+    Task<GroupDetailsDto> GetGroupDetailsAsync(Guid groupId);
+    Task<bool> UpdateGroupStatusAsync(Guid groupId, UpdateGroupStatusDto request, Guid adminUserId);
+    Task<GroupAuditResponseDto> GetGroupAuditTrailAsync(Guid groupId, GroupAuditRequestDto request);
+    Task<bool> InterveneInGroupAsync(Guid groupId, GroupInterventionDto request, Guid adminUserId);
+        Task<GroupHealthDto> GetGroupHealthAsync(Guid groupId);
+
+        // Dispute Management Methods
+        Task<Guid> CreateDisputeAsync(CreateDisputeDto request, Guid adminUserId);
+        Task<DisputeListResponseDto> GetDisputesAsync(DisputeListRequestDto request);
+        Task<DisputeDetailsDto> GetDisputeDetailsAsync(Guid disputeId);
+        Task<bool> AssignDisputeAsync(Guid disputeId, AssignDisputeDto request, Guid adminUserId);
+        Task<bool> AddDisputeCommentAsync(Guid disputeId, AddDisputeCommentDto request, Guid userId);
+        Task<bool> ResolveDisputeAsync(Guid disputeId, ResolveDisputeDto request, Guid adminUserId);
+        Task<DisputeStatisticsDto> GetDisputeStatisticsAsync();
+}

@@ -90,9 +90,12 @@ builder.Services.AddMassTransit(x =>
 
 // Add Redis
 var redisConfig = EnvironmentHelper.GetRedisConfigParams(builder.Configuration);
-builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
+
+// Try to create Redis connection
+StackExchange.Redis.IConnectionMultiplexer? redisConnection = null;
+try
 {
-    var programLogger = sp.GetRequiredService<ILogger<Program>>();
+    var programLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
     programLogger.LogInformation("Redis Connection String: {ConnectionString}", redisConfig.ConnectionString);
     programLogger.LogInformation("Redis Database: {Database}", redisConfig.Database);
     
@@ -118,29 +121,50 @@ builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
         programLogger.LogInformation("Redis parsed from simple format");
     }
     
-    // Add retry and connection settings
+    // Add retry and connection settings for better reliability
     configuration.AbortOnConnectFail = false;
-    configuration.ConnectRetry = 3;
-    configuration.ConnectTimeout = 15000;
-    configuration.SyncTimeout = 5000;
+    configuration.ConnectRetry = 5; // Increased retry count
+    configuration.ConnectTimeout = 30000; // Increased timeout to 30 seconds
+    configuration.SyncTimeout = 10000; // Increased sync timeout to 10 seconds
+    configuration.AsyncTimeout = 10000; // Added async timeout
+    configuration.ResponseTimeout = 10000; // Added response timeout
+    configuration.KeepAlive = 60; // Keep connection alive
+    configuration.ClientName = "CoOwnershipVehicle-Auth"; // Set client name for identification
     
-    try
-    {
-        return StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
-    }
-    catch (Exception ex)
-    {
-        programLogger.LogError(ex, "Failed to connect to Redis. Using in-memory fallback for refresh tokens.");
-        
-        // Return a null multiplexer - we'll handle this in the JWT service
-        return null;
-    }
-});
-builder.Services.AddScoped<StackExchange.Redis.IDatabase>(sp =>
+    programLogger.LogInformation("Attempting to connect to Redis with enhanced settings...");
+    
+    redisConnection = StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
+    
+    // Test the connection
+    var database = redisConnection.GetDatabase(redisConfig.Database);
+    database.Ping(); // Test connection
+    
+    programLogger.LogInformation("Successfully connected to Redis");
+}
+catch (Exception ex)
 {
-    var redis = sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
-    return redis?.GetDatabase(redisConfig.Database);
-});
+    var programLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+    programLogger.LogError(ex, "Failed to connect to Redis. Using in-memory fallback for refresh tokens.");
+    programLogger.LogWarning("Redis connection failed. The application will continue with in-memory token storage.");
+    redisConnection = null;
+}
+
+// Register Redis services only if connection was successful
+if (redisConnection != null)
+{
+    builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(redisConnection);
+    builder.Services.AddScoped<StackExchange.Redis.IDatabase>(sp =>
+    {
+        var redis = sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
+        return redis.GetDatabase(redisConfig.Database);
+    });
+}
+else
+{
+    // Register null services to avoid DI issues
+    builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer?>(sp => null);
+    builder.Services.AddScoped<StackExchange.Redis.IDatabase?>(sp => null);
+}
 
 // Add application services
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();

@@ -3,12 +3,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using CoOwnershipVehicle.Analytics.Api.Data;
-using CoOwnershipVehicle.Analytics.Api.Services;
+using CoOwnershipVehicle.Admin.Api.Data;
+using CoOwnershipVehicle.Admin.Api.Services;
 using CoOwnershipVehicle.Shared.Configuration;
+using Microsoft.Extensions.Caching.Memory;
 using MassTransit;
-using CoOwnershipVehicle.Shared.Contracts.Events;
-using CoOwnershipVehicle.Analytics.Api.Consumers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,9 +20,9 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo 
     { 
-        Title = "Co-Ownership Vehicle Analytics API", 
+        Title = "Co-Ownership Vehicle Admin API", 
         Version = "v1",
-        Description = "Analytics and reporting service for the Co-Ownership Vehicle Management System"
+        Description = "Administrative service for the Co-Ownership Vehicle Management System"
     });
     
     // Add JWT Authentication to Swagger
@@ -55,14 +54,14 @@ builder.Services.AddSwaggerGen(c =>
 
 // Database Configuration
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
-dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_ANALYTICS", builder.Configuration) ?? "CoOwnershipVehicle_Analytics";
-var connectionString = EnvironmentHelper.GetEnvironmentVariable("DB_CONNECTION_STRING", builder.Configuration) ?? dbParams.GetConnectionString();
+dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_ADMIN", builder.Configuration) ?? "CoOwnershipVehicle_Admin";
+var connectionString = dbParams.GetConnectionString();
 
-EnvironmentHelper.LogEnvironmentStatus("Analytics Service", builder.Configuration);
-EnvironmentHelper.LogFinalConnectionDetails("Analytics Service", dbParams.Database, builder.Configuration);
+EnvironmentHelper.LogEnvironmentStatus("Admin Service", builder.Configuration);
+EnvironmentHelper.LogFinalConnectionDetails("Admin Service", dbParams.Database, builder.Configuration);
 
-builder.Services.AddDbContext<AnalyticsDbContext>(options =>
-    options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CoOwnershipVehicle.Analytics.Api")));
+builder.Services.AddDbContext<AdminDbContext>(options =>
+    options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CoOwnershipVehicle.Admin.Api")));
 
 // JWT Authentication
 var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
@@ -83,28 +82,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// MassTransit for RabbitMQ
-var rabbitmqConnection = EnvironmentHelper.GetRabbitMqConnection(builder.Configuration);
-builder.Services.AddMassTransit(x =>
-{
-    x.UsingRabbitMq((context, cfg) =>
-    {
-        cfg.Host(rabbitmqConnection);
-        cfg.ConfigureEndpoints(context);
-    });
-    
-    // Add consumers for analytics data collection
-    x.AddConsumer<BookingAnalyticsEventConsumer>();
-    x.AddConsumer<PaymentAnalyticsEventConsumer>();
-    x.AddConsumer<ExpenseAnalyticsEventConsumer>();
-    x.AddConsumer<VehicleAnalyticsEventConsumer>();
-});
-
-// Services
-builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
-builder.Services.AddScoped<IReportingService, ReportingService>();
-builder.Services.AddHostedService<AnalyticsProcessorService>();
-
 // Add CORS
 builder.Services.AddCors(options =>
 {
@@ -116,6 +93,23 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Add MassTransit for message bus
+var rabbitmqConnection = EnvironmentHelper.GetRabbitMqConnection(builder.Configuration);
+builder.Services.AddMassTransit(x =>
+{
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        cfg.Host(rabbitmqConnection);
+        cfg.ConfigureEndpoints(context);
+    });
+});
+
+// Add caching
+builder.Services.AddMemoryCache();
+
+// Services
+builder.Services.AddScoped<IAdminService, AdminService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -124,7 +118,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Co-Ownership Vehicle Analytics API");
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Co-Ownership Vehicle Admin API");
         c.RoutePrefix = string.Empty; // Makes Swagger available at root
     });
 }
@@ -140,7 +134,7 @@ app.MapControllers();
 // Ensure database is created
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<AnalyticsDbContext>();
+    var context = scope.ServiceProvider.GetRequiredService<AdminDbContext>();
     
     // Ensure database is created
     await context.Database.EnsureCreatedAsync();
