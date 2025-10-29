@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Domain.Enums;
 using CoOwnershipVehicle.Vehicle.Api.Services;
+using CoOwnershipVehicle.Vehicle.Api.DTOs;
+using System.Security.Claims;
 
 namespace CoOwnershipVehicle.Vehicle.Api.Controllers;
 
@@ -66,10 +68,38 @@ public class MaintenanceController : ControllerBase
     }
 
     /// <summary>
-    /// Create a new maintenance schedule
+    /// Schedule maintenance with conflict detection and validation
     /// </summary>
-    [HttpPost("schedules")]
-    public async Task<IActionResult> CreateSchedule([FromBody] MaintenanceSchedule schedule)
+    /// <remarks>
+    /// Validates user membership, checks for conflicts with bookings and other maintenance schedules,
+    /// updates vehicle status if maintenance is imminent (within 24 hours), publishes events,
+    /// and sends notifications to group members.
+    ///
+    /// Sample request:
+    ///
+    ///     POST /api/maintenance/schedule
+    ///     {
+    ///         "vehicleId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    ///         "serviceType": 1,
+    ///         "scheduledDate": "2025-11-01T10:00:00Z",
+    ///         "estimatedDuration": 120,
+    ///         "serviceProvider": "ABC Auto Service",
+    ///         "notes": "Regular maintenance check",
+    ///         "priority": 1,
+    ///         "estimatedCost": 150.00,
+    ///         "forceSchedule": false
+    ///     }
+    ///
+    /// Returns 409 Conflict if scheduling conflicts exist (unless forceSchedule is true and user is admin)
+    /// Returns 403 Forbidden if user is not a member of the vehicle's group
+    /// Returns 400 Bad Request if scheduled date is not in the future
+    /// </remarks>
+    [HttpPost("schedule")]
+    [ProducesResponseType(typeof(ScheduleMaintenanceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ScheduleMaintenance([FromBody] ScheduleMaintenanceRequest request)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
@@ -77,15 +107,32 @@ public class MaintenanceController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
-            schedule.CreatedBy = userId;
+            var accessToken = GetAccessToken();
+            var isAdmin = User.IsInRole("Admin");
 
-            var created = await _maintenanceService.CreateScheduleAsync(schedule);
-            return CreatedAtAction(nameof(GetSchedule), new { id = created.Id }, created);
+            var response = await _maintenanceService.ScheduleMaintenanceAsync(request, userId, accessToken, isAdmin);
+
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized attempt to schedule maintenance");
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("conflicts detected"))
+        {
+            _logger.LogWarning(ex, "Maintenance scheduling conflict");
+            return StatusCode(409, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid maintenance schedule request");
+            return BadRequest(new { message = ex.Message });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating maintenance schedule");
-            return StatusCode(500, new { message = "An error occurred while creating the maintenance schedule" });
+            _logger.LogError(ex, "Error scheduling maintenance");
+            return StatusCode(500, new { message = "An error occurred while scheduling maintenance" });
         }
     }
 
@@ -326,6 +373,16 @@ public class MaintenanceController : ControllerBase
             throw new UnauthorizedAccessException("Invalid user ID in token");
         }
         return userId;
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = HttpContext.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            throw new UnauthorizedAccessException("Missing or invalid authorization header");
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     #endregion

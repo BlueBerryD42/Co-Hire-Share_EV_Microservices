@@ -8,6 +8,7 @@ using CoOwnershipVehicle.Shared.Configuration;
 using CoOwnershipVehicle.Vehicle.Api.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using MassTransit;
 
 namespace CoOwnershipVehicle.Vehicle.Api
 {
@@ -92,6 +93,16 @@ namespace CoOwnershipVehicle.Vehicle.Api
             builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(client =>
             {
                 client.BaseAddress = new Uri(builder.Configuration["ServiceUrls:BookingApi"] ?? throw new InvalidOperationException("ServiceUrls:BookingApi not configured"));
+            });
+
+            // Add MassTransit for message bus (must be registered before services that use IPublishEndpoint)
+            builder.Services.AddMassTransit(x =>
+            {
+                x.UsingRabbitMq((context, cfg) =>
+                {
+                    cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
+                    cfg.ConfigureEndpoints(context);
+                });
             });
 
             // Add Maintenance Service

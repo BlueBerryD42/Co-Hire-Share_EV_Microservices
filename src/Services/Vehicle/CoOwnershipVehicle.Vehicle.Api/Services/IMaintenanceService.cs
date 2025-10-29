@@ -1,5 +1,6 @@
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Domain.Enums;
+using CoOwnershipVehicle.Vehicle.Api.DTOs;
 
 namespace CoOwnershipVehicle.Vehicle.Api.Services;
 
@@ -30,4 +31,8 @@ public interface IMaintenanceService
     // Helper methods
     Task<decimal> GetTotalMaintenanceCostAsync(Guid vehicleId, DateTime? startDate = null, DateTime? endDate = null);
     Task<IEnumerable<MaintenanceRecord>> GetMaintenanceHistoryAsync(Guid vehicleId, int? limit = null);
+
+    // Advanced scheduling with conflict detection
+    Task<ScheduleMaintenanceResponse> ScheduleMaintenanceAsync(ScheduleMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false);
+    Task<List<MaintenanceConflict>> CheckMaintenanceConflictsAsync(Guid vehicleId, DateTime startTime, DateTime endTime, Guid? excludeScheduleId = null);
 }

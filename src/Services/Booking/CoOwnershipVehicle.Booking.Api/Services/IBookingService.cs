@@ -182,6 +182,7 @@ public class BookingService : IBookingService
 
     public async Task<BookingConflictDto> CheckBookingConflictsAsync(Guid vehicleId, DateTime startAt, DateTime endAt, Guid? excludeBookingId = null)
     {
+        // Check conflicting bookings
         var conflictingBookings = await _context.Bookings
             .Include(b => b.User)
             .Where(b => b.VehicleId == vehicleId &&
@@ -205,6 +206,24 @@ public class BookingService : IBookingService
                 IsEmergency = b.IsEmergency
             })
             .ToListAsync();
+
+        // Check for maintenance blocks (calendar blocks)
+        var maintenanceBlocks = await _context.MaintenanceBlocks
+            .Where(m => m.VehicleId == vehicleId &&
+                       m.Status != Domain.Enums.MaintenanceStatus.Cancelled &&
+                       m.Status != Domain.Enums.MaintenanceStatus.Completed &&
+                       ((m.StartTime <= startAt && m.EndTime > startAt) ||
+                        (m.StartTime < endAt && m.EndTime >= endAt) ||
+                        (m.StartTime >= startAt && m.EndTime <= endAt)))
+            .ToListAsync();
+
+        // If there are maintenance blocks, throw exception to prevent booking
+        if (maintenanceBlocks.Any())
+        {
+            var block = maintenanceBlocks.First();
+            throw new InvalidOperationException(
+                $"Cannot create booking: Vehicle is scheduled for maintenance ({block.ServiceType}) from {block.StartTime:yyyy-MM-dd HH:mm} to {block.EndTime:HH:mm}");
+        }
 
         return new BookingConflictDto
         {
