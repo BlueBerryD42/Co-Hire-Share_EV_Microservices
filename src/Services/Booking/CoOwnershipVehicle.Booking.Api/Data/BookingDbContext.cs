@@ -17,6 +17,7 @@ public class BookingDbContext : DbContext
     public DbSet<GroupMember> GroupMembers { get; set; } // For priority calculation
     public DbSet<CheckIn> CheckIns { get; set; } // Vehicle handover check-ins
     public DbSet<CheckInPhoto> CheckInPhotos { get; set; } // Supporting media for check-ins
+    public DbSet<DamageReport> DamageReports { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -115,6 +116,7 @@ public class BookingDbContext : DbContext
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.PriorityScore).HasColumnType("decimal(10,4)");
             entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.RequiresDamageReview).HasDefaultValue(false);
 
             entity.HasOne(e => e.Vehicle)
                   .WithMany(v => v.Bookings)
@@ -144,6 +146,13 @@ public class BookingDbContext : DbContext
             entity.Property(e => e.Odometer);
             entity.Property(e => e.Notes).HasMaxLength(1000);
             entity.Property(e => e.SignatureReference).HasMaxLength(500);
+            entity.Property(e => e.SignatureDevice).HasMaxLength(200);
+            entity.Property(e => e.SignatureDeviceId).HasMaxLength(100);
+            entity.Property(e => e.SignatureIpAddress).HasMaxLength(45);
+            entity.Property(e => e.SignatureCapturedAt).HasColumnType("datetime2");
+            entity.Property(e => e.SignatureHash).HasMaxLength(128);
+            entity.Property(e => e.SignatureCertificateUrl).HasMaxLength(500);
+            entity.Property(e => e.SignatureMetadataJson).HasMaxLength(2000);
             entity.Property(e => e.CheckInTime).HasColumnType("datetime2");
 
             entity.HasOne(e => e.Booking)
@@ -179,6 +188,28 @@ public class BookingDbContext : DbContext
                   .WithMany(c => c.Photos)
                   .HasForeignKey(e => e.CheckInId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<DamageReport>(entity =>
+        {
+            entity.ToTable("DamageReport");
+
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.EstimatedCost).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.PhotoIdsJson).HasMaxLength(2000);
+            entity.Property(e => e.Severity).HasConversion<int>();
+            entity.Property(e => e.Location).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+
+            entity.HasOne(e => e.CheckIn)
+                .WithMany()
+                .HasForeignKey(e => e.CheckInId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.CheckInId);
+            entity.HasIndex(e => e.BookingId);
+            entity.HasIndex(e => e.VehicleId);
         });
 
         // Configure automatic timestamp updates

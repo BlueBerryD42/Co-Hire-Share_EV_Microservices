@@ -22,6 +22,7 @@ public class BookingDto
     public string? Purpose { get; set; }
     public bool IsEmergency { get; set; }
     public BookingPriority Priority { get; set; }
+    public bool RequiresDamageReview { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

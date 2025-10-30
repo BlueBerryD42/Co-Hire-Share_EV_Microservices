@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using CoOwnershipVehicle.Domain.Entities;
 
@@ -16,6 +17,7 @@ public class CheckInDto
     public DateTime CheckInTime { get; set; }
     public string? Notes { get; set; }
     public string? SignatureReference { get; set; }
+    public SignatureMetadataDto? SignatureMetadata { get; set; }
     public List<CheckInPhotoDto> Photos { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -133,4 +135,47 @@ public class TripCompletionDto
     public bool IsLateReturn { get; set; }
     public double LateByMinutes { get; set; }
     public DateTime CheckOutTime { get; set; }
+}
+
+public class SignatureCaptureRequestDto
+{
+    [Required]
+    public string SignatureData { get; set; } = string.Empty;
+
+    [StringLength(100)]
+    public string? Format { get; set; }
+
+    [StringLength(200)]
+    public string? DeviceInfo { get; set; }
+
+    [StringLength(100)]
+    public string? DeviceId { get; set; }
+
+    [StringLength(500)]
+    public string? Notes { get; set; }
+
+    public bool OverwriteExisting { get; set; } = true;
+}
+
+public class SignatureMetadataDto
+{
+    public DateTime? CapturedAt { get; set; }
+    public string? Device { get; set; }
+    public string? DeviceId { get; set; }
+    public string? IpAddress { get; set; }
+    public string? Hash { get; set; }
+    public bool? MatchesPrevious { get; set; }
+    public string? CertificateUrl { get; set; }
+    public Dictionary<string, string>? AdditionalMetadata { get; set; }
+}
+
+public class SignatureCaptureResponseDto
+{
+    public Guid CheckInId { get; set; }
+    public Guid BookingId { get; set; }
+    public Guid UserId { get; set; }
+    public string SignatureUrl { get; set; } = string.Empty;
+    public SignatureMetadataDto Metadata { get; set; } = new();
+    public string? CertificateUrl { get; set; }
+    public bool OverwroteExisting { get; set; }
 }

@@ -1,4 +1,10 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using CoOwnershipVehicle.Booking.Api.Data;
 using CoOwnershipVehicle.Booking.Api.Storage;
 using CoOwnershipVehicle.Domain.Entities;
@@ -11,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CoOwnershipVehicle.Booking.Api.Services;
 
 public record PhotoUploadItem(IFormFile File, PhotoType Type, string? Description);
+public record SignatureCaptureContext(string? IpAddress, string? UserAgent, DateTime CapturedAt);
 
 public interface ICheckInService
 {
@@ -23,6 +30,7 @@ public interface ICheckInService
     Task<TripCompletionDto> EndTripAsync(EndTripDto request, Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CheckInPhotoDto>> UploadPhotosAsync(Guid checkInId, Guid userId, IEnumerable<PhotoUploadItem> uploads, CancellationToken cancellationToken = default);
     Task DeletePhotoAsync(Guid checkInId, Guid photoId, Guid userId, CancellationToken cancellationToken = default);
+    Task<SignatureCaptureResponseDto> CaptureSignatureAsync(Guid checkInId, Guid userId, SignatureCaptureRequestDto request, SignatureCaptureContext context, CancellationToken cancellationToken = default);
 }
 
 public class CheckInService : ICheckInService
@@ -62,6 +70,11 @@ public class CheckInService : ICheckInService
     {
         ".pdf", ".doc", ".docx"
     };
+    private const int MaxSignatureBytes = 2 * 1024 * 1024;
+    private const int MaxSignaturePathLength = 200_000;
+    private static readonly Regex DataUrlRegex = new(@"^data:(?<mime>[\w+\-\.\/]+);base64,(?<data>[A-Za-z0-9+/=\s]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex SvgPathRegex = new(@"^[MmLlHhVvCcSsQqTtAaZz0-9\.\s,\-]+$", RegexOptions.Compiled);
+    private static readonly Regex MultipleWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
 
     public CheckInService(
         BookingDbContext context,
@@ -559,6 +572,156 @@ public class CheckInService : ICheckInService
         return createdPhotos.Select(MapPhotoToDto).ToList();
     }
 
+    public async Task<SignatureCaptureResponseDto> CaptureSignatureAsync(Guid checkInId, Guid userId, SignatureCaptureRequestDto request, SignatureCaptureContext context, CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SignatureData))
+        {
+            throw new ArgumentException("Signature data is required.", nameof(request.SignatureData));
+        }
+
+        var checkIn = await _context.CheckIns
+            .Include(ci => ci.Booking)
+                .ThenInclude(b => b.Group)
+            .FirstOrDefaultAsync(ci => ci.Id == checkInId, cancellationToken);
+
+        if (checkIn == null)
+        {
+            throw new KeyNotFoundException("Check-in not found");
+        }
+
+        if (checkIn.UserId != userId && !await UserHasAccessAsync(userId, checkIn.Booking.GroupId, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("User is not allowed to sign this check-in");
+        }
+
+        if (!request.OverwriteExisting && !string.IsNullOrWhiteSpace(checkIn.SignatureReference))
+        {
+            throw new InvalidOperationException("A signature has already been captured for this check-in.");
+        }
+
+        var payload = PrepareSignaturePayload(request);
+        if (payload.Content.Length == 0)
+        {
+            throw new ArgumentException("Signature data cannot be empty.", nameof(request.SignatureData));
+        }
+
+        if (payload.Content.Length > MaxSignatureBytes)
+        {
+            throw new ArgumentException($"Signature data exceeds the maximum size of {MaxSignatureBytes / (1024 * 1024)}MB.", nameof(request.SignatureData));
+        }
+
+        var fileName = $"checkin-{checkIn.Id:N}-signature-{context.CapturedAt:yyyyMMddHHmmssfff}{payload.FileExtension}";
+
+        await using (var scanStream = new MemoryStream(payload.Content, writable: false))
+        {
+            await _virusScanner.ScanAsync(scanStream, fileName, cancellationToken);
+        }
+
+        FileStorageResult storageResult;
+        await using (var storageStream = new MemoryStream(payload.Content, writable: false))
+        {
+            storageResult = await _fileStorageService.SaveFileAsync(storageStream, fileName, payload.ContentType, cancellationToken);
+        }
+
+        var signatureHash = Convert.ToHexString(SHA256.HashData(payload.Content));
+        bool? matchesPrevious = null;
+        if (!string.IsNullOrWhiteSpace(checkIn.SignatureHash))
+        {
+            matchesPrevious = string.Equals(checkIn.SignatureHash, signatureHash, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var metadataDictionary = BuildSignatureMetadataDictionary(request, context, payload.ContentType, payload.Content.Length);
+        var metadataForPersistence = metadataDictionary.Count > 0
+            ? new Dictionary<string, string>(metadataDictionary)
+            : new Dictionary<string, string>();
+        var metadataJson = metadataForPersistence.Count > 0
+            ? JsonSerializer.Serialize(metadataForPersistence, new JsonSerializerOptions { WriteIndented = false })
+            : null;
+
+        var certificateDocument = new SignatureCertificateDocument(
+            checkIn.Id,
+            checkIn.BookingId,
+            userId,
+            context.CapturedAt,
+            storageResult.FileUrl,
+            signatureHash,
+            request.DeviceInfo ?? context.UserAgent,
+            request.DeviceId,
+            context.IpAddress,
+            matchesPrevious,
+            request.Notes,
+            metadataForPersistence);
+
+        var certificateFileName = $"checkin-{checkIn.Id:N}-signature-cert-{context.CapturedAt:yyyyMMddHHmmssfff}.json";
+        FileStorageResult certificateResult;
+        await using (var certificateStream = new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(certificateDocument, new JsonSerializerOptions { WriteIndented = false })), writable: false))
+        {
+            certificateResult = await _fileStorageService.SaveFileAsync(certificateStream, certificateFileName, "application/json", cancellationToken);
+        }
+
+        var hadExistingSignature = !string.IsNullOrWhiteSpace(checkIn.SignatureReference);
+
+        checkIn.SignatureReference = storageResult.FileUrl;
+        checkIn.SignatureDevice = request.DeviceInfo ?? context.UserAgent;
+        checkIn.SignatureDeviceId = request.DeviceId;
+        checkIn.SignatureIpAddress = context.IpAddress;
+        checkIn.SignatureCapturedAt = context.CapturedAt;
+        checkIn.SignatureHash = signatureHash;
+        checkIn.SignatureMatchesPrevious = matchesPrevious;
+        checkIn.SignatureCertificateUrl = certificateResult.FileUrl;
+        checkIn.SignatureMetadataJson = metadataJson;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        var responseMetadata = new SignatureMetadataDto
+        {
+            CapturedAt = checkIn.SignatureCapturedAt,
+            Device = checkIn.SignatureDevice,
+            DeviceId = checkIn.SignatureDeviceId,
+            IpAddress = checkIn.SignatureIpAddress,
+            Hash = checkIn.SignatureHash,
+            MatchesPrevious = checkIn.SignatureMatchesPrevious,
+            CertificateUrl = checkIn.SignatureCertificateUrl,
+            AdditionalMetadata = metadataForPersistence.Count > 0 ? new Dictionary<string, string>(metadataForPersistence) : null
+        };
+
+        var response = new SignatureCaptureResponseDto
+        {
+            CheckInId = checkIn.Id,
+            BookingId = checkIn.BookingId,
+            UserId = checkIn.UserId,
+            SignatureUrl = storageResult.FileUrl,
+            CertificateUrl = certificateResult.FileUrl,
+            Metadata = responseMetadata,
+            OverwroteExisting = hadExistingSignature
+        };
+
+        await _publishEndpoint.Publish(new SignatureCapturedEvent
+        {
+            CheckInId = checkIn.Id,
+            BookingId = checkIn.BookingId,
+            UserId = checkIn.UserId,
+            SignatureUrl = storageResult.FileUrl,
+            SignatureHash = signatureHash,
+            CapturedAt = context.CapturedAt,
+            Device = checkIn.SignatureDevice,
+            DeviceId = checkIn.SignatureDeviceId,
+            IpAddress = checkIn.SignatureIpAddress,
+            MatchesPrevious = matchesPrevious,
+            CertificateUrl = certificateResult.FileUrl,
+            Metadata = metadataForPersistence.Count > 0 ? new Dictionary<string, string>(metadataForPersistence) : new Dictionary<string, string>()
+        }, cancellationToken);
+
+        _logger.LogInformation("Captured signature for check-in {CheckInId}", checkIn.Id);
+
+        return response;
+    }
+
     public async Task DeletePhotoAsync(Guid checkInId, Guid photoId, Guid userId, CancellationToken cancellationToken = default)
     {
         var photo = await _context.CheckInPhotos
@@ -765,6 +928,234 @@ public class CheckInService : ICheckInService
         return dto;
     }
 
+    private static SignaturePayload PrepareSignaturePayload(SignatureCaptureRequestDto request)
+    {
+        var raw = request.SignatureData.Trim();
+
+        if (raw.StartsWith("<svg", StringComparison.OrdinalIgnoreCase))
+        {
+            var svgMarkup = EnsureSvgHasNamespace(raw);
+            var svgBytes = Encoding.UTF8.GetBytes(svgMarkup);
+            var svgContentType = NormalizeContentType(request.Format ?? "image/svg+xml");
+            return new SignaturePayload(svgBytes, svgContentType, GetExtensionForContentType(svgContentType));
+        }
+
+        var dataUrlMatch = DataUrlRegex.Match(raw);
+        if (dataUrlMatch.Success)
+        {
+            if (!TryDecodeBase64(dataUrlMatch.Groups["data"].Value, out var decodedFromDataUrl))
+            {
+                throw new ArgumentException("Signature data URL payload is not valid base64 data.", nameof(request.SignatureData));
+            }
+
+            var mime = dataUrlMatch.Groups["mime"].Value;
+            var contentTypeFromDataUrl = NormalizeContentType(request.Format ?? mime);
+            return new SignaturePayload(decodedFromDataUrl, contentTypeFromDataUrl, GetExtensionForContentType(contentTypeFromDataUrl));
+        }
+
+        if (TryDecodeBase64(raw, out var decodedBytes))
+        {
+            var base64ContentType = NormalizeContentType(request.Format ?? "image/png");
+            return new SignaturePayload(decodedBytes, base64ContentType, GetExtensionForContentType(base64ContentType));
+        }
+
+        var sanitizedPath = SanitizeSvgPath(raw);
+        var svgFromPath = BuildSvgFromPath(sanitizedPath);
+        var pathContentType = NormalizeContentType(request.Format ?? "image/svg+xml");
+        return new SignaturePayload(Encoding.UTF8.GetBytes(svgFromPath), pathContentType, GetExtensionForContentType(pathContentType));
+    }
+
+    private static Dictionary<string, string> BuildSignatureMetadataDictionary(SignatureCaptureRequestDto request, SignatureCaptureContext context, string contentType, int byteLength)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["contentType"] = contentType,
+            ["byteLength"] = byteLength.ToString(CultureInfo.InvariantCulture),
+            ["capturedAt"] = context.CapturedAt.ToString("O", CultureInfo.InvariantCulture),
+            ["overwriteExisting"] = request.OverwriteExisting.ToString(CultureInfo.InvariantCulture)
+        };
+
+        if (!string.IsNullOrWhiteSpace(request.Format))
+        {
+            metadata["format"] = request.Format.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.DeviceInfo))
+        {
+            metadata["deviceInfo"] = request.DeviceInfo.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.DeviceId))
+        {
+            metadata["deviceId"] = request.DeviceId.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(context.UserAgent))
+        {
+            metadata["userAgent"] = context.UserAgent;
+        }
+
+        if (!string.IsNullOrWhiteSpace(context.IpAddress))
+        {
+            metadata["ipAddress"] = context.IpAddress;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Notes))
+        {
+            metadata["notes"] = request.Notes.Trim();
+        }
+
+        return metadata;
+    }
+
+    private static string EnsureSvgHasNamespace(string svgMarkup)
+    {
+        var trimmed = svgMarkup.Trim();
+        if (trimmed.IndexOf("xmlns", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return trimmed;
+        }
+
+        var tagEndIndex = trimmed.IndexOf('>');
+        if (tagEndIndex < 0)
+        {
+            throw new ArgumentException("SVG markup is invalid.");
+        }
+
+        var builder = new StringBuilder(trimmed.Length + 50);
+        builder.Append(trimmed.AsSpan(0, tagEndIndex));
+        builder.Append(" xmlns=\"http://www.w3.org/2000/svg\"");
+        builder.Append(trimmed.AsSpan(tagEndIndex));
+        return builder.ToString();
+    }
+
+    private static string SanitizeSvgPath(string pathData)
+    {
+        var trimmed = pathData.Trim();
+        if (trimmed.Length == 0)
+        {
+            throw new ArgumentException("Signature path data cannot be empty.");
+        }
+
+        if (trimmed.Length > MaxSignaturePathLength)
+        {
+            throw new ArgumentException("Signature path data exceeds the maximum supported length.");
+        }
+
+        var normalizedWhitespace = MultipleWhitespaceRegex.Replace(trimmed, " ");
+        if (!SvgPathRegex.IsMatch(normalizedWhitespace))
+        {
+            throw new ArgumentException("Signature path data contains unsupported characters.");
+        }
+
+        return normalizedWhitespace;
+    }
+
+    private static string BuildSvgFromPath(string pathData)
+    {
+        var safePath = pathData.Replace("\"", string.Empty, StringComparison.Ordinal).Replace("'", string.Empty, StringComparison.Ordinal);
+        return $"<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 1000 400\" preserveAspectRatio=\"xMidYMid meet\"><path d=\"{safePath}\" fill=\"none\" stroke=\"#000000\" stroke-width=\"4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>";
+    }
+
+    private static string NormalizeContentType(string format)
+    {
+        if (string.IsNullOrWhiteSpace(format))
+        {
+            return "image/png";
+        }
+
+        var trimmed = format.Trim();
+        if (trimmed.Equals("png", StringComparison.OrdinalIgnoreCase))
+        {
+            return "image/png";
+        }
+
+        if (trimmed.Equals("jpg", StringComparison.OrdinalIgnoreCase) || trimmed.Equals("jpeg", StringComparison.OrdinalIgnoreCase) || trimmed.Equals("image/jpg", StringComparison.OrdinalIgnoreCase))
+        {
+            return "image/jpeg";
+        }
+
+        if (trimmed.Equals("svg", StringComparison.OrdinalIgnoreCase) || trimmed.Equals("svg+xml", StringComparison.OrdinalIgnoreCase) || trimmed.Equals("image/svg", StringComparison.OrdinalIgnoreCase))
+        {
+            return "image/svg+xml";
+        }
+
+        if (!trimmed.Contains('/', StringComparison.Ordinal))
+        {
+            return $"image/{trimmed.ToLowerInvariant()}";
+        }
+
+        return trimmed.ToLowerInvariant();
+    }
+
+    private static string GetExtensionForContentType(string contentType)
+    {
+        return contentType.ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" => ".jpg",
+            "image/jpg" => ".jpg",
+            "image/svg+xml" => ".svg",
+            "application/json" => ".json",
+            _ => ".bin"
+        };
+    }
+
+    private static bool TryDecodeBase64(string value, out byte[] bytes)
+    {
+        bytes = Array.Empty<byte>();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeBase64(value);
+        if (normalized.Length < 8 || normalized.Length % 4 != 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            bytes = Convert.FromBase64String(normalized);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static string NormalizeBase64(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            if (!char.IsWhiteSpace(ch))
+            {
+                builder.Append(ch);
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private record SignaturePayload(byte[] Content, string ContentType, string FileExtension);
+
+    private record SignatureCertificateDocument(
+        Guid CheckInId,
+        Guid BookingId,
+        Guid SignedByUserId,
+        DateTime CapturedAt,
+        string SignatureUrl,
+        string SignatureHash,
+        string? Device,
+        string? DeviceId,
+        string? IpAddress,
+        bool? MatchesPrevious,
+        string? Notes,
+        Dictionary<string, string> Metadata);
+
     private static void ValidateUploadItem(PhotoUploadItem upload)
     {
         if (upload.File == null)
@@ -808,6 +1199,43 @@ public class CheckInService : ICheckInService
         };
     }
 
+    private static SignatureMetadataDto? MapSignatureMetadata(CheckIn entity)
+    {
+        if (entity.SignatureCapturedAt == null &&
+            string.IsNullOrWhiteSpace(entity.SignatureDevice) &&
+            string.IsNullOrWhiteSpace(entity.SignatureHash) &&
+            string.IsNullOrWhiteSpace(entity.SignatureCertificateUrl) &&
+            string.IsNullOrWhiteSpace(entity.SignatureMetadataJson))
+        {
+            return null;
+        }
+
+        Dictionary<string, string>? additional = null;
+        if (!string.IsNullOrWhiteSpace(entity.SignatureMetadataJson))
+        {
+            try
+            {
+                additional = JsonSerializer.Deserialize<Dictionary<string, string>>(entity.SignatureMetadataJson);
+            }
+            catch (JsonException)
+            {
+                additional = null;
+            }
+        }
+
+        return new SignatureMetadataDto
+        {
+            CapturedAt = entity.SignatureCapturedAt,
+            Device = entity.SignatureDevice,
+            DeviceId = entity.SignatureDeviceId,
+            IpAddress = entity.SignatureIpAddress,
+            Hash = entity.SignatureHash,
+            MatchesPrevious = entity.SignatureMatchesPrevious,
+            CertificateUrl = entity.SignatureCertificateUrl,
+            AdditionalMetadata = additional
+        };
+    }
+
     private static CheckInDto MapToDto(CheckIn entity)
     {
         return new CheckInDto
@@ -823,6 +1251,7 @@ public class CheckInService : ICheckInService
             CheckInTime = entity.CheckInTime,
             Notes = entity.Notes,
             SignatureReference = entity.SignatureReference,
+            SignatureMetadata = MapSignatureMetadata(entity),
             Photos = entity.Photos?.Where(photo => !photo.IsDeleted).Select(MapPhotoToDto).ToList() ?? new List<CheckInPhotoDto>(),
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

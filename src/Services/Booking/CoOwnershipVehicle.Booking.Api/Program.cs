@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using CoOwnershipVehicle.Booking.Api.Configuration;
 using CoOwnershipVehicle.Booking.Api.Data;
 using CoOwnershipVehicle.Booking.Api.Services;
 using CoOwnershipVehicle.Booking.Api.Storage;
@@ -59,6 +60,10 @@ builder.Services.AddMassTransit(x =>
 // Add application services
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ICheckInService, CheckInService>();
+builder.Services.AddScoped<IDamageReportService, DamageReportService>();
+builder.Services.AddScoped<IQrCodeService, VehicleQrService>();
+builder.Services.AddMemoryCache();
+builder.Services.Configure<QrCodeOptions>(builder.Configuration.GetSection(QrCodeOptions.SectionName));
 
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 #pragma warning disable CA1416

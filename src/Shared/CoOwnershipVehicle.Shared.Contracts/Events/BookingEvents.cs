@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Domain.Entities;
 
@@ -129,6 +131,27 @@ public class TripEndedEvent : BaseEvent
     }
 }
 
+public class SignatureCapturedEvent : BaseEvent
+{
+    public Guid CheckInId { get; set; }
+    public Guid BookingId { get; set; }
+    public Guid UserId { get; set; }
+    public string SignatureUrl { get; set; } = string.Empty;
+    public string SignatureHash { get; set; } = string.Empty;
+    public DateTime CapturedAt { get; set; }
+    public string? Device { get; set; }
+    public string? DeviceId { get; set; }
+    public string? IpAddress { get; set; }
+    public bool? MatchesPrevious { get; set; }
+    public string? CertificateUrl { get; set; }
+    public Dictionary<string, string> Metadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public SignatureCapturedEvent()
+    {
+        EventType = nameof(SignatureCapturedEvent);
+    }
+}
+
 public class BookingApprovedEvent : BaseEvent
 {
     public Guid BookingId { get; set; }
@@ -174,5 +197,44 @@ public class VehicleStatusChangedEvent : BaseEvent
     public VehicleStatusChangedEvent()
     {
         EventType = nameof(VehicleStatusChangedEvent);
+    }
+}
+
+public class DamageReportedEvent : BaseEvent
+{
+    public Guid DamageReportId { get; set; }
+    public Guid CheckInId { get; set; }
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid ReportedByUserId { get; set; }
+    public DamageSeverity Severity { get; set; }
+    public DamageLocation Location { get; set; }
+    public decimal? EstimatedCost { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public IReadOnlyList<Guid> PhotoIds { get; set; } = Array.Empty<Guid>();
+
+    public DamageReportedEvent()
+    {
+        EventType = nameof(DamageReportedEvent);
+    }
+}
+
+public class DamageReportStatusChangedEvent : BaseEvent
+{
+    public Guid DamageReportId { get; set; }
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public DamageReportStatus Status { get; set; }
+    public Guid ChangedByUserId { get; set; }
+    public decimal? EstimatedCost { get; set; }
+    public Guid? ExpenseId { get; set; }
+    public string? Notes { get; set; }
+    public DateTime ChangedAt { get; set; }
+
+    public DamageReportStatusChangedEvent()
+    {
+        EventType = nameof(DamageReportStatusChangedEvent);
     }
 }

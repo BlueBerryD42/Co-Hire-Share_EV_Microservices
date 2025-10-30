@@ -29,6 +29,8 @@ public class Booking : BaseEntity
     public bool IsEmergency { get; set; } = false;
     
     public BookingPriority Priority { get; set; } = BookingPriority.Normal;
+
+    public bool RequiresDamageReview { get; set; }
     
     // Navigation properties
     public virtual Vehicle Vehicle { get; set; } = null!;

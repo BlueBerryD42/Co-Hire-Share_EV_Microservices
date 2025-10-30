@@ -13,13 +13,17 @@ namespace CoOwnershipVehicle.Booking.Api.Controllers;
 public class CheckInController : ControllerBase
 {
     private readonly ICheckInService _checkInService;
+    private readonly IQrCodeService _qrCodeService;
+    private readonly IDamageReportService _damageReportService;
     private readonly ILogger<CheckInController> _logger;
     private const long MaxUploadFileSize = 10 * 1024 * 1024;
     private const int MaxPhotosPerCheckIn = 10;
 
-    public CheckInController(ICheckInService checkInService, ILogger<CheckInController> logger)
+    public CheckInController(ICheckInService checkInService, IQrCodeService qrCodeService, IDamageReportService damageReportService, ILogger<CheckInController> logger)
     {
         _checkInService = checkInService;
+        _qrCodeService = qrCodeService;
+        _damageReportService = damageReportService;
         _logger = logger;
     }
 
@@ -120,6 +124,197 @@ public class CheckInController : ControllerBase
         {
             _logger.LogError(ex, "Error uploading photos for check-in {CheckInId}", id);
             return StatusCode(500, new { message = "An error occurred while uploading photos" });
+        }
+    }
+
+    /// <summary>
+    /// Report damage for a check-in record
+    /// </summary>
+    [HttpPost("{id:guid}/damage-report")]
+    [ProducesResponseType(typeof(DamageReportDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReportDamage(Guid id, [FromBody] CreateDamageReportDto request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Damage report payload is required." });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var userId = GetCurrentUserId();
+            var result = await _damageReportService.ReportDamageAsync(id, userId, request, cancellationToken);
+
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reporting damage for check-in {CheckInId}", id);
+            return StatusCode(500, new { message = "An error occurred while reporting vehicle damage" });
+        }
+    }
+
+    /// <summary>
+    /// List damage reports for a check-in record
+    /// </summary>
+    [HttpGet("{id:guid}/damage-reports")]
+    [ProducesResponseType(typeof(IReadOnlyList<DamageReportDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDamageReports(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var reports = await _damageReportService.GetByCheckInAsync(id, userId, cancellationToken);
+            return Ok(reports);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing damage reports for check-in {CheckInId}", id);
+            return StatusCode(500, new { message = "An error occurred while retrieving damage reports" });
+        }
+    }
+
+    /// <summary>
+    /// Validate a vehicle QR code for check-in or check-out
+    /// </summary>
+    [HttpPost("validate-qr")]
+    [ProducesResponseType(typeof(QrCodeValidationResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ValidateQrCode([FromBody] QrCodeValidationRequestDto request, CancellationToken cancellationToken)
+    {
+        Guid? userId = null;
+        try
+        {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request payload is required." });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            userId = GetCurrentUserId();
+            var result = await _qrCodeService.ValidateAsync(request, userId.Value, cancellationToken);
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating QR code for user {UserId}", userId?.ToString() ?? "unknown");
+            return StatusCode(500, new { message = "An error occurred while validating the QR code" });
+        }
+    }
+
+    /// <summary>
+    /// Capture digital signature for a check-in
+    /// </summary>
+    [HttpPost("{id:guid}/signature")]
+    [ProducesResponseType(typeof(SignatureCaptureResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CaptureSignature(Guid id, [FromBody] SignatureCaptureRequestDto request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Signature payload is required." });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var userId = GetCurrentUserId();
+
+            string? ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+            if (Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor))
+            {
+                var forwardedValue = forwardedFor.ToString();
+                if (!string.IsNullOrWhiteSpace(forwardedValue))
+                {
+                    var separatorIndex = forwardedValue.IndexOf(',');
+                    ipAddress = separatorIndex > 0
+                        ? forwardedValue[..separatorIndex].Trim()
+                        : forwardedValue.Trim();
+                }
+            }
+
+            var userAgent = Request.Headers["User-Agent"].ToString();
+            var context = new SignatureCaptureContext(ipAddress, string.IsNullOrWhiteSpace(userAgent) ? null : userAgent, DateTime.UtcNow);
+
+            var result = await _checkInService.CaptureSignatureAsync(id, userId, request, context, cancellationToken);
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error capturing signature for check-in {CheckInId}", id);
+            return StatusCode(500, new { message = "An error occurred while capturing the signature" });
         }
     }
 

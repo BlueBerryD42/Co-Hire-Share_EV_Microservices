@@ -142,6 +142,7 @@ public class BookingService : IBookingService
                 Status = (BookingStatus)b.Status,
                 Priority = b.Priority,
                 IsEmergency = b.IsEmergency,
+                RequiresDamageReview = b.RequiresDamageReview,
                 CreatedAt = b.CreatedAt
             })
             .ToListAsync();
@@ -175,6 +176,7 @@ public class BookingService : IBookingService
                 Status = (BookingStatus)b.Status,
                 Priority = b.Priority,
                 IsEmergency = b.IsEmergency,
+                RequiresDamageReview = b.RequiresDamageReview,
                 CreatedAt = b.CreatedAt
             })
             .ToListAsync();
@@ -202,7 +204,8 @@ public class BookingService : IBookingService
                 EndAt = b.EndAt,
                 Status = (BookingStatus)b.Status,
                 Priority = b.Priority,
-                IsEmergency = b.IsEmergency
+                IsEmergency = b.IsEmergency,
+                RequiresDamageReview = b.RequiresDamageReview
             })
             .ToListAsync();
 
@@ -371,6 +374,7 @@ public class BookingService : IBookingService
                 Status = (BookingStatus)b.Status,
                 Priority = b.Priority,
                 IsEmergency = b.IsEmergency,
+                RequiresDamageReview = b.RequiresDamageReview,
                 CreatedAt = b.CreatedAt
             })
             .ToListAsync();

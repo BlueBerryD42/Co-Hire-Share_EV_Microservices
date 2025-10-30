@@ -19,6 +19,28 @@ public class CheckIn : BaseEntity
     
     [StringLength(500)]
     public string? SignatureReference { get; set; }
+
+    [StringLength(200)]
+    public string? SignatureDevice { get; set; }
+
+    [StringLength(100)]
+    public string? SignatureDeviceId { get; set; }
+
+    [StringLength(45)]
+    public string? SignatureIpAddress { get; set; }
+
+    public DateTime? SignatureCapturedAt { get; set; }
+
+    [StringLength(128)]
+    public string? SignatureHash { get; set; }
+
+    [StringLength(500)]
+    public string? SignatureCertificateUrl { get; set; }
+
+    public bool? SignatureMatchesPrevious { get; set; }
+
+    [StringLength(2000)]
+    public string? SignatureMetadataJson { get; set; }
     
     public DateTime CheckInTime { get; set; } = DateTime.UtcNow;
     
