@@ -35,4 +35,9 @@ public interface IMaintenanceService
     // Advanced scheduling with conflict detection
     Task<ScheduleMaintenanceResponse> ScheduleMaintenanceAsync(ScheduleMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false);
     Task<List<MaintenanceConflict>> CheckMaintenanceConflictsAsync(Guid vehicleId, DateTime startTime, DateTime endTime, Guid? excludeScheduleId = null);
+
+    // Maintenance views and history
+    Task<MaintenanceScheduleResponse> GetVehicleMaintenanceScheduleAsync(Guid vehicleId, MaintenanceScheduleQuery query, Guid userId, string accessToken);
+    Task<MaintenanceHistoryResponse> GetVehicleMaintenanceHistoryAsync(Guid vehicleId, MaintenanceHistoryQuery query, Guid userId, string accessToken);
+    Task<MaintenanceCostStatistics> CalculateMaintenanceStatisticsAsync(Guid vehicleId, DateTime? startDate = null, DateTime? endDate = null);
 }

@@ -474,4 +474,226 @@ public class MaintenanceService : IMaintenanceService
     }
 
     #endregion
+
+    #region Maintenance Views and History
+
+    public async Task<MaintenanceScheduleResponse> GetVehicleMaintenanceScheduleAsync(
+        Guid vehicleId,
+        MaintenanceScheduleQuery query,
+        Guid userId,
+        string accessToken)
+    {
+        // 1. Validate vehicle exists
+        var vehicle = await _context.Vehicles.FindAsync(vehicleId);
+        if (vehicle == null)
+        {
+            throw new InvalidOperationException($"Vehicle {vehicleId} not found");
+        }
+
+        // 2. Validate user has access to vehicle
+        if (vehicle.GroupId.HasValue)
+        {
+            var isMember = await _groupServiceClient.IsUserInGroupAsync(vehicle.GroupId.Value, userId, accessToken);
+            if (!isMember)
+            {
+                throw new UnauthorizedAccessException($"User {userId} does not have access to vehicle {vehicleId}");
+            }
+        }
+
+        // 3. Build query
+        var schedulesQuery = _context.MaintenanceSchedules
+            .Where(s => s.VehicleId == vehicleId);
+
+        // Filter by status if provided
+        if (query.Status.HasValue)
+        {
+            schedulesQuery = schedulesQuery.Where(s => s.Status == query.Status.Value);
+        }
+        else
+        {
+            // Default: show future and in-progress only
+            schedulesQuery = schedulesQuery.Where(s =>
+                s.Status == MaintenanceStatus.Scheduled ||
+                s.Status == MaintenanceStatus.InProgress);
+        }
+
+        // Get total count
+        var totalCount = await schedulesQuery.CountAsync();
+
+        // 4. Sort by scheduled date (nearest first) and paginate
+        var schedules = await schedulesQuery
+            .OrderBy(s => s.ScheduledDate)
+            .Skip((query.PageNumber - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .Select(s => new MaintenanceScheduleDto
+            {
+                Id = s.Id,
+                VehicleId = s.VehicleId,
+                ServiceType = s.ServiceType,
+                ScheduledDate = s.ScheduledDate,
+                Status = s.Status,
+                EstimatedCost = s.EstimatedCost,
+                EstimatedDuration = s.EstimatedDuration,
+                ServiceProvider = s.ServiceProvider,
+                Notes = s.Notes,
+                Priority = s.Priority,
+                CreatedBy = s.CreatedBy,
+                CreatedAt = s.CreatedAt
+            })
+            .ToListAsync();
+
+        return new MaintenanceScheduleResponse
+        {
+            Items = schedules,
+            TotalCount = totalCount,
+            PageNumber = query.PageNumber,
+            PageSize = query.PageSize
+        };
+    }
+
+    public async Task<MaintenanceHistoryResponse> GetVehicleMaintenanceHistoryAsync(
+        Guid vehicleId,
+        MaintenanceHistoryQuery query,
+        Guid userId,
+        string accessToken)
+    {
+        // 1. Validate vehicle exists
+        var vehicle = await _context.Vehicles.FindAsync(vehicleId);
+        if (vehicle == null)
+        {
+            throw new InvalidOperationException($"Vehicle {vehicleId} not found");
+        }
+
+        // 2. Validate user has access to vehicle
+        if (vehicle.GroupId.HasValue)
+        {
+            var isMember = await _groupServiceClient.IsUserInGroupAsync(vehicle.GroupId.Value, userId, accessToken);
+            if (!isMember)
+            {
+                throw new UnauthorizedAccessException($"User {userId} does not have access to vehicle {vehicleId}");
+            }
+        }
+
+        // 3. Build query
+        var recordsQuery = _context.MaintenanceRecords
+            .Where(r => r.VehicleId == vehicleId);
+
+        // Filter by service type if provided
+        if (query.ServiceType.HasValue)
+        {
+            recordsQuery = recordsQuery.Where(r => r.ServiceType == query.ServiceType.Value);
+        }
+
+        // Filter by date range if provided
+        if (query.StartDate.HasValue)
+        {
+            recordsQuery = recordsQuery.Where(r => r.ServiceDate >= query.StartDate.Value);
+        }
+
+        if (query.EndDate.HasValue)
+        {
+            recordsQuery = recordsQuery.Where(r => r.ServiceDate <= query.EndDate.Value);
+        }
+
+        // Get total count
+        var totalCount = await recordsQuery.CountAsync();
+
+        // 4. Sort by service date (most recent first) and paginate
+        var records = await recordsQuery
+            .OrderByDescending(r => r.ServiceDate)
+            .Skip((query.PageNumber - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .Select(r => new MaintenanceHistoryDto
+            {
+                Id = r.Id,
+                VehicleId = r.VehicleId,
+                ServiceType = r.ServiceType,
+                ServiceDate = r.ServiceDate,
+                OdometerReading = r.OdometerReading,
+                ActualCost = r.ActualCost,
+                ServiceProvider = r.ServiceProvider,
+                WorkPerformed = r.WorkPerformed,
+                PartsReplaced = r.PartsReplaced,
+                NextServiceDue = r.NextServiceDue,
+                NextServiceOdometer = r.NextServiceOdometer,
+                ExpenseId = r.ExpenseId,
+                PerformedBy = r.PerformedBy,
+                CreatedAt = r.CreatedAt
+            })
+            .ToListAsync();
+
+        // 5. Calculate statistics
+        var statistics = await CalculateMaintenanceStatisticsAsync(vehicleId, query.StartDate, query.EndDate);
+
+        return new MaintenanceHistoryResponse
+        {
+            Items = records,
+            TotalCount = totalCount,
+            PageNumber = query.PageNumber,
+            PageSize = query.PageSize,
+            Statistics = statistics
+        };
+    }
+
+    public async Task<MaintenanceCostStatistics> CalculateMaintenanceStatisticsAsync(
+        Guid vehicleId,
+        DateTime? startDate = null,
+        DateTime? endDate = null)
+    {
+        var now = DateTime.UtcNow;
+        var startOfYear = new DateTime(now.Year, 1, 1);
+        var startOfMonth = new DateTime(now.Year, now.Month, 1);
+
+        // Base query
+        var baseQuery = _context.MaintenanceRecords
+            .Where(r => r.VehicleId == vehicleId);
+
+        // Apply date filters if provided
+        if (startDate.HasValue)
+        {
+            baseQuery = baseQuery.Where(r => r.ServiceDate >= startDate.Value);
+        }
+
+        if (endDate.HasValue)
+        {
+            baseQuery = baseQuery.Where(r => r.ServiceDate <= endDate.Value);
+        }
+
+        var allRecords = await baseQuery.ToListAsync();
+
+        // Calculate totals
+        var totalCostAllTime = allRecords.Sum(r => r.ActualCost);
+        var totalCostThisYear = allRecords
+            .Where(r => r.ServiceDate >= startOfYear)
+            .Sum(r => r.ActualCost);
+        var totalCostThisMonth = allRecords
+            .Where(r => r.ServiceDate >= startOfMonth)
+            .Sum(r => r.ActualCost);
+
+        var averageCost = allRecords.Any() ? allRecords.Average(r => r.ActualCost) : 0;
+
+        // Cost by service type
+        var costByServiceType = allRecords
+            .GroupBy(r => r.ServiceType)
+            .Select(g => new CostByServiceType
+            {
+                ServiceType = g.Key,
+                Count = g.Count(),
+                TotalCost = g.Sum(r => r.ActualCost),
+                AverageCost = g.Average(r => r.ActualCost)
+            })
+            .OrderByDescending(c => c.TotalCost)
+            .ToList();
+
+        return new MaintenanceCostStatistics
+        {
+            TotalCostAllTime = totalCostAllTime,
+            TotalCostThisYear = totalCostThisYear,
+            TotalCostThisMonth = totalCostThisMonth,
+            AverageCostPerService = averageCost,
+            CostByServiceType = costByServiceType
+        };
+    }
+
+    #endregion
 }

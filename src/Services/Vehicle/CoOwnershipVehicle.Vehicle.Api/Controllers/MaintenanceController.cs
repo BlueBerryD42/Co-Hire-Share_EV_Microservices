@@ -38,16 +38,6 @@ public class MaintenanceController : ControllerBase
     }
 
     /// <summary>
-    /// Get all maintenance schedules for a vehicle
-    /// </summary>
-    [HttpGet("schedules/vehicle/{vehicleId:guid}")]
-    public async Task<IActionResult> GetSchedulesByVehicle(Guid vehicleId)
-    {
-        var schedules = await _maintenanceService.GetSchedulesByVehicleIdAsync(vehicleId);
-        return Ok(schedules);
-    }
-
-    /// <summary>
     /// Get maintenance schedules by status
     /// </summary>
     [HttpGet("schedules/status/{status}")]
@@ -65,6 +55,125 @@ public class MaintenanceController : ControllerBase
     {
         var schedules = await _maintenanceService.GetOverdueSchedulesAsync();
         return Ok(schedules);
+    }
+
+    /// <summary>
+    /// Get maintenance schedule for a vehicle
+    /// </summary>
+    /// <remarks>
+    /// Returns all scheduled maintenance (future and in-progress by default).
+    /// Supports filtering by status and pagination.
+    ///
+    /// Query parameters:
+    /// - status: Filter by maintenance status (0=Scheduled, 1=InProgress, 2=Completed, 3=Cancelled, 4=Overdue)
+    /// - pageNumber: Page number (default: 1)
+    /// - pageSize: Items per page (default: 20, max: 100)
+    ///
+    /// Returns sorted by scheduled date (nearest first).
+    /// </remarks>
+    [HttpGet("vehicle/{vehicleId:guid}")]
+    [ProducesResponseType(typeof(MaintenanceScheduleResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetVehicleMaintenanceSchedule(
+        Guid vehicleId,
+        [FromQuery] MaintenanceStatus? status = null,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
+
+            var query = new MaintenanceScheduleQuery
+            {
+                Status = status,
+                PageNumber = pageNumber,
+                PageSize = Math.Min(pageSize, 100) // Max 100 items per page
+            };
+
+            var result = await _maintenanceService.GetVehicleMaintenanceScheduleAsync(vehicleId, query, userId, accessToken);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access to vehicle maintenance schedule");
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving vehicle maintenance schedule");
+            return StatusCode(500, new { message = "An error occurred while retrieving maintenance schedule" });
+        }
+    }
+
+    /// <summary>
+    /// Get maintenance history for a vehicle
+    /// </summary>
+    /// <remarks>
+    /// Returns all completed maintenance records with cost statistics.
+    /// Supports filtering by service type, date range, and pagination.
+    ///
+    /// Query parameters:
+    /// - serviceType: Filter by service type (0=OilChange, 1=TireRotation, etc.)
+    /// - startDate: Filter records from this date (ISO 8601 format)
+    /// - endDate: Filter records until this date (ISO 8601 format)
+    /// - pageNumber: Page number (default: 1)
+    /// - pageSize: Items per page (default: 20, max: 100)
+    ///
+    /// Returns sorted by service date (most recent first) with cost statistics.
+    ///
+    /// Sample request:
+    ///     GET /api/maintenance/history/{vehicleId}?serviceType=0&amp;startDate=2024-01-01&amp;pageSize=10
+    /// </remarks>
+    [HttpGet("history/{vehicleId:guid}")]
+    [ProducesResponseType(typeof(MaintenanceHistoryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetVehicleMaintenanceHistory(
+        Guid vehicleId,
+        [FromQuery] ServiceType? serviceType = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
+
+            var query = new MaintenanceHistoryQuery
+            {
+                ServiceType = serviceType,
+                StartDate = startDate,
+                EndDate = endDate,
+                PageNumber = pageNumber,
+                PageSize = Math.Min(pageSize, 100) // Max 100 items per page
+            };
+
+            var result = await _maintenanceService.GetVehicleMaintenanceHistoryAsync(vehicleId, query, userId, accessToken);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access to vehicle maintenance history");
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving vehicle maintenance history");
+            return StatusCode(500, new { message = "An error occurred while retrieving maintenance history" });
+        }
     }
 
     /// <summary>
@@ -220,26 +329,6 @@ public class MaintenanceController : ControllerBase
     }
 
     /// <summary>
-    /// Get all maintenance records for a vehicle
-    /// </summary>
-    [HttpGet("records/vehicle/{vehicleId:guid}")]
-    public async Task<IActionResult> GetRecordsByVehicle(Guid vehicleId)
-    {
-        var records = await _maintenanceService.GetRecordsByVehicleIdAsync(vehicleId);
-        return Ok(records);
-    }
-
-    /// <summary>
-    /// Get maintenance records by service type
-    /// </summary>
-    [HttpGet("records/vehicle/{vehicleId:guid}/type/{serviceType}")]
-    public async Task<IActionResult> GetRecordsByServiceType(Guid vehicleId, ServiceType serviceType)
-    {
-        var records = await _maintenanceService.GetRecordsByServiceTypeAsync(vehicleId, serviceType);
-        return Ok(records);
-    }
-
-    /// <summary>
     /// Get the latest maintenance record for a specific service type
     /// </summary>
     [HttpGet("records/vehicle/{vehicleId:guid}/type/{serviceType}/latest")]
@@ -340,24 +429,6 @@ public class MaintenanceController : ControllerBase
         {
             _logger.LogError(ex, "Error calculating maintenance cost for vehicle {VehicleId}", vehicleId);
             return StatusCode(500, new { message = "An error occurred while calculating maintenance cost" });
-        }
-    }
-
-    /// <summary>
-    /// Get maintenance history for a vehicle
-    /// </summary>
-    [HttpGet("history/vehicle/{vehicleId:guid}")]
-    public async Task<IActionResult> GetMaintenanceHistory(Guid vehicleId, [FromQuery] int? limit = null)
-    {
-        try
-        {
-            var history = await _maintenanceService.GetMaintenanceHistoryAsync(vehicleId, limit);
-            return Ok(history);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving maintenance history for vehicle {VehicleId}", vehicleId);
-            return StatusCode(500, new { message = "An error occurred while retrieving maintenance history" });
         }
     }
 
