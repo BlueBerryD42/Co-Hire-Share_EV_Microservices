@@ -1079,7 +1079,7 @@ public class MaintenanceService : IMaintenanceService
             .Where(s => (s.Status == MaintenanceStatus.Scheduled || s.Status == MaintenanceStatus.InProgress)
                      && s.ScheduledDate < now)
             .OrderBy(s => s.Priority)
-            .ThenByDescending(s => now.Subtract(s.ScheduledDate).TotalDays) // Most overdue first
+            .ThenBy(s => s.ScheduledDate) // Earliest scheduled date first (most overdue)
             .ToListAsync();
 
         var response = new OverdueMaintenanceResponse
@@ -1128,7 +1128,6 @@ public class MaintenanceService : IMaintenanceService
         // 1. Get the schedule
         var schedule = await _context.MaintenanceSchedules
             .Include(s => s.Vehicle)
-            .ThenInclude(v => v.Group)
             .FirstOrDefaultAsync(s => s.Id == scheduleId);
 
         if (schedule == null)
@@ -1235,7 +1234,6 @@ public class MaintenanceService : IMaintenanceService
         // 1. Get the schedule
         var schedule = await _context.MaintenanceSchedules
             .Include(s => s.Vehicle)
-            .ThenInclude(v => v.Group)
             .FirstOrDefaultAsync(s => s.Id == scheduleId);
 
         if (schedule == null)
