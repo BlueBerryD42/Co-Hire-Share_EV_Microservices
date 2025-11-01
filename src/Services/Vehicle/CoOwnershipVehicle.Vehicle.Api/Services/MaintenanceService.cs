@@ -927,7 +927,7 @@ public class MaintenanceService : IMaintenanceService
             MaintenanceScheduleId = scheduleId,
             MaintenanceRecordId = maintenanceRecord.Id,
             VehicleId = schedule.VehicleId,
-            Status = MaintenanceStatus.Completed,
+            Status = schedule.Status, // Return actual status (InProgress or Completed)
             ActualCost = request.ActualCost,
             OdometerReading = request.OdometerReading,
             VehicleStatusUpdated = vehicleStatusUpdated,
@@ -935,7 +935,7 @@ public class MaintenanceService : IMaintenanceService
             ExpenseId = expenseId,
             NextServiceDue = request.NextServiceDue,
             NextServiceOdometer = request.NextServiceOdometer,
-            Message = "Maintenance completed successfully"
+            Message = isFullyCompleted ? "Maintenance completed successfully" : "Maintenance partially completed"
         };
     }
 
