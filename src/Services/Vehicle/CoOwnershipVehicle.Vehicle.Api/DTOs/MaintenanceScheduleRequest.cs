@@ -148,3 +148,114 @@ public class CompleteMaintenanceResponse
     public int? NextServiceOdometer { get; set; }
     public string Message { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// Response DTO for upcoming maintenance query
+/// </summary>
+public class UpcomingMaintenanceResponse
+{
+    public List<UpcomingMaintenanceByVehicle> Vehicles { get; set; } = new();
+    public int TotalUpcoming { get; set; }
+    public int TotalOverdue { get; set; }
+    public DateTime QueryDate { get; set; }
+    public int DaysAhead { get; set; }
+}
+
+/// <summary>
+/// Upcoming maintenance grouped by vehicle
+/// </summary>
+public class UpcomingMaintenanceByVehicle
+{
+    public Guid VehicleId { get; set; }
+    public string Model { get; set; } = string.Empty;
+    public string PlateNumber { get; set; } = string.Empty;
+    public List<UpcomingMaintenanceItem> MaintenanceItems { get; set; } = new();
+}
+
+/// <summary>
+/// Individual upcoming maintenance item
+/// </summary>
+public class UpcomingMaintenanceItem
+{
+    public Guid ScheduleId { get; set; }
+    public ServiceType ServiceType { get; set; }
+    public DateTime ScheduledDate { get; set; }
+    public int DaysUntilDue { get; set; }
+    public bool IsOverdue { get; set; }
+    public MaintenancePriority Priority { get; set; }
+    public string? ServiceProvider { get; set; }
+    public decimal? EstimatedCost { get; set; }
+    public string? Notes { get; set; }
+}
+
+/// <summary>
+/// Response DTO for overdue maintenance query
+/// </summary>
+public class OverdueMaintenanceResponse
+{
+    public List<OverdueMaintenanceItem> Items { get; set; } = new();
+    public int TotalOverdue { get; set; }
+    public int CriticalCount { get; set; }
+    public DateTime QueryDate { get; set; }
+}
+
+/// <summary>
+/// Individual overdue maintenance item
+/// </summary>
+public class OverdueMaintenanceItem
+{
+    public Guid ScheduleId { get; set; }
+    public Guid VehicleId { get; set; }
+    public string VehicleModel { get; set; } = string.Empty;
+    public string PlateNumber { get; set; } = string.Empty;
+    public ServiceType ServiceType { get; set; }
+    public DateTime ScheduledDate { get; set; }
+    public int DaysOverdue { get; set; }
+    public MaintenancePriority Priority { get; set; }
+    public bool IsCritical { get; set; }
+    public string? ServiceProvider { get; set; }
+    public decimal? EstimatedCost { get; set; }
+    public string? Notes { get; set; }
+}
+
+/// <summary>
+/// Request DTO for rescheduling maintenance
+/// </summary>
+public class RescheduleMaintenanceRequest
+{
+    [Required]
+    public DateTime NewScheduledDate { get; set; }
+
+    [Required]
+    [StringLength(500, MinimumLength = 10, ErrorMessage = "Reason must be between 10 and 500 characters")]
+    public string Reason { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Force reschedule even if there are conflicts (admin only)
+    /// </summary>
+    public bool ForceReschedule { get; set; } = false;
+}
+
+/// <summary>
+/// Response DTO for reschedule operation
+/// </summary>
+public class RescheduleMaintenanceResponse
+{
+    public Guid ScheduleId { get; set; }
+    public DateTime OldScheduledDate { get; set; }
+    public DateTime NewScheduledDate { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public List<MaintenanceConflict> Conflicts { get; set; } = new();
+    public bool HasConflicts { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Request DTO for cancelling maintenance
+/// </summary>
+public class CancelMaintenanceRequest
+{
+    [Required]
+    [StringLength(500, MinimumLength = 10, ErrorMessage = "Cancellation reason must be between 10 and 500 characters")]
+    public string CancellationReason { get; set; } = string.Empty;
+}

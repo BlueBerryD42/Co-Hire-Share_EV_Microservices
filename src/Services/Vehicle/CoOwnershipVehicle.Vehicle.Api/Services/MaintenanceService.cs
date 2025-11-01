@@ -982,4 +982,322 @@ public class MaintenanceService : IMaintenanceService
     }
 
     #endregion
+
+    #region Query Upcoming and Overdue Maintenance
+
+    public async Task<UpcomingMaintenanceResponse> GetUpcomingMaintenanceAsync(int days = 30, MaintenancePriority? priority = null, ServiceType? serviceType = null)
+    {
+        var now = DateTime.UtcNow;
+        var futureDate = now.AddDays(days);
+
+        // Get all scheduled or in-progress maintenance within the date range
+        var query = _context.MaintenanceSchedules
+            .Include(s => s.Vehicle)
+            .Where(s => s.Status == MaintenanceStatus.Scheduled || s.Status == MaintenanceStatus.InProgress)
+            .Where(s => s.ScheduledDate <= futureDate)
+            .AsQueryable();
+
+        // Apply filters
+        if (priority.HasValue)
+        {
+            query = query.Where(s => s.Priority == priority.Value);
+        }
+
+        if (serviceType.HasValue)
+        {
+            query = query.Where(s => s.ServiceType == serviceType.Value);
+        }
+
+        var schedules = await query
+            .OrderBy(s => s.ScheduledDate)
+            .ToListAsync();
+
+        // Group by vehicle
+        var vehicleGroups = schedules.GroupBy(s => s.VehicleId);
+
+        var response = new UpcomingMaintenanceResponse
+        {
+            QueryDate = now,
+            DaysAhead = days,
+            Vehicles = new List<UpcomingMaintenanceByVehicle>()
+        };
+
+        foreach (var group in vehicleGroups)
+        {
+            var vehicle = group.First().Vehicle;
+            if (vehicle == null) continue;
+
+            var vehicleItem = new UpcomingMaintenanceByVehicle
+            {
+                VehicleId = group.Key,
+                Model = vehicle.Model,
+                PlateNumber = vehicle.PlateNumber,
+                MaintenanceItems = new List<UpcomingMaintenanceItem>()
+            };
+
+            foreach (var schedule in group)
+            {
+                var daysUntil = (int)(schedule.ScheduledDate - now).TotalDays;
+                var isOverdue = schedule.ScheduledDate < now;
+
+                vehicleItem.MaintenanceItems.Add(new UpcomingMaintenanceItem
+                {
+                    ScheduleId = schedule.Id,
+                    ServiceType = schedule.ServiceType,
+                    ScheduledDate = schedule.ScheduledDate,
+                    DaysUntilDue = daysUntil,
+                    IsOverdue = isOverdue,
+                    Priority = schedule.Priority,
+                    ServiceProvider = schedule.ServiceProvider,
+                    EstimatedCost = schedule.EstimatedCost,
+                    Notes = schedule.Notes
+                });
+
+                if (isOverdue)
+                {
+                    response.TotalOverdue++;
+                }
+                else
+                {
+                    response.TotalUpcoming++;
+                }
+            }
+
+            response.Vehicles.Add(vehicleItem);
+        }
+
+        return response;
+    }
+
+    public async Task<OverdueMaintenanceResponse> GetOverdueMaintenanceAsync()
+    {
+        var now = DateTime.UtcNow;
+
+        // Get all scheduled or in-progress maintenance that are past due
+        var overdueSchedules = await _context.MaintenanceSchedules
+            .Include(s => s.Vehicle)
+            .Where(s => (s.Status == MaintenanceStatus.Scheduled || s.Status == MaintenanceStatus.InProgress)
+                     && s.ScheduledDate < now)
+            .OrderBy(s => s.Priority)
+            .ThenByDescending(s => now.Subtract(s.ScheduledDate).TotalDays) // Most overdue first
+            .ToListAsync();
+
+        var response = new OverdueMaintenanceResponse
+        {
+            QueryDate = now,
+            TotalOverdue = overdueSchedules.Count,
+            Items = new List<OverdueMaintenanceItem>()
+        };
+
+        foreach (var schedule in overdueSchedules)
+        {
+            var daysOverdue = (int)(now - schedule.ScheduledDate).TotalDays;
+            var isCritical = schedule.Priority == MaintenancePriority.Urgent || daysOverdue > 30;
+
+            if (isCritical)
+            {
+                response.CriticalCount++;
+            }
+
+            response.Items.Add(new OverdueMaintenanceItem
+            {
+                ScheduleId = schedule.Id,
+                VehicleId = schedule.VehicleId,
+                VehicleModel = schedule.Vehicle?.Model ?? "Unknown",
+                PlateNumber = schedule.Vehicle?.PlateNumber ?? "Unknown",
+                ServiceType = schedule.ServiceType,
+                ScheduledDate = schedule.ScheduledDate,
+                DaysOverdue = daysOverdue,
+                Priority = schedule.Priority,
+                IsCritical = isCritical,
+                ServiceProvider = schedule.ServiceProvider,
+                EstimatedCost = schedule.EstimatedCost,
+                Notes = schedule.Notes
+            });
+        }
+
+        return response;
+    }
+
+    #endregion
+
+    #region Reschedule and Cancel Maintenance
+
+    public async Task<RescheduleMaintenanceResponse> RescheduleMaintenanceAsync(Guid scheduleId, RescheduleMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false)
+    {
+        // 1. Get the schedule
+        var schedule = await _context.MaintenanceSchedules
+            .Include(s => s.Vehicle)
+            .ThenInclude(v => v.Group)
+            .FirstOrDefaultAsync(s => s.Id == scheduleId);
+
+        if (schedule == null)
+        {
+            throw new InvalidOperationException($"Maintenance schedule {scheduleId} not found");
+        }
+
+        // 2. Validate user is authorized (admin or group member)
+        if (!isAdmin)
+        {
+            var groupId = schedule.Vehicle?.GroupId;
+            if (groupId == null)
+            {
+                throw new InvalidOperationException("Vehicle does not belong to a group");
+            }
+
+            var isMember = await _groupServiceClient.IsUserInGroupAsync(groupId.Value, userId, accessToken);
+            if (!isMember)
+            {
+                throw new UnauthorizedAccessException("You must be a group member to reschedule maintenance");
+            }
+        }
+
+        // 3. Validate new date is in the future
+        if (request.NewScheduledDate < DateTime.UtcNow)
+        {
+            throw new InvalidOperationException("New scheduled date must be in the future");
+        }
+
+        // 4. Check for conflicts at the new date
+        var conflicts = await CheckMaintenanceConflictsAsync(
+            schedule.VehicleId,
+            request.NewScheduledDate,
+            request.NewScheduledDate.AddMinutes(schedule.EstimatedDuration),
+            scheduleId);
+
+        // 5. If conflicts exist and not force, return conflict response
+        if (conflicts.Any() && !request.ForceReschedule && !isAdmin)
+        {
+            return new RescheduleMaintenanceResponse
+            {
+                ScheduleId = scheduleId,
+                OldScheduledDate = schedule.ScheduledDate,
+                NewScheduledDate = request.NewScheduledDate,
+                Reason = request.Reason,
+                Conflicts = conflicts,
+                HasConflicts = true,
+                Message = "Conflicts detected. Use ForceReschedule=true (admin only) to override."
+            };
+        }
+
+        // 6. Store original date if this is the first reschedule
+        if (!schedule.OriginalScheduledDate.HasValue)
+        {
+            schedule.OriginalScheduledDate = schedule.ScheduledDate;
+        }
+
+        var oldScheduledDate = schedule.ScheduledDate;
+
+        // 7. Update schedule
+        schedule.ScheduledDate = request.NewScheduledDate;
+        schedule.RescheduleCount++;
+        schedule.LastRescheduleReason = request.Reason;
+        schedule.LastRescheduledBy = userId;
+        schedule.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        // 8. Publish MaintenanceRescheduledEvent
+        var rescheduledEvent = new MaintenanceRescheduledEvent
+        {
+            MaintenanceScheduleId = scheduleId,
+            VehicleId = schedule.VehicleId,
+            GroupId = schedule.Vehicle?.GroupId ?? Guid.Empty,
+            ServiceType = schedule.ServiceType,
+            OldScheduledDate = oldScheduledDate,
+            NewScheduledDate = request.NewScheduledDate,
+            NewMaintenanceStartTime = request.NewScheduledDate,
+            NewMaintenanceEndTime = request.NewScheduledDate.AddMinutes(schedule.EstimatedDuration),
+            Reason = request.Reason,
+            RescheduledBy = userId
+        };
+
+        await _publishEndpoint.Publish(rescheduledEvent);
+
+        _logger.LogInformation(
+            "Maintenance {ScheduleId} rescheduled from {OldDate} to {NewDate} by user {UserId}. Reason: {Reason}",
+            scheduleId, oldScheduledDate, request.NewScheduledDate, userId, request.Reason);
+
+        return new RescheduleMaintenanceResponse
+        {
+            ScheduleId = scheduleId,
+            OldScheduledDate = oldScheduledDate,
+            NewScheduledDate = request.NewScheduledDate,
+            Reason = request.Reason,
+            Conflicts = conflicts,
+            HasConflicts = false,
+            Message = $"Maintenance rescheduled successfully. Rescheduled {schedule.RescheduleCount} time(s)."
+        };
+    }
+
+    public async Task<bool> CancelMaintenanceAsync(Guid scheduleId, CancelMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false)
+    {
+        // 1. Get the schedule
+        var schedule = await _context.MaintenanceSchedules
+            .Include(s => s.Vehicle)
+            .ThenInclude(v => v.Group)
+            .FirstOrDefaultAsync(s => s.Id == scheduleId);
+
+        if (schedule == null)
+        {
+            throw new InvalidOperationException($"Maintenance schedule {scheduleId} not found");
+        }
+
+        // 2. Validate user is authorized (admin or group member)
+        if (!isAdmin)
+        {
+            var groupId = schedule.Vehicle?.GroupId;
+            if (groupId == null)
+            {
+                throw new InvalidOperationException("Vehicle does not belong to a group");
+            }
+
+            var isMember = await _groupServiceClient.IsUserInGroupAsync(groupId.Value, userId, accessToken);
+            if (!isMember)
+            {
+                throw new UnauthorizedAccessException("You must be a group member to cancel maintenance");
+            }
+        }
+
+        // 3. Cannot cancel already completed maintenance
+        if (schedule.Status == MaintenanceStatus.Completed)
+        {
+            throw new InvalidOperationException("Cannot cancel already completed maintenance");
+        }
+
+        // 4. Update schedule status to Cancelled
+        schedule.Status = MaintenanceStatus.Cancelled;
+        schedule.CancellationReason = request.CancellationReason;
+        schedule.CancelledBy = userId;
+        schedule.UpdatedAt = DateTime.UtcNow;
+
+        // 5. If vehicle was in Maintenance status, revert it back to Available
+        if (schedule.Vehicle != null && schedule.Vehicle.Status == VehicleStatus.Maintenance)
+        {
+            schedule.Vehicle.Status = VehicleStatus.Available;
+            schedule.Vehicle.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+
+        // 6. Publish MaintenanceCancelledEvent
+        var cancelledEvent = new MaintenanceCancelledEvent
+        {
+            MaintenanceScheduleId = scheduleId,
+            VehicleId = schedule.VehicleId,
+            GroupId = schedule.Vehicle?.GroupId ?? Guid.Empty,
+            CancellationReason = request.CancellationReason,
+            CancelledBy = userId
+        };
+
+        await _publishEndpoint.Publish(cancelledEvent);
+
+        _logger.LogInformation(
+            "Maintenance {ScheduleId} cancelled by user {UserId}. Reason: {Reason}",
+            scheduleId, userId, request.CancellationReason);
+
+        return true;
+    }
+
+    #endregion
 }

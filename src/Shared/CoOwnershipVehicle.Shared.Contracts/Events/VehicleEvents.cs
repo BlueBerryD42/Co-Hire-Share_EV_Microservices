@@ -59,3 +59,22 @@ public class MaintenanceCancelledEvent : BaseEvent
         EventType = nameof(MaintenanceCancelledEvent);
     }
 }
+
+public class MaintenanceRescheduledEvent : BaseEvent
+{
+    public Guid MaintenanceScheduleId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public ServiceType ServiceType { get; set; }
+    public DateTime OldScheduledDate { get; set; }
+    public DateTime NewScheduledDate { get; set; }
+    public DateTime NewMaintenanceStartTime { get; set; }
+    public DateTime NewMaintenanceEndTime { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public Guid RescheduledBy { get; set; }
+
+    public MaintenanceRescheduledEvent()
+    {
+        EventType = nameof(MaintenanceRescheduledEvent);
+    }
+}

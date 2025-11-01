@@ -410,6 +410,212 @@ public class MaintenanceController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Get upcoming maintenance within specified days
+    /// </summary>
+    /// <remarks>
+    /// Returns all scheduled and in-progress maintenance within the next X days.
+    /// Results are grouped by vehicle and sorted by date (nearest first).
+    ///
+    /// Sample request:
+    ///     GET /api/maintenance/upcoming?days=30&amp;priority=1&amp;serviceType=0
+    ///
+    /// Query parameters:
+    /// - days: Number of days ahead to check (default: 30)
+    /// - priority: Filter by priority level (optional)
+    /// - serviceType: Filter by service type (optional)
+    /// </remarks>
+    [HttpGet("upcoming")]
+    [ProducesResponseType(typeof(UpcomingMaintenanceResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetUpcomingMaintenance(
+        [FromQuery] int days = 30,
+        [FromQuery] MaintenancePriority? priority = null,
+        [FromQuery] ServiceType? serviceType = null)
+    {
+        try
+        {
+            var response = await _maintenanceService.GetUpcomingMaintenanceAsync(days, priority, serviceType);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting upcoming maintenance");
+            return StatusCode(500, new { message = "An error occurred while retrieving upcoming maintenance" });
+        }
+    }
+
+    /// <summary>
+    /// Get all overdue maintenance
+    /// </summary>
+    /// <remarks>
+    /// Returns all maintenance that are past their scheduled date and not yet completed.
+    /// Results are sorted by priority then by days overdue (most overdue first).
+    /// Critical items are flagged (Critical priority OR more than 30 days overdue).
+    ///
+    /// Sample request:
+    ///     GET /api/maintenance/overdue
+    /// </remarks>
+    [HttpGet("overdue")]
+    [ProducesResponseType(typeof(OverdueMaintenanceResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetOverdueMaintenance()
+    {
+        try
+        {
+            var response = await _maintenanceService.GetOverdueMaintenanceAsync();
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting overdue maintenance");
+            return StatusCode(500, new { message = "An error occurred while retrieving overdue maintenance" });
+        }
+    }
+
+    /// <summary>
+    /// Reschedule a maintenance appointment
+    /// </summary>
+    /// <remarks>
+    /// Reschedules a maintenance to a new date. Requires group membership or admin role.
+    ///
+    /// Features:
+    /// - Validates user authorization (group member or admin)
+    /// - Validates new date is in the future
+    /// - Checks for conflicts at the new date/time
+    /// - Tracks reschedule history and count
+    /// - Stores original scheduled date
+    /// - Publishes MaintenanceRescheduledEvent
+    /// - Sends notifications to group members
+    ///
+    /// Sample request:
+    ///     POST /api/maintenance/{id}/reschedule
+    ///     {
+    ///         "newScheduledDate": "2025-11-15T10:00:00Z",
+    ///         "reason": "Service provider requested different date due to parts availability",
+    ///         "forceReschedule": false
+    ///     }
+    ///
+    /// Returns 404 if maintenance schedule not found
+    /// Returns 403 if unauthorized
+    /// Returns 400 if new date is invalid
+    /// Returns 409 if conflicts detected and forceReschedule=false
+    /// </remarks>
+    [HttpPost("{id:guid}/reschedule")]
+    [ProducesResponseType(typeof(RescheduleMaintenanceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RescheduleMaintenance(Guid id, [FromBody] RescheduleMaintenanceRequest request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        try
+        {
+            var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
+            var isAdmin = User.IsInRole("Admin") || User.IsInRole("SystemAdmin");
+
+            var response = await _maintenanceService.RescheduleMaintenanceAsync(id, request, userId, accessToken, isAdmin);
+
+            // If conflicts detected, return 409
+            if (response.HasConflicts)
+            {
+                return StatusCode(409, response);
+            }
+
+            return Ok(response);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            _logger.LogWarning(ex, "Maintenance schedule {ScheduleId} not found", id);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized attempt to reschedule maintenance {ScheduleId}", id);
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid operation for rescheduling maintenance {ScheduleId}", id);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rescheduling maintenance {ScheduleId}", id);
+            return StatusCode(500, new { message = "An error occurred while rescheduling maintenance" });
+        }
+    }
+
+    /// <summary>
+    /// Cancel a scheduled maintenance
+    /// </summary>
+    /// <remarks>
+    /// Cancels a scheduled or in-progress maintenance. Requires group membership or admin role.
+    ///
+    /// Features:
+    /// - Validates user authorization (group member or admin)
+    /// - Cannot cancel already completed maintenance
+    /// - Updates status to Cancelled
+    /// - Records cancellation reason and user
+    /// - Reverts vehicle status to Available if it was in Maintenance
+    /// - Frees up the time slot
+    /// - Publishes MaintenanceCancelledEvent
+    /// - Sends notifications to group members
+    ///
+    /// Sample request:
+    ///     DELETE /api/maintenance/{id}
+    ///     {
+    ///         "cancellationReason": "Service provider is no longer available, will reschedule with different provider"
+    ///     }
+    ///
+    /// Returns 404 if maintenance schedule not found
+    /// Returns 403 if unauthorized
+    /// Returns 400 if trying to cancel completed maintenance
+    /// </remarks>
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CancelMaintenance(Guid id, [FromBody] CancelMaintenanceRequest request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        try
+        {
+            var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
+            var isAdmin = User.IsInRole("Admin") || User.IsInRole("SystemAdmin");
+
+            var success = await _maintenanceService.CancelMaintenanceAsync(id, request, userId, accessToken, isAdmin);
+
+            return Ok(new { message = "Maintenance cancelled successfully", scheduleId = id });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            _logger.LogWarning(ex, "Maintenance schedule {ScheduleId} not found", id);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized attempt to cancel maintenance {ScheduleId}", id);
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid operation for cancelling maintenance {ScheduleId}", id);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling maintenance {ScheduleId}", id);
+            return StatusCode(500, new { message = "An error occurred while cancelling maintenance" });
+        }
+    }
+
     #endregion
 
     #region MaintenanceRecord Endpoints

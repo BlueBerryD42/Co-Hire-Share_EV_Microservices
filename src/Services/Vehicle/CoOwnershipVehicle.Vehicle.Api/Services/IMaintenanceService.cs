@@ -43,4 +43,12 @@ public interface IMaintenanceService
 
     // Complete maintenance
     Task<CompleteMaintenanceResponse> CompleteMaintenanceAsync(Guid scheduleId, CompleteMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false);
+
+    // Query upcoming and overdue maintenance
+    Task<UpcomingMaintenanceResponse> GetUpcomingMaintenanceAsync(int days = 30, MaintenancePriority? priority = null, ServiceType? serviceType = null);
+    Task<OverdueMaintenanceResponse> GetOverdueMaintenanceAsync();
+
+    // Reschedule and cancel
+    Task<RescheduleMaintenanceResponse> RescheduleMaintenanceAsync(Guid scheduleId, RescheduleMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false);
+    Task<bool> CancelMaintenanceAsync(Guid scheduleId, CancelMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false);
 }

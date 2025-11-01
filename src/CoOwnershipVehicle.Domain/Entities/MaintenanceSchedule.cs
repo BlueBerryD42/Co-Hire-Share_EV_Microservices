@@ -69,6 +69,38 @@ public class MaintenanceSchedule : BaseEntity
     [Required]
     public Guid CreatedBy { get; set; }
 
+    /// <summary>
+    /// Cancellation reason if status is Cancelled
+    /// </summary>
+    [StringLength(500)]
+    public string? CancellationReason { get; set; }
+
+    /// <summary>
+    /// User ID who cancelled this schedule (if applicable)
+    /// </summary>
+    public Guid? CancelledBy { get; set; }
+
+    /// <summary>
+    /// Original scheduled date (before any rescheduling)
+    /// </summary>
+    public DateTime? OriginalScheduledDate { get; set; }
+
+    /// <summary>
+    /// Number of times this maintenance has been rescheduled
+    /// </summary>
+    public int RescheduleCount { get; set; } = 0;
+
+    /// <summary>
+    /// Last reschedule reason
+    /// </summary>
+    [StringLength(500)]
+    public string? LastRescheduleReason { get; set; }
+
+    /// <summary>
+    /// User ID who last rescheduled this maintenance
+    /// </summary>
+    public Guid? LastRescheduledBy { get; set; }
+
     // Navigation properties
     /// <summary>
     /// Navigation property to the Vehicle
