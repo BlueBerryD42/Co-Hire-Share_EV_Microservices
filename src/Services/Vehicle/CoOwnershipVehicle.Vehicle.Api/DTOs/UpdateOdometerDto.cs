@@ -1,5 +1,4 @@
-
-namespace CoOwnershipVehicle.Vehicle.Api.Controllers
+namespace CoOwnershipVehicle.Vehicle.Api.DTOs
 {
     public class UpdateOdometerDto
     {

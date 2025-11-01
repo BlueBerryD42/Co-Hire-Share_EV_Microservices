@@ -41,5 +41,41 @@ namespace CoOwnershipVehicle.Vehicle.Api.Services
                 return null;
             }
         }
+
+        public async Task<VehicleBookingStatistics?> GetVehicleBookingStatisticsAsync(Guid vehicleId, DateTime startDate, DateTime endDate, string accessToken)
+        {
+            try
+            {
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                var response = await _httpClient.GetAsync($"/api/booking/vehicle/{vehicleId}/statistics?startDate={startDate:o}&endDate={endDate:o}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                    };
+                    options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+                    return JsonSerializer.Deserialize<VehicleBookingStatistics>(content, options);
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogWarning("No booking statistics found for vehicle {VehicleId}", vehicleId);
+                    return null;
+                }
+                else
+                {
+                    _logger.LogError("Failed to get booking statistics for vehicle {VehicleId}. Status code: {StatusCode}",
+                        vehicleId, response.StatusCode);
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception occurred while getting booking statistics for vehicle {VehicleId}", vehicleId);
+                return null;
+            }
+        }
     }
 }

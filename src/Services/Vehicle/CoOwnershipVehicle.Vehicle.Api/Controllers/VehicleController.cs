@@ -4,7 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Vehicle.Api.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Domain.Entities;
-using CoOwnershipVehicle.Vehicle.Api.Services; // Added for IGroupServiceClient
+using CoOwnershipVehicle.Vehicle.Api.Services;
+using CoOwnershipVehicle.Vehicle.Api.DTOs; // Added for IGroupServiceClient
 
 namespace CoOwnershipVehicle.Vehicle.Api.Controllers;
 
@@ -17,13 +18,20 @@ public class VehicleController : ControllerBase
     private readonly ILogger<VehicleController> _logger;
     private readonly IGroupServiceClient _groupServiceClient; // Injected
     private readonly IBookingServiceClient _bookingServiceClient; // Injected
+    private readonly VehicleStatisticsService _statisticsService; // Injected
 
-    public VehicleController(VehicleDbContext context, ILogger<VehicleController> logger, IGroupServiceClient groupServiceClient, IBookingServiceClient bookingServiceClient)
+    public VehicleController(
+        VehicleDbContext context,
+        ILogger<VehicleController> logger,
+        IGroupServiceClient groupServiceClient,
+        IBookingServiceClient bookingServiceClient,
+        VehicleStatisticsService statisticsService)
     {
         _context = context;
         _logger = logger;
         _groupServiceClient = groupServiceClient; // Assigned
         _bookingServiceClient = bookingServiceClient; // Assigned
+        _statisticsService = statisticsService; // Assigned
     }
 
     [HttpGet]
@@ -266,6 +274,89 @@ public class VehicleController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Get comprehensive usage statistics for a vehicle
+    /// </summary>
+    /// <param name="id">Vehicle ID</param>
+    /// <param name="startDate">Start date for statistics period (default: 30 days ago)</param>
+    /// <param name="endDate">End date for statistics period (default: now)</param>
+    /// <param name="groupBy">Time grouping: daily, weekly, monthly (default: daily)</param>
+    /// <param name="includeBenchmarks">Include benchmark comparisons (default: true)</param>
+    /// <returns>Comprehensive vehicle statistics including usage, utilization, efficiency, patterns, trends, and benchmarks</returns>
+    [HttpGet("{id:guid}/statistics")]
+    [ProducesResponseType(typeof(DTOs.VehicleStatisticsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetVehicleStatistics(
+        Guid id,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] string groupBy = "daily",
+        [FromQuery] bool includeBenchmarks = true)
+    {
+        try
+        {
+            // 1. Validate vehicle exists
+            var vehicle = await _context.Vehicles
+                .FirstOrDefaultAsync(v => v.Id == id);
+
+            if (vehicle == null)
+            {
+                _logger.LogWarning("Vehicle {VehicleId} not found", id);
+                return NotFound(new { message = $"Vehicle {id} not found" });
+            }
+
+            // 2. Check authorization - user must be in the vehicle's group
+            var userId = GetCurrentUserId();
+            var userGroupIds = await GetUserGroupIds();
+
+            if (!vehicle.GroupId.HasValue || !userGroupIds.Contains(vehicle.GroupId.Value))
+            {
+                _logger.LogWarning("User {UserId} attempted to access statistics for vehicle {VehicleId} without authorization", userId, id);
+                return Forbidden(new { message = "You do not have permission to view statistics for this vehicle" });
+            }
+
+            // 3. Get access token for Booking service calls
+            var accessToken = GetAccessToken();
+
+            // 4. Build request
+            var request = new DTOs.VehicleStatisticsRequest
+            {
+                StartDate = startDate,
+                EndDate = endDate,
+                GroupBy = groupBy,
+                IncludeBenchmarks = includeBenchmarks
+            };
+
+            // 5. Get statistics from service
+            var statistics = await _statisticsService.GetVehicleStatisticsAsync(id, request, accessToken);
+
+            _logger.LogInformation(
+                "Retrieved statistics for vehicle {VehicleId} for period {StartDate} to {EndDate}",
+                id, statistics.StartDate, statistics.EndDate);
+
+            return Ok(statistics);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            _logger.LogWarning(ex, "Vehicle {VehicleId} not found", id);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access to vehicle statistics");
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving statistics for vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while retrieving vehicle statistics" });
+        }
+    }
+
+    #region Helper Methods
+
     private Guid GetCurrentUserId()
     {
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -276,8 +367,20 @@ public class VehicleController : ControllerBase
         return userId;
     }
 
+    private string GetAccessToken()
+    {
+        var authHeader = HttpContext.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            throw new UnauthorizedAccessException("Missing or invalid authorization header");
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
+    }
+
     private IActionResult Forbidden(object value)
     {
         return StatusCode(403, value);
     }
+
+    #endregion
 }

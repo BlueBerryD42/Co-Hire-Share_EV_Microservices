@@ -1,0 +1,56 @@
+{
+  "name": "Vehicle Statistics - Local Environment",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "https://localhost:61603",
+      "enabled": true
+    },
+    {
+      "key": "auth_base_url",
+      "value": "https://localhost:61601",
+      "enabled": true
+    },
+    {
+      "key": "vehicle_id",
+      "value": "2296D6F7-F501-42D5-ABA9-56A3EBD835EC",
+      "enabled": true
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "other_user_token",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "admin_email",
+      "value": "admin@coev.com",
+      "enabled": true
+    },
+    {
+      "key": "admin_password",
+      "value": "Admin123!",
+      "enabled": true
+    },
+    {
+      "key": "today",
+      "value": "2025-11-01",
+      "enabled": true
+    },
+    {
+      "key": "seven_days_ago",
+      "value": "2025-10-25",
+      "enabled": true
+    },
+    {
+      "key": "thirty_days_ago",
+      "value": "2025-10-02",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}

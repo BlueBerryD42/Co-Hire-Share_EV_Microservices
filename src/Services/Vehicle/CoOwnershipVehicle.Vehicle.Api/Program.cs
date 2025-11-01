@@ -109,6 +109,9 @@ namespace CoOwnershipVehicle.Vehicle.Api
             builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
             builder.Services.AddScoped<IMaintenancePdfService, MaintenancePdfService>();
 
+            // Add Vehicle Statistics Service
+            builder.Services.AddScoped<VehicleStatisticsService>();
+
             // Add Entity Framework
             var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
             dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_VEHICLE", builder.Configuration) ?? "CoOwnershipVehicle_Vehicle";

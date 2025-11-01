@@ -37,4 +37,47 @@ namespace CoOwnershipVehicle.Vehicle.Api.Services
         Cancelled = 5,
         NoShow = 6
     }
+
+    /// <summary>
+    /// Booking statistics for a vehicle
+    /// </summary>
+    public class VehicleBookingStatistics
+    {
+        public Guid VehicleId { get; set; }
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+
+        // Completed bookings
+        public List<CompletedBookingDto> CompletedBookings { get; set; } = new();
+
+        // Summary metrics
+        public int TotalBookings { get; set; }
+        public int CompletedBookingsCount { get; set; }
+        public int CancelledBookings { get; set; }
+        public decimal TotalDistance { get; set; }
+        public decimal TotalRevenue { get; set; }
+        public decimal TotalUsageHours { get; set; }
+    }
+
+    /// <summary>
+    /// Completed booking with check-in/check-out data
+    /// </summary>
+    public class CompletedBookingDto
+    {
+        public Guid Id { get; set; }
+        public Guid VehicleId { get; set; }
+        public Guid UserId { get; set; }
+        public string UserFirstName { get; set; } = string.Empty;
+        public string UserLastName { get; set; } = string.Empty;
+        public string UserEmail { get; set; } = string.Empty;
+        public DateTime StartAt { get; set; }
+        public DateTime EndAt { get; set; }
+        public DateTime? ActualStartAt { get; set; }
+        public DateTime? ActualEndAt { get; set; }
+        public int? CheckInOdometer { get; set; }
+        public int? CheckOutOdometer { get; set; }
+        public decimal? Distance { get; set; }
+        public decimal? Cost { get; set; }
+        public decimal UsageHours { get; set; }
+    }
 }
