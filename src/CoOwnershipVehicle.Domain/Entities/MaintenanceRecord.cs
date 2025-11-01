@@ -81,6 +81,25 @@ public class MaintenanceRecord : BaseEntity
     [Required]
     public Guid PerformedBy { get; set; }
 
+    /// <summary>
+    /// Completion percentage for multi-day services (0-100)
+    /// 100 means fully completed
+    /// </summary>
+    [Range(0, 100)]
+    public int CompletionPercentage { get; set; } = 100;
+
+    /// <summary>
+    /// Service provider rating (1-5 stars)
+    /// </summary>
+    [Range(1, 5)]
+    public int? ServiceProviderRating { get; set; }
+
+    /// <summary>
+    /// Review or feedback for the service provider
+    /// </summary>
+    [StringLength(1000)]
+    public string? ServiceProviderReview { get; set; }
+
     // Navigation properties
     /// <summary>
     /// Navigation property to the Vehicle

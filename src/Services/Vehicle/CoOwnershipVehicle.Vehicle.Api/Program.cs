@@ -107,6 +107,7 @@ namespace CoOwnershipVehicle.Vehicle.Api
 
             // Add Maintenance Service
             builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
+            builder.Services.AddScoped<IMaintenancePdfService, MaintenancePdfService>();
 
             // Add Entity Framework
             var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);

@@ -25,6 +25,7 @@ public class MaintenanceScheduledEvent : BaseEvent
 
 public class MaintenanceCompletedEvent : BaseEvent
 {
+    public Guid MaintenanceScheduleId { get; set; }
     public Guid MaintenanceRecordId { get; set; }
     public Guid VehicleId { get; set; }
     public Guid GroupId { get; set; }
@@ -32,6 +33,11 @@ public class MaintenanceCompletedEvent : BaseEvent
     public DateTime ServiceDate { get; set; }
     public decimal ActualCost { get; set; }
     public int OdometerReading { get; set; }
+    public string? WorkPerformed { get; set; }
+    public string? PartsReplaced { get; set; }
+    public string? ServiceProvider { get; set; }
+    public DateTime? NextServiceDue { get; set; }
+    public int? NextServiceOdometer { get; set; }
     public Guid PerformedBy { get; set; }
 
     public MaintenanceCompletedEvent()

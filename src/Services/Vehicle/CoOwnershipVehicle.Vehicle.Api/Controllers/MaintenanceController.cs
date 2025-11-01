@@ -14,11 +14,16 @@ namespace CoOwnershipVehicle.Vehicle.Api.Controllers;
 public class MaintenanceController : ControllerBase
 {
     private readonly IMaintenanceService _maintenanceService;
+    private readonly IMaintenancePdfService _pdfService;
     private readonly ILogger<MaintenanceController> _logger;
 
-    public MaintenanceController(IMaintenanceService maintenanceService, ILogger<MaintenanceController> logger)
+    public MaintenanceController(
+        IMaintenanceService maintenanceService,
+        IMaintenancePdfService pdfService,
+        ILogger<MaintenanceController> logger)
     {
         _maintenanceService = maintenanceService;
+        _pdfService = pdfService;
         _logger = logger;
     }
 
@@ -311,6 +316,100 @@ public class MaintenanceController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Complete a scheduled maintenance
+    /// </summary>
+    /// <remarks>
+    /// Marks a scheduled or in-progress maintenance as completed with detailed record keeping.
+    ///
+    /// Features:
+    /// - Validates user is group member or admin
+    /// - Validates maintenance schedule exists and is not already completed
+    /// - Validates odometer reading (must be >= previous reading)
+    /// - Updates maintenance schedule status to Completed
+    /// - Creates detailed maintenance record
+    /// - Updates vehicle status back to Available (if it was in Maintenance)
+    /// - Updates vehicle odometer reading
+    /// - Publishes MaintenanceCompletedEvent
+    /// - Sends completion notification to group members
+    /// - Optionally creates expense record in Payment service
+    /// - Auto-schedules next maintenance if recurring service
+    ///
+    /// Sample request:
+    ///
+    ///     PUT /api/maintenance/{id}/complete
+    ///     {
+    ///         "actualCost": 150.50,
+    ///         "odometerReading": 25000,
+    ///         "workPerformed": "Oil change, oil filter replacement, air filter replacement, tire rotation",
+    ///         "partsReplaced": "Oil filter (OEM), Air filter (OEM)",
+    ///         "nextServiceDue": "2026-04-15T10:00:00Z",
+    ///         "nextServiceOdometer": 30000,
+    ///         "notes": "All fluids checked and topped up. Tire pressure adjusted.",
+    ///         "createExpenseRecord": true,
+    ///         "expenseCategory": "Maintenance",
+    ///         "serviceProviderRating": 5,
+    ///         "serviceProviderReview": "Excellent service, completed on time"
+    ///     }
+    ///
+    /// Returns 404 if maintenance schedule not found
+    /// Returns 403 if user is not authorized
+    /// Returns 400 if validation fails (invalid status, odometer reading, etc.)
+    /// Returns 409 if maintenance is already completed
+    /// </remarks>
+    [HttpPut("{id:guid}/complete")]
+    [ProducesResponseType(typeof(CompleteMaintenanceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CompleteMaintenance(Guid id, [FromBody] CompleteMaintenanceRequest request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        try
+        {
+            var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
+            var isAdmin = User.IsInRole("Admin") || User.IsInRole("SystemAdmin");
+
+            var response = await _maintenanceService.CompleteMaintenanceAsync(id, request, userId, accessToken, isAdmin);
+
+            return Ok(response);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            _logger.LogWarning(ex, "Maintenance schedule {ScheduleId} not found", id);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot complete"))
+        {
+            _logger.LogWarning(ex, "Cannot complete maintenance {ScheduleId}", id);
+            return StatusCode(409, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Invalid odometer"))
+        {
+            _logger.LogWarning(ex, "Invalid odometer reading for maintenance {ScheduleId}", id);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized attempt to complete maintenance {ScheduleId}", id);
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid operation for maintenance {ScheduleId}", id);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing maintenance {ScheduleId}", id);
+            return StatusCode(500, new { message = "An error occurred while completing maintenance" });
+        }
+    }
+
     #endregion
 
     #region MaintenanceRecord Endpoints
@@ -339,6 +438,47 @@ public class MaintenanceController : ControllerBase
             return NotFound(new { message = "No maintenance record found for this service type" });
 
         return Ok(record);
+    }
+
+    /// <summary>
+    /// Download maintenance completion report as PDF
+    /// </summary>
+    /// <remarks>
+    /// Generates and downloads a PDF report for a completed maintenance record.
+    ///
+    /// The PDF includes:
+    /// - Vehicle information (model, plate number, odometer)
+    /// - Service details (type, date, provider, completion percentage)
+    /// - Work performed and parts replaced
+    /// - Cost information
+    /// - Next service due information
+    /// - Service provider rating and review (if provided)
+    ///
+    /// Sample request:
+    ///     GET /api/maintenance/records/{recordId}/pdf
+    /// </remarks>
+    [HttpGet("records/{recordId:guid}/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadMaintenanceReport(Guid recordId)
+    {
+        try
+        {
+            var pdfBytes = await _pdfService.GenerateMaintenanceReportPdfAsync(recordId);
+            var fileName = $"Maintenance_Report_{recordId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.pdf";
+
+            return File(pdfBytes, "application/pdf", fileName);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            _logger.LogWarning(ex, "Maintenance record {RecordId} not found for PDF generation", recordId);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating PDF report for maintenance record {RecordId}", recordId);
+            return StatusCode(500, new { message = "An error occurred while generating the PDF report" });
+        }
     }
 
     /// <summary>

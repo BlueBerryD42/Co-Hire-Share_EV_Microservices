@@ -40,4 +40,7 @@ public interface IMaintenanceService
     Task<MaintenanceScheduleResponse> GetVehicleMaintenanceScheduleAsync(Guid vehicleId, MaintenanceScheduleQuery query, Guid userId, string accessToken);
     Task<MaintenanceHistoryResponse> GetVehicleMaintenanceHistoryAsync(Guid vehicleId, MaintenanceHistoryQuery query, Guid userId, string accessToken);
     Task<MaintenanceCostStatistics> CalculateMaintenanceStatisticsAsync(Guid vehicleId, DateTime? startDate = null, DateTime? endDate = null);
+
+    // Complete maintenance
+    Task<CompleteMaintenanceResponse> CompleteMaintenanceAsync(Guid scheduleId, CompleteMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false);
 }

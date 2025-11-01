@@ -696,4 +696,290 @@ public class MaintenanceService : IMaintenanceService
     }
 
     #endregion
+
+    #region Complete Maintenance
+
+    public async Task<CompleteMaintenanceResponse> CompleteMaintenanceAsync(
+        Guid scheduleId,
+        CompleteMaintenanceRequest request,
+        Guid userId,
+        string accessToken,
+        bool isAdmin = false)
+    {
+        // 1. Validate maintenance schedule exists
+        var schedule = await _context.MaintenanceSchedules
+            .Include(s => s.Vehicle)
+            .FirstOrDefaultAsync(s => s.Id == scheduleId);
+
+        if (schedule == null)
+        {
+            throw new InvalidOperationException($"Maintenance schedule {scheduleId} not found");
+        }
+
+        if (schedule.Vehicle == null || !schedule.Vehicle.GroupId.HasValue)
+        {
+            throw new InvalidOperationException($"Vehicle {schedule.VehicleId} not found or not associated with a group");
+        }
+
+        // 2. Validate user is group member or admin
+        if (!isAdmin)
+        {
+            var isMember = await _groupServiceClient.IsUserInGroupAsync(
+                schedule.Vehicle.GroupId.Value,
+                userId,
+                accessToken);
+
+            if (!isMember)
+            {
+                throw new UnauthorizedAccessException(
+                    $"User {userId} does not have permission to complete maintenance for vehicle {schedule.VehicleId}");
+            }
+        }
+
+        // 3. Validate status is Scheduled or InProgress
+        if (schedule.Status != MaintenanceStatus.Scheduled &&
+            schedule.Status != MaintenanceStatus.InProgress)
+        {
+            throw new InvalidOperationException(
+                $"Cannot complete maintenance with status {schedule.Status}. Only Scheduled or InProgress maintenance can be completed");
+        }
+
+        // 4. Validate odometer reading
+        await ValidateOdometerReadingAsync(schedule.VehicleId, request.OdometerReading);
+
+        // 5. Determine if this is partial or full completion
+        bool isFullyCompleted = request.CompletionPercentage == 100;
+
+        // Update schedule status based on completion percentage
+        if (isFullyCompleted)
+        {
+            schedule.Status = MaintenanceStatus.Completed;
+        }
+        else
+        {
+            // Keep as InProgress for partial completion
+            schedule.Status = MaintenanceStatus.InProgress;
+        }
+        schedule.UpdatedAt = DateTime.UtcNow;
+
+        // 6. Create MaintenanceRecord with details
+        var maintenanceRecord = new MaintenanceRecord
+        {
+            Id = Guid.NewGuid(),
+            VehicleId = schedule.VehicleId,
+            ServiceType = schedule.ServiceType,
+            ServiceDate = DateTime.UtcNow,
+            OdometerReading = request.OdometerReading,
+            ActualCost = request.ActualCost,
+            ServiceProvider = schedule.ServiceProvider ?? "Unknown",
+            WorkPerformed = request.WorkPerformed,
+            PartsReplaced = request.PartsReplaced,
+            NextServiceDue = request.NextServiceDue,
+            NextServiceOdometer = request.NextServiceOdometer,
+            CompletionPercentage = request.CompletionPercentage,
+            ServiceProviderRating = request.ServiceProviderRating,
+            ServiceProviderReview = request.ServiceProviderReview,
+            PerformedBy = userId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.MaintenanceRecords.Add(maintenanceRecord);
+
+        // 7. Update vehicle status back to Available (only if fully completed and was in Maintenance)
+        bool vehicleStatusUpdated = false;
+        if (isFullyCompleted && schedule.Vehicle.Status == VehicleStatus.Maintenance)
+        {
+            schedule.Vehicle.Status = VehicleStatus.Available;
+            schedule.Vehicle.UpdatedAt = DateTime.UtcNow;
+            vehicleStatusUpdated = true;
+
+            // Publish vehicle status changed event
+            await _publishEndpoint.Publish(new VehicleStatusChangedEvent
+            {
+                VehicleId = schedule.VehicleId,
+                GroupId = schedule.Vehicle.GroupId.Value,
+                OldStatus = VehicleStatus.Maintenance,
+                NewStatus = VehicleStatus.Available,
+                ChangedBy = userId,
+                ChangedAt = DateTime.UtcNow
+            });
+
+            _logger.LogInformation(
+                "Vehicle {VehicleId} status updated from Maintenance to Available after completing maintenance {ScheduleId}",
+                schedule.VehicleId, scheduleId);
+        }
+
+        // 8. Update vehicle odometer reading
+        schedule.Vehicle.Odometer = request.OdometerReading;
+
+        await _context.SaveChangesAsync();
+
+        // 9. Publish MaintenanceCompletedEvent
+        await _publishEndpoint.Publish(new MaintenanceCompletedEvent
+        {
+            MaintenanceScheduleId = scheduleId,
+            MaintenanceRecordId = maintenanceRecord.Id,
+            VehicleId = schedule.VehicleId,
+            GroupId = schedule.Vehicle.GroupId.Value,
+            ServiceType = schedule.ServiceType,
+            ServiceDate = maintenanceRecord.ServiceDate,
+            ActualCost = request.ActualCost,
+            OdometerReading = request.OdometerReading,
+            WorkPerformed = request.WorkPerformed,
+            PartsReplaced = request.PartsReplaced,
+            ServiceProvider = schedule.ServiceProvider,
+            NextServiceDue = request.NextServiceDue,
+            NextServiceOdometer = request.NextServiceOdometer,
+            PerformedBy = userId
+        });
+
+        _logger.LogInformation(
+            "Maintenance {ScheduleId} completed successfully. Record {RecordId} created",
+            scheduleId, maintenanceRecord.Id);
+
+        // 10. Send completion notification to group members
+        await _publishEndpoint.Publish(new BulkNotificationEvent
+        {
+            GroupId = schedule.Vehicle.GroupId.Value,
+            Title = $"Maintenance Completed - {schedule.ServiceType}",
+            Message = $"Maintenance for vehicle {schedule.Vehicle.Model} ({schedule.Vehicle.PlateNumber}) has been completed. " +
+                     $"Service: {schedule.ServiceType}, Cost: ${request.ActualCost:F2}, Odometer: {request.OdometerReading:N0} km",
+            Type = "MaintenanceCompleted",
+            Priority = "Medium",
+            CreatedAt = DateTime.UtcNow
+        });
+
+        // 11. Optionally create Expense record (if requested)
+        Guid? expenseId = null;
+        bool expenseRecordCreated = false;
+
+        if (request.CreateExpenseRecord)
+        {
+            try
+            {
+                // TODO: Implement expense creation via Payment service API call
+                // For now, we'll just publish an event
+                await _publishEndpoint.Publish(new ExpenseCreatedEvent
+                {
+                    ExpenseId = Guid.NewGuid(),
+                    VehicleId = schedule.VehicleId,
+                    GroupId = schedule.Vehicle.GroupId.Value,
+                    ExpenseType = Domain.Entities.ExpenseType.Maintenance,
+                    Amount = request.ActualCost,
+                    Description = $"Maintenance: {schedule.ServiceType} - {request.WorkPerformed}",
+                    DateIncurred = DateTime.UtcNow,
+                    CreatedBy = userId
+                });
+
+                expenseRecordCreated = true;
+                _logger.LogInformation(
+                    "Expense event published for maintenance {ScheduleId}, cost ${Cost}",
+                    scheduleId, request.ActualCost);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to create expense record for maintenance {ScheduleId}. Continuing with completion.",
+                    scheduleId);
+            }
+        }
+
+        // 12. Auto-schedule next maintenance if recurring
+        if (request.NextServiceDue.HasValue && request.NextServiceOdometer.HasValue)
+        {
+            try
+            {
+                var nextSchedule = new MaintenanceSchedule
+                {
+                    Id = Guid.NewGuid(),
+                    VehicleId = schedule.VehicleId,
+                    ServiceType = schedule.ServiceType,
+                    ScheduledDate = request.NextServiceDue.Value,
+                    EstimatedDuration = schedule.EstimatedDuration,
+                    EstimatedCost = request.ActualCost, // Use actual cost as estimate
+                    ServiceProvider = schedule.ServiceProvider,
+                    Priority = MaintenancePriority.Low,
+                    Status = MaintenanceStatus.Scheduled,
+                    Notes = $"Auto-scheduled recurring {schedule.ServiceType} maintenance",
+                    CreatedBy = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.MaintenanceSchedules.Add(nextSchedule);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Auto-scheduled next maintenance {NextScheduleId} for vehicle {VehicleId} on {NextDate}",
+                    nextSchedule.Id, schedule.VehicleId, request.NextServiceDue.Value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to auto-schedule next maintenance for vehicle {VehicleId}",
+                    schedule.VehicleId);
+            }
+        }
+
+        return new CompleteMaintenanceResponse
+        {
+            MaintenanceScheduleId = scheduleId,
+            MaintenanceRecordId = maintenanceRecord.Id,
+            VehicleId = schedule.VehicleId,
+            Status = MaintenanceStatus.Completed,
+            ActualCost = request.ActualCost,
+            OdometerReading = request.OdometerReading,
+            VehicleStatusUpdated = vehicleStatusUpdated,
+            ExpenseRecordCreated = expenseRecordCreated,
+            ExpenseId = expenseId,
+            NextServiceDue = request.NextServiceDue,
+            NextServiceOdometer = request.NextServiceOdometer,
+            Message = "Maintenance completed successfully"
+        };
+    }
+
+    private async Task ValidateOdometerReadingAsync(Guid vehicleId, int newReading)
+    {
+        // Get the latest odometer reading from vehicle
+        var vehicle = await _context.Vehicles.FindAsync(vehicleId);
+        if (vehicle == null)
+        {
+            throw new InvalidOperationException($"Vehicle {vehicleId} not found");
+        }
+
+        // Check if new reading is >= current reading
+        if (newReading < vehicle.Odometer)
+        {
+            throw new InvalidOperationException(
+                $"Invalid odometer reading {newReading} km. Must be greater than or equal to current reading {vehicle.Odometer} km");
+        }
+
+        // Get the latest maintenance record
+        var latestRecord = await _context.MaintenanceRecords
+            .Where(r => r.VehicleId == vehicleId)
+            .OrderByDescending(r => r.ServiceDate)
+            .FirstOrDefaultAsync();
+
+        if (latestRecord != null)
+        {
+            // Validate reading is >= previous record
+            if (newReading < latestRecord.OdometerReading)
+            {
+                throw new InvalidOperationException(
+                    $"Invalid odometer reading {newReading} km. Must be greater than or equal to previous maintenance reading {latestRecord.OdometerReading} km");
+            }
+
+            // Check for reasonable increase (warn if more than 50,000 km increase)
+            var increase = newReading - latestRecord.OdometerReading;
+            if (increase > 50000)
+            {
+                _logger.LogWarning(
+                    "Large odometer increase detected for vehicle {VehicleId}: {Increase} km (from {Old} to {New})",
+                    vehicleId, increase, latestRecord.OdometerReading, newReading);
+            }
+        }
+    }
+
+    #endregion
 }
