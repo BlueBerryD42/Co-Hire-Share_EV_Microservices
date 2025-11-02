@@ -3,28 +3,22 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CoOwnershipVehicle.Booking.Api.Configuration;
-using CoOwnershipVehicle.Booking.Api.Data;
+using CoOwnershipVehicle.Booking.Api.Contracts;
+using CoOwnershipVehicle.Booking.Api.DTOs;
+using CoOwnershipVehicle.Booking.Api.Repositories;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using QRCoder;
 using BookingEntity = CoOwnershipVehicle.Domain.Entities.Booking;
 
 namespace CoOwnershipVehicle.Booking.Api.Services;
 
-public interface IQrCodeService
-{
-    Task<VehicleQrCodeResult> GetVehicleQrCodeAsync(Guid vehicleId, Guid userId, CancellationToken cancellationToken = default);
-    Task<QrCodeValidationResponseDto> ValidateAsync(QrCodeValidationRequestDto request, Guid userId, CancellationToken cancellationToken = default);
-}
-
-public record VehicleQrCodeResult(Guid VehicleId, byte[] ImageBytes, string DataUrl, string Payload, DateTime ExpiresAt);
-
 internal sealed class VehicleQrService : IQrCodeService
 {
-    private readonly BookingDbContext _context;
+    private readonly IBookingRepository _bookingRepository;
     private readonly ILogger<VehicleQrService> _logger;
     private readonly IMemoryCache _cache;
     private readonly IOptionsMonitor<QrCodeOptions> _optionsMonitor;
@@ -34,12 +28,12 @@ internal sealed class VehicleQrService : IQrCodeService
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     public VehicleQrService(
-        BookingDbContext context,
+        IBookingRepository bookingRepository,
         ILogger<VehicleQrService> logger,
         IMemoryCache cache,
         IOptionsMonitor<QrCodeOptions> optionsMonitor)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _bookingRepository = bookingRepository ?? throw new ArgumentNullException(nameof(bookingRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _optionsMonitor = optionsMonitor ?? throw new ArgumentNullException(nameof(optionsMonitor));
@@ -62,14 +56,8 @@ internal sealed class VehicleQrService : IQrCodeService
             return BuildResultFromCache(cached);
         }
 
-        var vehicle = await _context.Vehicles
-            .AsNoTracking()
-            .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
-
-        if (vehicle == null)
-        {
-            throw new KeyNotFoundException("Vehicle not found for QR code generation.");
-        }
+        var vehicle = await _bookingRepository.GetVehicleByIdAsync(vehicleId, cancellationToken)
+                      ?? throw new KeyNotFoundException("Vehicle not found for QR code generation.");
 
         var now = DateTime.UtcNow;
         var payload = new VehicleQrPayload
@@ -141,54 +129,25 @@ internal sealed class VehicleQrService : IQrCodeService
         }
 
         var action = ParseAction(request.Action);
-        var vehicle = await _context.Vehicles
-            .AsNoTracking()
-            .FirstOrDefaultAsync(v => v.Id == payload.VehicleId, cancellationToken);
-
-        if (vehicle == null)
-        {
-            throw new ArgumentException("Vehicle referenced by QR code no longer exists.");
-        }
+        var vehicle = await _bookingRepository.GetVehicleByIdAsync(payload.VehicleId, cancellationToken)
+                      ?? throw new ArgumentException("Vehicle referenced by QR code no longer exists.");
 
         var now = DateTime.UtcNow;
-        BookingEntity? booking = null;
+        BookingEntity? booking;
 
         if (action == QrValidationAction.Checkout)
         {
             var windowStart = now.AddMinutes(-options.CheckoutLeadMinutes);
             var windowEnd = now.AddMinutes(options.CheckoutGraceMinutes);
 
-            booking = await _context.Bookings
-                .Include(b => b.Vehicle)
-                .Include(b => b.Group)
-                .Include(b => b.User)
-                .Where(b => b.VehicleId == payload.VehicleId &&
-                            b.UserId == userId &&
-                            (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.InProgress) &&
-                            windowStart <= b.StartAt &&
-                            b.StartAt <= windowEnd)
-                .OrderBy(b => b.StartAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (booking == null)
-            {
-                throw new ArgumentException("No active booking found for checkout within the allowed window.");
-            }
+            booking = await _bookingRepository.GetBookingForCheckoutWindowAsync(payload.VehicleId, userId, windowStart, windowEnd, cancellationToken)
+                      ?? throw new ArgumentException("No active booking found for checkout within the allowed window.");
         }
         else
         {
             var windowEnd = now.AddMinutes(options.CheckinGraceMinutes);
 
-            booking = await _context.Bookings
-                .Include(b => b.Vehicle)
-                .Include(b => b.Group)
-                .Include(b => b.User)
-                .Where(b => b.VehicleId == payload.VehicleId &&
-                            b.UserId == userId &&
-                            (b.Status == BookingStatus.InProgress || b.Status == BookingStatus.Confirmed) &&
-                            b.StartAt <= windowEnd)
-                .OrderByDescending(b => b.StartAt)
-                .FirstOrDefaultAsync(cancellationToken);
+            booking = await _bookingRepository.GetBookingForCheckinWindowAsync(payload.VehicleId, userId, now, windowEnd, cancellationToken);
 
             if (booking == null || now < booking.StartAt)
             {
@@ -196,7 +155,7 @@ internal sealed class VehicleQrService : IQrCodeService
             }
         }
 
-        var bookingDto = MapBookingToDto(booking!);
+        var bookingDto = MapBookingToDto(booking);
 
         return new QrCodeValidationResponseDto
         {
@@ -420,12 +379,7 @@ internal sealed class VehicleQrService : IQrCodeService
 
     private async Task EnsureUserHasVehicleAccessAsync(Guid vehicleId, Guid userId, CancellationToken cancellationToken)
     {
-        var hasAccess = await (from v in _context.Vehicles.AsNoTracking()
-                               join gm in _context.GroupMembers.AsNoTracking()
-                                   on v.GroupId equals gm.GroupId
-                               where v.Id == vehicleId && gm.UserId == userId
-                               select gm.UserId)
-                              .AnyAsync(cancellationToken);
+        var hasAccess = await _bookingRepository.UserHasVehicleAccessAsync(vehicleId, userId, cancellationToken);
 
         if (!hasAccess)
         {

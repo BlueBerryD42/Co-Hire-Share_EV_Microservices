@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Domain.Entities;
+using CoOwnershipVehicle.Booking.Api.Entities;
 
 namespace CoOwnershipVehicle.Booking.Api.Data;
 
@@ -17,7 +18,11 @@ public class BookingDbContext : DbContext
     public DbSet<GroupMember> GroupMembers { get; set; } // For priority calculation
     public DbSet<CheckIn> CheckIns { get; set; } // Vehicle handover check-ins
     public DbSet<CheckInPhoto> CheckInPhotos { get; set; } // Supporting media for check-ins
+    public DbSet<LateReturnFee> LateReturnFees { get; set; } // Late fee records
     public DbSet<DamageReport> DamageReports { get; set; }
+    public DbSet<BookingNotificationPreference> NotificationPreferences { get; set; }
+    public DbSet<RecurringBooking> RecurringBookings { get; set; }
+    public DbSet<BookingTemplate> BookingTemplates { get; set; } // Added BookingTemplate
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -45,10 +50,10 @@ public class BookingDbContext : DbContext
             entity.Property(e => e.Phone).HasMaxLength(20);
             entity.Property(e => e.KycStatus).HasConversion<int>();
             entity.Property(e => e.Role).HasConversion<int>();
-            
+
             entity.HasIndex(e => e.Email).IsUnique();
             entity.HasIndex(e => e.Phone);
-            
+
             // Ignore navigation properties not relevant to Booking service
             entity.Ignore(e => e.KycDocuments);
             entity.Ignore(e => e.ExpensesCreated);
@@ -117,6 +122,11 @@ public class BookingDbContext : DbContext
             entity.Property(e => e.PriorityScore).HasColumnType("decimal(10,4)");
             entity.Property(e => e.Notes).HasMaxLength(500);
             entity.Property(e => e.RequiresDamageReview).HasDefaultValue(false);
+            entity.Property(e => e.PreCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.FinalCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.MissedCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.RecurringBookingId);
+            entity.Property(e => e.BookingTemplateId); // Added BookingTemplateId
 
             entity.HasOne(e => e.Vehicle)
                   .WithMany(v => v.Bookings)
@@ -133,8 +143,78 @@ public class BookingDbContext : DbContext
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Restrict);
 
+            entity.HasOne(e => e.RecurringBooking)
+                  .WithMany(rb => rb.GeneratedBookings)
+                  .HasForeignKey(e => e.RecurringBookingId)
+                  .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(e => e.BookingTemplate) // Added navigation property
+                .WithMany() // BookingTemplate entity in this workspace doesn't expose GeneratedBookings; use unlinked collection
+                .HasForeignKey(e => e.BookingTemplateId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasIndex(e => new { e.VehicleId, e.StartAt, e.EndAt });
             entity.HasIndex(e => e.StartAt);
+        });
+
+        builder.Entity<RecurringBooking>(entity =>
+        {
+            entity.Property(e => e.Pattern).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Interval).HasDefaultValue(1);
+            entity.Property(e => e.DaysOfWeekMask);
+            entity.Property(e => e.StartTime).HasColumnType("time");
+            entity.Property(e => e.EndTime).HasColumnType("time");
+            entity.Property(e => e.RecurrenceStartDate).HasColumnType("date");
+            entity.Property(e => e.RecurrenceEndDate).HasColumnType("date");
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.Purpose).HasMaxLength(200);
+            entity.Property(e => e.CancellationReason).HasMaxLength(200);
+            entity.Property(e => e.TimeZoneId).HasMaxLength(100);
+
+            entity.HasOne(e => e.Vehicle)
+                  .WithMany(v => v.RecurringBookings)
+                  .HasForeignKey(e => e.VehicleId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany(g => g.RecurringBookings)
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.RecurringBookings)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.UserId);
+        });
+
+        // BookingTemplate entity configuration
+        builder.Entity<BookingTemplate>(entity =>
+        {
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Duration).HasColumnType("time");
+            entity.Property(e => e.PreferredStartTime).HasColumnType("time");
+            entity.Property(e => e.Purpose).HasMaxLength(500);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.Priority).HasConversion<int>();
+            entity.Property(e => e.UsageCount).HasDefaultValue(0);
+
+            entity.HasOne(e => e.User)
+                .WithMany() // Domain User may not expose BookingTemplates navigation in this service's model
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Vehicle)
+                .WithMany() // Domain Vehicle may not expose BookingTemplates navigation in this service's model
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.VehicleId);
         });
 
         // Check-in entity configuration
@@ -154,6 +234,9 @@ public class BookingDbContext : DbContext
             entity.Property(e => e.SignatureCertificateUrl).HasMaxLength(500);
             entity.Property(e => e.SignatureMetadataJson).HasMaxLength(2000);
             entity.Property(e => e.CheckInTime).HasColumnType("datetime2");
+            entity.Property(e => e.IsLateReturn).HasDefaultValue(false);
+            entity.Property(e => e.LateReturnMinutes);
+            entity.Property(e => e.LateFeeAmount).HasColumnType("decimal(18,2)");
 
             entity.HasOne(e => e.Booking)
                   .WithMany(b => b.CheckIns)
@@ -169,6 +252,11 @@ public class BookingDbContext : DbContext
                   .WithMany(v => v.CheckIns)
                   .HasForeignKey(e => e.VehicleId)
                   .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(e => e.LateReturnFee)
+                  .WithOne(l => l.CheckIn)
+                  .HasForeignKey<LateReturnFee>(l => l.CheckInId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<CheckInPhoto>(entity =>
@@ -188,6 +276,41 @@ public class BookingDbContext : DbContext
                   .WithMany(c => c.Photos)
                   .HasForeignKey(e => e.CheckInId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<LateReturnFee>(entity =>
+        {
+            entity.ToTable("LateReturnFee");
+
+            entity.Property(e => e.FeeAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.OriginalFeeAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.CalculationMethod).HasMaxLength(200);
+            entity.Property(e => e.WaivedReason).HasMaxLength(500);
+            entity.Property(e => e.Status).HasConversion<int>();
+
+            entity.HasOne(e => e.Booking)
+                  .WithMany(b => b.LateReturnFees)
+                  .HasForeignKey(e => e.BookingId)
+                  .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Vehicle)
+                  .WithMany()
+                  .HasForeignKey(e => e.VehicleId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<OwnershipGroup>()
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.BookingId);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.Status);
         });
 
         builder.Entity<DamageReport>(entity =>
@@ -210,6 +333,19 @@ public class BookingDbContext : DbContext
             entity.HasIndex(e => e.CheckInId);
             entity.HasIndex(e => e.BookingId);
             entity.HasIndex(e => e.VehicleId);
+        });
+
+        builder.Entity<BookingNotificationPreference>(entity =>
+        {
+            entity.ToTable("BookingNotificationPreference");
+
+            entity.HasKey(e => e.UserId);
+            entity.Property(e => e.EnableReminders).HasDefaultValue(true);
+            entity.Property(e => e.EnableEmail).HasDefaultValue(true);
+            entity.Property(e => e.EnableSms).HasDefaultValue(true);
+            entity.Property(e => e.PreferredTimeZoneId).HasMaxLength(100);
+            entity.Property(e => e.Notes).HasMaxLength(250);
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime2");
         });
 
         // Configure automatic timestamp updates

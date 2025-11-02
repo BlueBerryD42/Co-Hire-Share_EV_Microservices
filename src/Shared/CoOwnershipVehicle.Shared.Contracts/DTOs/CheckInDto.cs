@@ -15,6 +15,10 @@ public class CheckInDto
     public CheckInType Type { get; set; }
     public int Odometer { get; set; }
     public DateTime CheckInTime { get; set; }
+    public bool IsLateReturn { get; set; }
+    public double? LateReturnMinutes { get; set; }
+    public decimal? LateFeeAmount { get; set; }
+    public LateReturnFeeDto? LateReturnFee { get; set; }
     public string? Notes { get; set; }
     public string? SignatureReference { get; set; }
     public SignatureMetadataDto? SignatureMetadata { get; set; }
@@ -134,6 +138,7 @@ public class TripCompletionDto
     public double TripDurationMinutes { get; set; }
     public bool IsLateReturn { get; set; }
     public double LateByMinutes { get; set; }
+    public LateReturnFeeDto? LateFee { get; set; }
     public DateTime CheckOutTime { get; set; }
 }
 

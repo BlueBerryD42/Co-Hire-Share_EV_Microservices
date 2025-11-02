@@ -28,15 +28,30 @@ public class Booking : BaseEntity
     
     public bool IsEmergency { get; set; } = false;
     
+    [StringLength(1000)]
+    public string? EmergencyReason { get; set; } // Added EmergencyReason
+    
     public BookingPriority Priority { get; set; } = BookingPriority.Normal;
 
     public bool RequiresDamageReview { get; set; }
+
+    public DateTime? PreCheckoutReminderSentAt { get; set; }
+
+    public DateTime? FinalCheckoutReminderSentAt { get; set; }
+
+    public DateTime? MissedCheckoutReminderSentAt { get; set; }
+
+    public Guid? RecurringBookingId { get; set; }
+    public Guid? BookingTemplateId { get; set; } // Added BookingTemplateId
     
     // Navigation properties
     public virtual Vehicle Vehicle { get; set; } = null!;
     public virtual OwnershipGroup Group { get; set; } = null!;
     public virtual User User { get; set; } = null!;
     public virtual ICollection<CheckIn> CheckIns { get; set; } = new List<CheckIn>();
+    public virtual ICollection<LateReturnFee> LateReturnFees { get; set; } = new List<LateReturnFee>();
+    public virtual RecurringBooking? RecurringBooking { get; set; }
+    public virtual BookingTemplate? BookingTemplate { get; set; } // Added BookingTemplate navigation property
 }
 
 public enum BookingStatus

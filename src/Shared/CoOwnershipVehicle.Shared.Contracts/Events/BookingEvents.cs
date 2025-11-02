@@ -131,6 +131,103 @@ public class TripEndedEvent : BaseEvent
     }
 }
 
+public class LateReturnFeeCreatedEvent : BaseEvent
+{
+    public Guid LateReturnFeeId { get; set; }
+    public Guid BookingId { get; set; }
+    public Guid CheckInId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid VehicleId { get; set; }
+    public double LateByMinutes { get; set; }
+    public double ChargeableMinutes { get; set; }
+    public decimal FeeAmount { get; set; }
+    public LateReturnFeeStatus Status { get; set; }
+    public int GracePeriodMinutes { get; set; }
+    public string? CalculationMethod { get; set; }
+    public DateTime DetectedAt { get; set; }
+
+    public LateReturnFeeCreatedEvent()
+    {
+        EventType = nameof(LateReturnFeeCreatedEvent);
+    }
+}
+
+public class LateReturnFeeStatusChangedEvent : BaseEvent
+{
+    public Guid LateReturnFeeId { get; set; }
+    public Guid BookingId { get; set; }
+    public Guid CheckInId { get; set; }
+    public Guid UserId { get; set; }
+    public LateReturnFeeStatus Status { get; set; }
+    public Guid ChangedBy { get; set; }
+    public string? Reason { get; set; }
+    public decimal? FeeAmount { get; set; }
+    public Guid? ExpenseId { get; set; }
+    public Guid? InvoiceId { get; set; }
+    public DateTime ChangedAt { get; set; }
+
+    public LateReturnFeeStatusChangedEvent()
+    {
+        EventType = nameof(LateReturnFeeStatusChangedEvent);
+    }
+}
+
+public class RecurringBookingCreatedEvent : BaseEvent
+{
+    public Guid RecurringBookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid UserId { get; set; }
+    public RecurrencePattern Pattern { get; set; }
+    public int Interval { get; set; }
+    public IReadOnlyList<DayOfWeek> DaysOfWeek { get; set; } = Array.Empty<DayOfWeek>();
+    public TimeSpan StartTime { get; set; }
+    public TimeSpan EndTime { get; set; }
+    public DateTime RecurrenceStartDate { get; set; }
+    public DateTime? RecurrenceEndDate { get; set; }
+    public RecurringBookingStatus Status { get; set; }
+    public IReadOnlyList<Guid> GeneratedBookingIds { get; set; } = Array.Empty<Guid>();
+
+    public RecurringBookingCreatedEvent()
+    {
+        EventType = nameof(RecurringBookingCreatedEvent);
+    }
+}
+
+public class RecurringBookingUpdatedEvent : BaseEvent
+{
+    public Guid RecurringBookingId { get; set; }
+    public RecurrencePattern Pattern { get; set; }
+    public int Interval { get; set; }
+    public IReadOnlyList<DayOfWeek> DaysOfWeek { get; set; } = Array.Empty<DayOfWeek>();
+    public TimeSpan StartTime { get; set; }
+    public TimeSpan EndTime { get; set; }
+    public DateTime RecurrenceStartDate { get; set; }
+    public DateTime? RecurrenceEndDate { get; set; }
+    public RecurringBookingStatus Status { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    public RecurringBookingUpdatedEvent()
+    {
+        EventType = nameof(RecurringBookingUpdatedEvent);
+    }
+}
+
+public class RecurringBookingStatusChangedEvent : BaseEvent
+{
+    public Guid RecurringBookingId { get; set; }
+    public RecurringBookingStatus Status { get; set; }
+    public Guid ChangedBy { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public string? Reason { get; set; }
+
+    public RecurringBookingStatusChangedEvent()
+    {
+        EventType = nameof(RecurringBookingStatusChangedEvent);
+    }
+}
+
 public class SignatureCapturedEvent : BaseEvent
 {
     public Guid CheckInId { get; set; }

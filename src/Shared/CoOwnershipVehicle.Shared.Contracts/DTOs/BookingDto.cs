@@ -23,6 +23,7 @@ public class BookingDto
     public bool IsEmergency { get; set; }
     public BookingPriority Priority { get; set; }
     public bool RequiresDamageReview { get; set; }
+    public Guid? RecurringBookingId { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
@@ -42,6 +43,9 @@ public class CreateBookingDto
     public string? Purpose { get; set; }
     
     public bool IsEmergency { get; set; } = false;
+
+    [StringLength(1000)] // Added validation for EmergencyReason
+    public string? EmergencyReason { get; set; } // Added EmergencyReason
     
     public BookingPriority Priority { get; set; } = BookingPriority.Normal;
     

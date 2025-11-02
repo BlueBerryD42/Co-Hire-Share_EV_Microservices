@@ -1,3 +1,6 @@
+using System.Net.Mime;
+using CoOwnershipVehicle.Booking.Api.Contracts;
+using CoOwnershipVehicle.Booking.Api.DTOs;
 using CoOwnershipVehicle.Booking.Api.Services;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
@@ -47,6 +50,88 @@ public class CheckInController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving check-in {CheckInId}", id);
             return StatusCode(500, new { message = "An error occurred while retrieving the check-in" });
+        }
+    }
+
+    /// <summary>
+    /// Compare vehicle condition between check-out and check-in for a booking.
+    /// </summary>
+    [HttpGet("{id:guid}/comparison")]
+    [ProducesResponseType(typeof(CheckInComparisonDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CompareCheckIn(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var comparison = await _checkInService.GetComparisonAsync(id, userId, cancellationToken);
+            return Ok(comparison);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error comparing check-in {CheckInId}", id);
+            return StatusCode(500, new { message = "An error occurred while comparing check-in records" });
+        }
+    }
+
+    /// <summary>
+    /// Filter check-in records by vehicle, user, and date range.
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<CheckInRecordDetailDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> FilterCheckIns([FromQuery] CheckInHistoryFilterDto filter, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var results = await _checkInService.FilterHistoryAsync(filter, userId, cancellationToken);
+            return Ok(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error filtering check-ins");
+            return StatusCode(500, new { message = "An error occurred while filtering check-in records" });
+        }
+    }
+
+    /// <summary>
+    /// Export the check-in history for a booking as PDF.
+    /// </summary>
+    [HttpGet("booking/{bookingId:guid}/export/pdf")]
+    [Produces("application/pdf")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportCheckInHistory(Guid bookingId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var pdf = await _checkInService.ExportBookingHistoryPdfAsync(bookingId, userId, cancellationToken);
+            var fileName = $"booking-{bookingId}-checkin-report.pdf";
+            return File(pdf, MediaTypeNames.Application.Pdf, fileName);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting check-in history for booking {BookingId}", bookingId);
+            return StatusCode(500, new { message = "An error occurred while exporting the check-in report" });
         }
     }
 
@@ -349,20 +434,32 @@ public class CheckInController : ControllerBase
     }
 
     /// <summary>
-    /// Get all check-ins logged for a booking
+    /// Get complete check-in/check-out history for a booking including media, timeline, and stats.
     /// </summary>
     [HttpGet("booking/{bookingId:guid}")]
+    [ProducesResponseType(typeof(BookingCheckInHistoryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetBookingCheckIns(Guid bookingId, CancellationToken cancellationToken)
     {
         try
         {
-            var result = await _checkInService.GetByBookingAsync(bookingId, cancellationToken);
-            return Ok(result);
+            var userId = GetCurrentUserId();
+            var history = await _checkInService.GetBookingHistoryAsync(bookingId, userId, cancellationToken);
+            return Ok(history);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving check-ins for booking {BookingId}", bookingId);
-            return StatusCode(500, new { message = "An error occurred while retrieving check-ins" });
+            _logger.LogError(ex, "Error retrieving check-in history for booking {BookingId}", bookingId);
+            return StatusCode(500, new { message = "An error occurred while retrieving check-in history" });
         }
     }
 

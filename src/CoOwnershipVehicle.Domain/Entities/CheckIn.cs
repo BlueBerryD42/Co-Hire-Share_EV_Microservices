@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CoOwnershipVehicle.Domain.Entities;
 
@@ -43,11 +44,19 @@ public class CheckIn : BaseEntity
     public string? SignatureMetadataJson { get; set; }
     
     public DateTime CheckInTime { get; set; } = DateTime.UtcNow;
+
+    public bool IsLateReturn { get; set; }
+
+    public double? LateReturnMinutes { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? LateFeeAmount { get; set; }
     
     // Navigation properties
     public virtual Booking Booking { get; set; } = null!;
     public virtual User User { get; set; } = null!;
     public virtual Vehicle? Vehicle { get; set; }
+    public virtual LateReturnFee? LateReturnFee { get; set; }
     public virtual ICollection<CheckInPhoto> Photos { get; set; } = new List<CheckInPhoto>();
 }
 

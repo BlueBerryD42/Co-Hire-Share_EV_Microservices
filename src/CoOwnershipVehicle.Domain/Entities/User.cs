@@ -47,6 +47,7 @@ public class User : IdentityUser<Guid>
     public virtual ICollection<Vote> Votes { get; set; } = new List<Vote>();
     public virtual ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
     public virtual ICollection<KycDocument> KycDocuments { get; set; } = new List<KycDocument>();
+    public virtual ICollection<RecurringBooking> RecurringBookings { get; set; } = new List<RecurringBooking>();
 }
 
 public enum KycStatus

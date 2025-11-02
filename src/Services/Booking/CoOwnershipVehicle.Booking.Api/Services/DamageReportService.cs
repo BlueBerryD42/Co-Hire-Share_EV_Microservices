@@ -1,33 +1,39 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
-using CoOwnershipVehicle.Booking.Api.Data;
+using System.Threading;
+using System.Threading.Tasks;
+using CoOwnershipVehicle.Booking.Api.Contracts;
+using CoOwnershipVehicle.Booking.Api.Repositories;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using MassTransit;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace CoOwnershipVehicle.Booking.Api.Services;
 
-public interface IDamageReportService
-{
-    Task<DamageReportDto> ReportDamageAsync(Guid checkInId, Guid userId, CreateDamageReportDto request, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DamageReportDto>> GetByCheckInAsync(Guid checkInId, Guid userId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DamageReportDto>> GetByBookingAsync(Guid bookingId, Guid userId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DamageReportDto>> GetByVehicleAsync(Guid vehicleId, Guid userId, CancellationToken cancellationToken = default);
-    Task<DamageReportDto> UpdateStatusAsync(Guid reportId, Guid userId, UpdateDamageReportStatusDto request, CancellationToken cancellationToken = default);
-}
-
 public class DamageReportService : IDamageReportService
 {
-    private readonly BookingDbContext _context;
+    private readonly ICheckInRepository _checkInRepository;
+    private readonly IDamageReportRepository _damageReportRepository;
+    private readonly IBookingRepository _bookingRepository;
     private readonly ILogger<DamageReportService> _logger;
     private readonly IPublishEndpoint _publishEndpoint;
 
-    public DamageReportService(BookingDbContext context, ILogger<DamageReportService> logger, IPublishEndpoint publishEndpoint)
+    public DamageReportService(
+        ICheckInRepository checkInRepository,
+        IDamageReportRepository damageReportRepository,
+        IBookingRepository bookingRepository,
+        ILogger<DamageReportService> logger,
+        IPublishEndpoint publishEndpoint)
     {
-        _context = context;
-        _logger = logger;
-        _publishEndpoint = publishEndpoint;
+        _checkInRepository = checkInRepository ?? throw new ArgumentNullException(nameof(checkInRepository));
+        _damageReportRepository = damageReportRepository ?? throw new ArgumentNullException(nameof(damageReportRepository));
+        _bookingRepository = bookingRepository ?? throw new ArgumentNullException(nameof(bookingRepository));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _publishEndpoint = publishEndpoint ?? throw new ArgumentNullException(nameof(publishEndpoint));
     }
 
     public async Task<DamageReportDto> ReportDamageAsync(Guid checkInId, Guid userId, CreateDamageReportDto request, CancellationToken cancellationToken = default)
@@ -37,29 +43,17 @@ public class DamageReportService : IDamageReportService
             throw new ArgumentException("Damage report payload is required.");
         }
 
-        var checkIn = await _context.CheckIns
-            .Include(ci => ci.Booking)
-                .ThenInclude(b => b.Group)
-                    .ThenInclude(g => g.Members)
-            .Include(ci => ci.Booking)
-                .ThenInclude(b => b.Vehicle)
-            .Include(ci => ci.Photos)
-            .FirstOrDefaultAsync(ci => ci.Id == checkInId, cancellationToken);
-
-        if (checkIn == null)
-        {
-            throw new KeyNotFoundException("Check-in not found for damage reporting.");
-        }
+        var checkIn = await _checkInRepository.GetForDamageReportAsync(checkInId, cancellationToken)
+                      ?? throw new KeyNotFoundException("Check-in not found for damage reporting.");
 
         var booking = checkIn.Booking ?? throw new InvalidOperationException("Check-in is missing its booking relationship.");
 
-        if (checkIn.UserId != userId && !await UserHasAccessAsync(userId, booking.GroupId, cancellationToken))
+        if (checkIn.UserId != userId && !await _bookingRepository.UserHasGroupAccessAsync(userId, booking.GroupId, cancellationToken))
         {
             throw new UnauthorizedAccessException("You do not have access to this check-in record.");
         }
 
         var estimatedCost = request.EstimatedCost ?? EstimateDamageCost(request.Severity);
-
         var normalizedPhotoIds = (request.PhotoIds ?? new List<Guid>())
             .Where(id => id != Guid.Empty)
             .Distinct()
@@ -88,15 +82,16 @@ public class DamageReportService : IDamageReportService
             Location = request.Location,
             EstimatedCost = estimatedCost,
             Status = DamageReportStatus.Reported,
-            PhotoIdsJson = normalizedPhotoIds.Count > 0 ? JsonSerializer.Serialize(normalizedPhotoIds) : null
+            PhotoIdsJson = normalizedPhotoIds.Count > 0 ? JsonSerializer.Serialize(normalizedPhotoIds) : null,
+            CreatedAt = DateTime.UtcNow
         };
 
-        _context.DamageReports.Add(report);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _damageReportRepository.AddAsync(report, cancellationToken);
+        await _damageReportRepository.SaveChangesAsync(cancellationToken);
 
         await PublishDamageReportedEvent(report, normalizedPhotoIds, cancellationToken);
 
-        if (request.Severity == DamageSeverity.Severe)
+        if (report.Severity == DamageSeverity.Severe)
         {
             await NotifyGroupAdminsAsync(booking, report, cancellationToken);
         }
@@ -108,71 +103,40 @@ public class DamageReportService : IDamageReportService
 
     public async Task<IReadOnlyList<DamageReportDto>> GetByCheckInAsync(Guid checkInId, Guid userId, CancellationToken cancellationToken = default)
     {
-        var checkIn = await _context.CheckIns
-            .Include(ci => ci.Booking)
-            .FirstOrDefaultAsync(ci => ci.Id == checkInId, cancellationToken);
+        var checkIn = await _checkInRepository.GetForDamageReportAsync(checkInId, cancellationToken)
+                      ?? throw new KeyNotFoundException("Check-in not found.");
 
-        if (checkIn == null)
-        {
-            throw new KeyNotFoundException("Check-in not found.");
-        }
-
-        if (checkIn.UserId != userId && !await UserHasAccessAsync(userId, checkIn.Booking.GroupId, cancellationToken))
+        if (checkIn.UserId != userId && !await _bookingRepository.UserHasGroupAccessAsync(userId, checkIn.Booking!.GroupId, cancellationToken))
         {
             throw new UnauthorizedAccessException("You do not have access to this check-in.");
         }
 
-        var reports = await _context.DamageReports
-            .AsNoTracking()
-            .Where(r => r.CheckInId == checkInId)
-            .OrderByDescending(r => r.CreatedAt)
-            .ToListAsync(cancellationToken);
-
+        var reports = await _damageReportRepository.GetByCheckInAsync(checkInId, cancellationToken);
         return reports.Select(MapToDto).ToList();
     }
 
     public async Task<IReadOnlyList<DamageReportDto>> GetByBookingAsync(Guid bookingId, Guid userId, CancellationToken cancellationToken = default)
     {
-        var booking = await _context.Bookings
-            .Include(b => b.Group)
-            .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
+        var booking = await _bookingRepository.GetBookingWithDetailsAsync(bookingId, cancellationToken)
+                      ?? throw new KeyNotFoundException("Booking not found.");
 
-        if (booking == null)
-        {
-            throw new KeyNotFoundException("Booking not found.");
-        }
-
-        if (booking.UserId != userId && !await UserHasAccessAsync(userId, booking.GroupId, cancellationToken))
+        if (booking.UserId != userId && !await _bookingRepository.UserHasGroupAccessAsync(userId, booking.GroupId, cancellationToken))
         {
             throw new UnauthorizedAccessException("You do not have access to this booking.");
         }
 
-        var reports = await _context.DamageReports
-            .AsNoTracking()
-            .Where(r => r.BookingId == bookingId)
-            .OrderByDescending(r => r.CreatedAt)
-            .ToListAsync(cancellationToken);
-
+        var reports = await _damageReportRepository.GetByBookingAsync(bookingId, cancellationToken);
         return reports.Select(MapToDto).ToList();
     }
 
     public async Task<IReadOnlyList<DamageReportDto>> GetByVehicleAsync(Guid vehicleId, Guid userId, CancellationToken cancellationToken = default)
     {
-        var hasAccess = await _context.Vehicles
-            .AsNoTracking()
-            .AnyAsync(v => v.Id == vehicleId && v.Group != null && v.Group.Members.Any(m => m.UserId == userId), cancellationToken);
-
-        if (!hasAccess)
+        if (!await _bookingRepository.UserHasVehicleAccessAsync(vehicleId, userId, cancellationToken))
         {
             throw new UnauthorizedAccessException("You do not have access to this vehicle.");
         }
 
-        var reports = await _context.DamageReports
-            .AsNoTracking()
-            .Where(r => r.VehicleId == vehicleId)
-            .OrderByDescending(r => r.CreatedAt)
-            .ToListAsync(cancellationToken);
-
+        var reports = await _damageReportRepository.GetByVehicleAsync(vehicleId, cancellationToken);
         return reports.Select(MapToDto).ToList();
     }
 
@@ -183,21 +147,12 @@ public class DamageReportService : IDamageReportService
             throw new ArgumentException("Status update payload is required.");
         }
 
-        var report = await _context.DamageReports
-            .Include(r => r.CheckIn)
-                .ThenInclude(ci => ci.Booking)
-                    .ThenInclude(b => b.Group)
-                        .ThenInclude(g => g.Members)
-            .FirstOrDefaultAsync(r => r.Id == reportId, cancellationToken);
-
-        if (report == null)
-        {
-            throw new KeyNotFoundException("Damage report not found.");
-        }
+        var report = await _damageReportRepository.GetByIdWithDetailsAsync(reportId, cancellationToken)
+                     ?? throw new KeyNotFoundException("Damage report not found.");
 
         var booking = report.CheckIn.Booking ?? throw new InvalidOperationException("Damage report is missing booking information.");
 
-        if (!await IsGroupAdminAsync(userId, booking.GroupId, cancellationToken))
+        if (!await _bookingRepository.IsGroupAdminAsync(userId, booking.GroupId, cancellationToken))
         {
             throw new UnauthorizedAccessException("Only group administrators can update damage report status.");
         }
@@ -231,7 +186,7 @@ public class DamageReportService : IDamageReportService
             report.ResolvedByUserId = null;
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await _damageReportRepository.SaveChangesAsync(cancellationToken);
 
         await _publishEndpoint.Publish(new DamageReportStatusChangedEvent
         {
@@ -270,7 +225,7 @@ public class DamageReportService : IDamageReportService
             return;
         }
 
-        var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == booking.VehicleId, cancellationToken);
+        var vehicle = booking.Vehicle ?? await _bookingRepository.GetVehicleByIdAsync(booking.VehicleId, cancellationToken);
         var message = $"Severe vehicle damage reported for {vehicle?.Model ?? "vehicle"} ({vehicle?.PlateNumber}). Severity: {report.Severity}. Location: {report.Location}.";
 
         await _publishEndpoint.Publish(new BulkNotificationEvent
@@ -315,21 +270,6 @@ public class DamageReportService : IDamageReportService
         };
     }
 
-    private async Task<bool> UserHasAccessAsync(Guid userId, Guid groupId, CancellationToken cancellationToken)
-    {
-        return await _context.GroupMembers
-            .AsNoTracking()
-            .AnyAsync(gm => gm.GroupId == groupId && gm.UserId == userId, cancellationToken);
-    }
-
-    private async Task<bool> IsGroupAdminAsync(Guid userId, Guid groupId, CancellationToken cancellationToken)
-    {
-        return await _context.GroupMembers
-            .AsNoTracking()
-            .AnyAsync(gm => gm.GroupId == groupId && gm.UserId == userId &&
-                            (gm.RoleInGroup == GroupRole.Admin), cancellationToken);
-    }
-
     private static DamageReportDto MapToDto(DamageReport report)
     {
         List<Guid> photoIds = new();
@@ -364,11 +304,10 @@ public class DamageReportService : IDamageReportService
             Status = report.Status,
             Notes = report.Notes,
             ExpenseId = report.ExpenseId,
-            ResolvedByUserId = report.ResolvedByUserId,
-            ResolvedAt = report.ResolvedAt,
+            PhotoIds = photoIds,
             CreatedAt = report.CreatedAt,
-            UpdatedAt = report.UpdatedAt,
-            PhotoIds = photoIds
+            ResolvedAt = report.ResolvedAt,
+            ResolvedByUserId = report.ResolvedByUserId
         };
     }
 }

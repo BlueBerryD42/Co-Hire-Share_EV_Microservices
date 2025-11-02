@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
@@ -5,41 +6,34 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using CoOwnershipVehicle.Booking.Api.Data;
+using System.Linq;
+using CoOwnershipVehicle.Booking.Api.Contracts;
+using CoOwnershipVehicle.Booking.Api.DTOs;
+using CoOwnershipVehicle.Booking.Api.Repositories;
 using CoOwnershipVehicle.Booking.Api.Storage;
+using CoOwnershipVehicle.Booking.Api.Configuration;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using MassTransit;
 using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace CoOwnershipVehicle.Booking.Api.Services;
 
-public record PhotoUploadItem(IFormFile File, PhotoType Type, string? Description);
-public record SignatureCaptureContext(string? IpAddress, string? UserAgent, DateTime CapturedAt);
-
-public interface ICheckInService
-{
-    Task<CheckInDto> CreateAsync(CreateCheckInDto request, Guid userId, CancellationToken cancellationToken = default);
-    Task<CheckInDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<CheckInDto>> GetByBookingAsync(Guid bookingId, CancellationToken cancellationToken = default);
-    Task<CheckInDto> UpdateAsync(Guid id, UpdateCheckInDto request, Guid userId, CancellationToken cancellationToken = default);
-    Task DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
-    Task<CheckInDto> StartTripAsync(StartTripDto request, Guid userId, CancellationToken cancellationToken = default);
-    Task<TripCompletionDto> EndTripAsync(EndTripDto request, Guid userId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<CheckInPhotoDto>> UploadPhotosAsync(Guid checkInId, Guid userId, IEnumerable<PhotoUploadItem> uploads, CancellationToken cancellationToken = default);
-    Task DeletePhotoAsync(Guid checkInId, Guid photoId, Guid userId, CancellationToken cancellationToken = default);
-    Task<SignatureCaptureResponseDto> CaptureSignatureAsync(Guid checkInId, Guid userId, SignatureCaptureRequestDto request, SignatureCaptureContext context, CancellationToken cancellationToken = default);
-}
-
 public class CheckInService : ICheckInService
 {
-    private readonly BookingDbContext _context;
+    private readonly IBookingRepository _bookingRepository;
+    private readonly ICheckInRepository _checkInRepository;
     private readonly ILogger<CheckInService> _logger;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly IFileStorageService _fileStorageService;
     private readonly IVirusScanner _virusScanner;
+    private readonly IDamageReportService _damageReportService;
+    private readonly ICheckInReportGenerator _reportGenerator;
+    private readonly ILateReturnFeeService _lateReturnFeeService;
+    private readonly IOptions<LateReturnFeeOptions> _lateFeeOptions;
     private const int MaxTripOdometerDelta = 2000;
     private const int MaxPhotoCount = 10;
     private const long MaxFileSizeBytes = 10 * 1024 * 1024;
@@ -77,28 +71,32 @@ public class CheckInService : ICheckInService
     private static readonly Regex MultipleWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
 
     public CheckInService(
-        BookingDbContext context,
+        IBookingRepository bookingRepository,
+        ICheckInRepository checkInRepository,
         ILogger<CheckInService> logger,
         IPublishEndpoint publishEndpoint,
         IFileStorageService fileStorageService,
-        IVirusScanner virusScanner)
+        IVirusScanner virusScanner,
+        IDamageReportService damageReportService,
+        ICheckInReportGenerator reportGenerator,
+        ILateReturnFeeService lateReturnFeeService,
+        IOptions<LateReturnFeeOptions> lateFeeOptions)
     {
-        _context = context;
-        _logger = logger;
-        _publishEndpoint = publishEndpoint;
-        _fileStorageService = fileStorageService;
-        _virusScanner = virusScanner;
+        _bookingRepository = bookingRepository ?? throw new ArgumentNullException(nameof(bookingRepository));
+        _checkInRepository = checkInRepository ?? throw new ArgumentNullException(nameof(checkInRepository));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _publishEndpoint = publishEndpoint ?? throw new ArgumentNullException(nameof(publishEndpoint));
+        _fileStorageService = fileStorageService ?? throw new ArgumentNullException(nameof(fileStorageService));
+        _virusScanner = virusScanner ?? throw new ArgumentNullException(nameof(virusScanner));
+        _damageReportService = damageReportService ?? throw new ArgumentNullException(nameof(damageReportService));
+        _reportGenerator = reportGenerator ?? throw new ArgumentNullException(nameof(reportGenerator));
+        _lateReturnFeeService = lateReturnFeeService ?? throw new ArgumentNullException(nameof(lateReturnFeeService));
+        _lateFeeOptions = lateFeeOptions ?? throw new ArgumentNullException(nameof(lateFeeOptions));
     }
 
     public async Task<CheckInDto> StartTripAsync(StartTripDto request, Guid userId, CancellationToken cancellationToken = default)
     {
-        var booking = await _context.Bookings
-            .Include(b => b.Vehicle)
-            .Include(b => b.Group)
-                .ThenInclude(g => g.Members)
-            .Include(b => b.User)
-            .Include(b => b.CheckIns).ThenInclude(ci => ci.Photos)
-            .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+        var booking = await _bookingRepository.GetBookingAggregateAsync(request.BookingId, cancellationToken);
 
         if (booking == null)
         {
@@ -196,10 +194,8 @@ public class CheckInService : ICheckInService
             vehicle.Odometer = request.OdometerReading;
         }
 
-        _context.CheckIns.Add(checkIn);
-
-        await _context.SaveChangesAsync(cancellationToken);
-
+        await _checkInRepository.AddAsync(checkIn, cancellationToken);
+        await _checkInRepository.SaveChangesAsync(cancellationToken);
         var photoUrls = checkIn.Photos.Where(p => !p.IsDeleted).Select(p => p.PhotoUrl).ToList();
 
         await _publishEndpoint.Publish(new TripStartedEvent
@@ -271,13 +267,7 @@ public class CheckInService : ICheckInService
 
     public async Task<TripCompletionDto> EndTripAsync(EndTripDto request, Guid userId, CancellationToken cancellationToken = default)
     {
-        var booking = await _context.Bookings
-            .Include(b => b.Vehicle)
-            .Include(b => b.Group)
-                .ThenInclude(g => g.Members)
-            .Include(b => b.User)
-            .Include(b => b.CheckIns).ThenInclude(ci => ci.Photos)
-            .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+        var booking = await _bookingRepository.GetBookingAggregateAsync(request.BookingId, cancellationToken);
 
         if (booking == null)
         {
@@ -367,19 +357,27 @@ public class CheckInService : ICheckInService
             vehicle.Odometer = request.OdometerReading;
         }
 
-        _context.CheckIns.Add(checkIn);
-
-        await _context.SaveChangesAsync(cancellationToken);
-
+        await _checkInRepository.AddAsync(checkIn, cancellationToken);
         var duration = checkIn.CheckInTime - checkOut.CheckInTime;
         if (duration < TimeSpan.Zero)
         {
             duration = TimeSpan.Zero;
         }
 
-        var isLateReturn = checkIn.CheckInTime > booking.EndAt;
-        var lateByMinutes = isLateReturn ? (checkIn.CheckInTime - booking.EndAt).TotalMinutes : 0d;
+        var rawLateMinutes = checkIn.CheckInTime > booking.EndAt
+            ? (checkIn.CheckInTime - booking.EndAt).TotalMinutes
+            : 0d;
+
+        var lateFeeResult = await _lateReturnFeeService.EvaluateLateReturnAsync(
+            booking,
+            checkIn,
+            rawLateMinutes,
+            cancellationToken);
+
+        await _checkInRepository.SaveChangesAsync(cancellationToken);
+
         var roundedDurationMinutes = Math.Round(duration.TotalMinutes, 2);
+        var lateByMinutes = Math.Round(checkIn.LateReturnMinutes ?? 0d, 2, MidpointRounding.AwayFromZero);
 
         var photoUrls = checkIn.Photos.Where(p => !p.IsDeleted).Select(p => p.PhotoUrl).ToList();
 
@@ -395,8 +393,8 @@ public class CheckInService : ICheckInService
             CheckOutTime = checkOut.CheckInTime,
             TripDistance = distance,
             TripDurationMinutes = roundedDurationMinutes,
-            IsLateReturn = isLateReturn,
-            LateByMinutes = Math.Round(lateByMinutes, 2),
+            IsLateReturn = checkIn.IsLateReturn,
+            LateByMinutes = lateByMinutes,
             StartOdometer = checkOut.Odometer,
             EndOdometer = checkIn.Odometer,
             Notes = checkIn.Notes,
@@ -429,6 +427,13 @@ public class CheckInService : ICheckInService
             }, cancellationToken);
         }
 
+        var lateFeeOptions = _lateFeeOptions.Value ?? new LateReturnFeeOptions();
+
+        if (lateFeeOptions.EnableNotifications && checkIn.IsLateReturn)
+        {
+            await NotifyLateReturnAsync(booking, vehicle, checkIn, lateFeeResult, lateFeeOptions, cancellationToken);
+        }
+
         if (booking.Group?.Members?.Any() == true)
         {
             var notificationUserIds = booking.Group.Members
@@ -446,7 +451,7 @@ public class CheckInService : ICheckInService
 
                 var message = $"{booking.User.FirstName} {booking.User.LastName} completed the trip with vehicle {vehicle.PlateNumber}. " +
                               $"Distance: {distance} km. Duration: {durationText}. " +
-                              (isLateReturn ? $"Returned {lateByMinutes:F0} minutes late." : "Returned on time.");
+                              (checkIn.IsLateReturn ? $"Returned {lateByMinutes:F0} minutes late." : "Returned on time.");
 
                 await _publishEndpoint.Publish(new BulkNotificationEvent
                 {
@@ -455,7 +460,7 @@ public class CheckInService : ICheckInService
                     Title = $"Trip completed for {vehicle.Model}",
                     Message = message,
                     Type = "TripCompleted",
-                    Priority = isLateReturn ? "High" : "Normal",
+                    Priority = checkIn.IsLateReturn ? "High" : "Normal",
                     ActionUrl = $"/bookings/{booking.Id}",
                     ActionText = "View trip summary"
                 }, cancellationToken);
@@ -471,10 +476,67 @@ public class CheckInService : ICheckInService
             CheckIn = checkInDto,
             TripDistance = distance,
             TripDurationMinutes = roundedDurationMinutes,
-            IsLateReturn = isLateReturn,
-            LateByMinutes = Math.Round(lateByMinutes, 2),
+            IsLateReturn = checkIn.IsLateReturn,
+            LateByMinutes = lateByMinutes,
+            LateFee = lateFeeResult.Fee ?? checkInDto.LateReturnFee,
             CheckOutTime = checkOut.CheckInTime
         };
+    }
+
+    private async Task NotifyLateReturnAsync(
+        CoOwnershipVehicle.Domain.Entities.Booking booking,
+        Vehicle vehicle,
+        CheckIn checkIn,
+        LateReturnFeeProcessingResult lateFeeResult,
+        LateReturnFeeOptions options,
+        CancellationToken cancellationToken)
+    {
+        var roundedMinutes = checkIn.LateReturnMinutes.HasValue
+            ? Math.Round(checkIn.LateReturnMinutes.Value, 0, MidpointRounding.AwayFromZero)
+            : 0d;
+
+        var feeMessage = lateFeeResult.FeeCreated && lateFeeResult.FeeAmount > 0
+            ? $" A late fee of {string.Format(CultureInfo.InvariantCulture, "${0:F2}", lateFeeResult.FeeAmount)} has been applied."
+            : " No late fee has been applied because the return fell within the grace period.";
+
+        var userMessage = $"You returned vehicle {vehicle.PlateNumber} {roundedMinutes:F0} minutes late.{feeMessage}";
+
+        await _publishEndpoint.Publish(new BulkNotificationEvent
+        {
+            UserIds = new List<Guid> { booking.UserId },
+            GroupId = booking.GroupId,
+            Title = "Late return recorded",
+            Message = userMessage,
+            Type = "LateReturn",
+            Priority = "High",
+            ActionUrl = $"/bookings/{booking.Id}",
+            ActionText = "Review details"
+        }, cancellationToken);
+
+        if (!options.NotifyNextBookingHolder)
+        {
+            return;
+        }
+
+        var nextBooking = await _bookingRepository.GetNextBookingAsync(booking.VehicleId, booking.EndAt, cancellationToken);
+        if (nextBooking == null || nextBooking.UserId == booking.UserId)
+        {
+            return;
+        }
+
+        var nextMessage = $"{booking.User.FirstName} {booking.User.LastName} returned {vehicle.PlateNumber} {roundedMinutes:F0} minutes late. Your booking at {nextBooking.StartAt:HH:mm} may be affected. We'll notify you of any further changes.";
+
+        await _publishEndpoint.Publish(new BulkNotificationEvent
+        {
+            UserIds = new List<Guid> { nextBooking.UserId },
+            GroupId = booking.GroupId,
+            Title = $"Heads up for {vehicle.Model}",
+            Message = nextMessage,
+            Type = "LateReturnImpact",
+            Priority = "High",
+            ActionUrl = $"/bookings/{nextBooking.Id}",
+            ActionText = "View booking"
+        }, cancellationToken);
     }
 
     public async Task<IReadOnlyList<CheckInPhotoDto>> UploadPhotosAsync(Guid checkInId, Guid userId, IEnumerable<PhotoUploadItem> uploads, CancellationToken cancellationToken = default)
@@ -485,9 +547,7 @@ public class CheckInService : ICheckInService
             throw new PhotoUploadException("No files provided for upload.");
         }
 
-        var checkIn = await _context.CheckIns
-            .Include(ci => ci.Photos)
-            .FirstOrDefaultAsync(ci => ci.Id == checkInId, cancellationToken);
+        var checkIn = await _checkInRepository.GetForPhotoUploadAsync(checkInId, cancellationToken);
 
         if (checkIn == null)
         {
@@ -564,8 +624,9 @@ public class CheckInService : ICheckInService
             createdPhotos.Add(photo);
         }
 
-        _context.CheckInPhotos.AddRange(createdPhotos);
-        await _context.SaveChangesAsync(cancellationToken);
+        if (createdPhotos.Count > 0)
+        {
+            await _checkInRepository.AddPhotosAsync(createdPhotos, cancellationToken);        }
 
         _logger.LogInformation("Uploaded {Count} photos for check-in {CheckInId}", createdPhotos.Count, checkInId);
 
@@ -584,10 +645,7 @@ public class CheckInService : ICheckInService
             throw new ArgumentException("Signature data is required.", nameof(request.SignatureData));
         }
 
-        var checkIn = await _context.CheckIns
-            .Include(ci => ci.Booking)
-                .ThenInclude(b => b.Group)
-            .FirstOrDefaultAsync(ci => ci.Id == checkInId, cancellationToken);
+        var checkIn = await _checkInRepository.GetForSignatureAsync(checkInId, cancellationToken);
 
         if (checkIn == null)
         {
@@ -675,9 +733,6 @@ public class CheckInService : ICheckInService
         checkIn.SignatureMatchesPrevious = matchesPrevious;
         checkIn.SignatureCertificateUrl = certificateResult.FileUrl;
         checkIn.SignatureMetadataJson = metadataJson;
-
-        await _context.SaveChangesAsync(cancellationToken);
-
         var responseMetadata = new SignatureMetadataDto
         {
             CapturedAt = checkIn.SignatureCapturedAt,
@@ -724,9 +779,7 @@ public class CheckInService : ICheckInService
 
     public async Task DeletePhotoAsync(Guid checkInId, Guid photoId, Guid userId, CancellationToken cancellationToken = default)
     {
-        var photo = await _context.CheckInPhotos
-            .Include(p => p.CheckIn)
-            .FirstOrDefaultAsync(p => p.Id == photoId && p.CheckInId == checkInId, cancellationToken);
+        var photo = await _checkInRepository.GetPhotoAsync(checkInId, photoId, cancellationToken);
 
         if (photo == null)
         {
@@ -744,8 +797,6 @@ public class CheckInService : ICheckInService
         }
 
         photo.IsDeleted = true;
-        await _context.SaveChangesAsync(cancellationToken);
-
         await _fileStorageService.DeleteAsync(photo.StoragePath ?? string.Empty, photo.ThumbnailPath, cancellationToken);
 
         _logger.LogInformation("Soft deleted photo {PhotoId} for check-in {CheckInId}", photoId, checkInId);
@@ -753,10 +804,7 @@ public class CheckInService : ICheckInService
 
     public async Task<CheckInDto> CreateAsync(CreateCheckInDto request, Guid userId, CancellationToken cancellationToken = default)
     {
-        var booking = await _context.Bookings
-            .Include(b => b.Group)
-            .Include(b => b.User)
-            .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+        var booking = await _bookingRepository.GetBookingWithDetailsAsync(request.BookingId, cancellationToken);
 
         if (booking == null)
         {
@@ -805,9 +853,7 @@ public class CheckInService : ICheckInService
                 .ToList();
         }
 
-        _context.CheckIns.Add(checkIn);
-        await _context.SaveChangesAsync(cancellationToken);
-
+        await _checkInRepository.AddAsync(checkIn, cancellationToken);
         _logger.LogInformation("Created check-in {CheckInId} for booking {BookingId}", checkIn.Id, booking.Id);
 
         return await GetByIdRequiredAsync(checkIn.Id, cancellationToken);
@@ -815,34 +861,149 @@ public class CheckInService : ICheckInService
 
     public async Task<CheckInDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var entity = await _context.CheckIns
-            .AsNoTracking()
-            .Include(ci => ci.User)
-            .Include(ci => ci.Photos.Where(p => !p.IsDeleted))
-            .FirstOrDefaultAsync(ci => ci.Id == id, cancellationToken);
+        var entity = await _checkInRepository.GetWithDetailsAsync(id, cancellationToken);
 
         return entity == null ? null : MapToDto(entity);
     }
 
     public async Task<IReadOnlyList<CheckInDto>> GetByBookingAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
-        var checkIns = await _context.CheckIns
-            .AsNoTracking()
-            .Include(ci => ci.User)
-            .Include(ci => ci.Photos.Where(p => !p.IsDeleted))
-            .Where(ci => ci.BookingId == bookingId)
-            .OrderBy(ci => ci.CheckInTime)
-            .ToListAsync(cancellationToken);
+        var checkIns = await _checkInRepository.GetByBookingAsync(bookingId, cancellationToken);
 
         return checkIns.Select(MapToDto).ToList();
     }
 
+    public async Task<BookingCheckInHistoryDto> GetBookingHistoryAsync(Guid bookingId, Guid userId, CancellationToken cancellationToken = default)
+    {
+        var booking = await _bookingRepository.GetBookingAggregateAsync(bookingId, cancellationToken)
+                      ?? throw new KeyNotFoundException("Booking not found");
+
+        if (!HasBookingAccess(booking, userId))
+        {
+            throw new UnauthorizedAccessException("You do not have access to this booking");
+        }
+
+        var ordered = booking.CheckIns
+            .OrderBy(ci => ci.CheckInTime)
+            .ToList();
+
+        var detailed = new List<CheckInRecordDetailDto>();
+        DateTime? previousTimestamp = null;
+
+        foreach (var checkIn in ordered)
+        {
+            var detail = await BuildDetailedRecordAsync(checkIn, booking, userId, previousTimestamp, cancellationToken);
+            detailed.Add(detail);
+            previousTimestamp = checkIn.CheckInTime;
+        }
+
+        var checkOutEntity = ordered.FirstOrDefault(ci => ci.Type == CheckInType.CheckOut);
+        var checkInEntity = ordered.LastOrDefault(ci => ci.Type == CheckInType.CheckIn);
+        var tripStatistics = CalculateTripStatistics(booking, checkOutEntity, checkInEntity);
+
+        return new BookingCheckInHistoryDto
+        {
+            BookingId = booking.Id,
+            VehicleId = booking.VehicleId,
+            GroupId = booking.GroupId,
+            UserId = booking.UserId,
+            VehicleDisplayName = BuildVehicleDisplayName(booking.Vehicle),
+            BookingOwnerName = $"{booking.User?.FirstName} {booking.User?.LastName}".Trim(),
+            Records = detailed,
+            TripStatistics = tripStatistics,
+            PhotoGallery = BuildPhotoGallery(detailed),
+            Timeline = BuildTimeline(booking, detailed),
+            LateReturnFees = (booking.LateReturnFees ?? new List<LateReturnFee>())
+                .OrderByDescending(f => f.CreatedAt)
+                .Select(MapLateReturnFee)
+                .Where(fee => fee != null)
+                .Select(fee => fee!)
+                .ToList()
+        };
+    }
+
+    public async Task<CheckInComparisonDto> GetComparisonAsync(Guid checkInId, Guid userId, CancellationToken cancellationToken = default)
+    {
+        var checkIn = await _checkInRepository.GetWithDetailsAsync(checkInId, cancellationToken)
+                      ?? throw new KeyNotFoundException("Check-in not found");
+
+        var history = await GetBookingHistoryAsync(checkIn.BookingId, userId, cancellationToken);
+
+        var checkOut = history.Records.FirstOrDefault(r => r.Record.Type == CheckInType.CheckOut);
+        var checkInRecord = history.Records.FirstOrDefault(r => r.Record.Type == CheckInType.CheckIn);
+
+        var currentRecord = history.Records.FirstOrDefault(r => r.Record.Id == checkIn.Id);
+        if (currentRecord != null)
+        {
+            if (currentRecord.Record.Type == CheckInType.CheckOut)
+            {
+                checkOut = currentRecord;
+            }
+            else
+            {
+                checkInRecord = currentRecord;
+            }
+        }
+
+        return new CheckInComparisonDto
+        {
+            BookingId = history.BookingId,
+            CheckOut = checkOut,
+            CheckIn = checkInRecord,
+            TripStatistics = history.TripStatistics,
+            PhotoComparisons = BuildPhotoComparisons(checkOut, checkInRecord),
+            ConditionChanges = BuildConditionChanges(checkOut, checkInRecord)
+        };
+    }
+
+    public async Task<IReadOnlyList<CheckInRecordDetailDto>> FilterHistoryAsync(CheckInHistoryFilterDto filter, Guid userId, CancellationToken cancellationToken = default)
+    {
+        filter ??= new CheckInHistoryFilterDto();
+
+        var checkIns = await _checkInRepository.GetFilteredAsync(filter.VehicleId, filter.UserId, filter.From, filter.To, filter.Type, cancellationToken);
+
+        if (checkIns.Count == 0)
+        {
+            return Array.Empty<CheckInRecordDetailDto>();
+        }
+
+        var accessible = checkIns
+            .Where(ci => ci.Booking != null && (ci.UserId == userId || HasBookingAccess(ci.Booking, userId)))
+            .OrderBy(ci => ci.CheckInTime)
+            .ToList();
+
+        if (accessible.Count == 0)
+        {
+            return Array.Empty<CheckInRecordDetailDto>();
+        }
+
+        var detailed = new List<CheckInRecordDetailDto>();
+        DateTime? previousTimestamp = null;
+
+        foreach (var entry in accessible)
+        {
+            if (entry.Booking == null)
+            {
+                continue;
+            }
+
+            var detail = await BuildDetailedRecordAsync(entry, entry.Booking, userId, previousTimestamp, cancellationToken);
+            detailed.Add(detail);
+            previousTimestamp = entry.CheckInTime;
+        }
+
+        return detailed;
+    }
+
+    public async Task<byte[]> ExportBookingHistoryPdfAsync(Guid bookingId, Guid userId, CancellationToken cancellationToken = default)
+    {
+        var history = await GetBookingHistoryAsync(bookingId, userId, cancellationToken);
+        return await _reportGenerator.GenerateAsync(history, cancellationToken);
+    }
+
     public async Task<CheckInDto> UpdateAsync(Guid id, UpdateCheckInDto request, Guid userId, CancellationToken cancellationToken = default)
     {
-        var checkIn = await _context.CheckIns
-            .Include(ci => ci.Photos.Where(p => !p.IsDeleted))
-            .Include(ci => ci.Booking)
-            .FirstOrDefaultAsync(ci => ci.Id == id, cancellationToken);
+        var checkIn = await _checkInRepository.GetForUpdateAsync(id, cancellationToken);
 
         if (checkIn == null)
         {
@@ -864,7 +1025,11 @@ public class CheckInService : ICheckInService
 
         if (photoInputs.Any())
         {
-            _context.CheckInPhotos.RemoveRange(checkIn.Photos);
+            if (checkIn.Photos != null && checkIn.Photos.Count > 0)
+            {
+                _checkInRepository.RemovePhotos(checkIn.Photos);
+            }
+
             checkIn.Photos = photoInputs
                 .Select(photo => new CheckInPhoto
                 {
@@ -875,14 +1040,11 @@ public class CheckInService : ICheckInService
                 })
                 .ToList();
         }
-        else if (checkIn.Photos.Any())
+        else if (checkIn.Photos != null && checkIn.Photos.Count > 0)
         {
-            _context.CheckInPhotos.RemoveRange(checkIn.Photos);
+            _checkInRepository.RemovePhotos(checkIn.Photos);
             checkIn.Photos.Clear();
         }
-
-        await _context.SaveChangesAsync(cancellationToken);
-
         _logger.LogInformation("Updated check-in {CheckInId}", checkIn.Id);
 
         return await GetByIdRequiredAsync(checkIn.Id, cancellationToken);
@@ -890,9 +1052,7 @@ public class CheckInService : ICheckInService
 
     public async Task DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
-        var checkIn = await _context.CheckIns
-            .Include(ci => ci.Booking)
-            .FirstOrDefaultAsync(ci => ci.Id == id, cancellationToken);
+        var checkIn = await _checkInRepository.GetForDeletionAsync(id, cancellationToken);
 
         if (checkIn == null)
         {
@@ -904,17 +1064,13 @@ public class CheckInService : ICheckInService
             throw new UnauthorizedAccessException("User is not allowed to delete this check-in");
         }
 
-        _context.CheckIns.Remove(checkIn);
-        await _context.SaveChangesAsync(cancellationToken);
-
+        _checkInRepository.Remove(checkIn);
         _logger.LogInformation("Deleted check-in {CheckInId}", checkIn.Id);
     }
 
     private async Task<bool> UserHasAccessAsync(Guid userId, Guid groupId, CancellationToken cancellationToken)
     {
-        return await _context.GroupMembers
-            .AsNoTracking()
-            .AnyAsync(gm => gm.GroupId == groupId && gm.UserId == userId, cancellationToken);
+        return await _bookingRepository.UserHasGroupAccessAsync(userId, groupId, cancellationToken);
     }
 
     private async Task<CheckInDto> GetByIdRequiredAsync(Guid id, CancellationToken cancellationToken)
@@ -926,6 +1082,284 @@ public class CheckInService : ICheckInService
         }
 
         return dto;
+    }
+
+    private static bool HasBookingAccess(Domain.Entities.Booking booking, Guid userId)
+    {
+        if (booking.UserId == userId)
+        {
+            return true;
+        }
+
+        return booking.Group?.Members?.Any(member => member.UserId == userId) == true;
+    }
+
+    private async Task<CheckInRecordDetailDto> BuildDetailedRecordAsync(CheckIn checkIn, Domain.Entities.Booking booking, Guid userId, DateTime? previousTimestamp, CancellationToken cancellationToken)
+    {
+        var dto = MapToDto(checkIn);
+        var damageReports = await _damageReportService.GetByCheckInAsync(checkIn.Id, userId, cancellationToken);
+        var photosByType = GroupPhotosByType(dto.Photos);
+
+        return new CheckInRecordDetailDto
+        {
+            Record = dto,
+            DamageReports = damageReports,
+            PhotosByCategory = photosByType,
+            Metrics = new CheckInRecordMetricsDto
+            {
+                Timestamp = dto.CheckInTime,
+                MinutesFromBookingStart = GetMinutesBetween(booking.StartAt, dto.CheckInTime),
+                MinutesUntilBookingEnd = GetMinutesBetween(dto.CheckInTime, booking.EndAt),
+                MinutesSincePreviousEvent = previousTimestamp.HasValue ? GetMinutesBetween(previousTimestamp.Value, dto.CheckInTime) : null,
+                Odometer = dto.Odometer
+            }
+        };
+    }
+
+    private static IReadOnlyDictionary<PhotoType, IReadOnlyList<CheckInPhotoDto>> GroupPhotosByType(IEnumerable<CheckInPhotoDto> photos)
+    {
+        return photos
+            .GroupBy(photo => photo.Type)
+            .ToDictionary(
+                grouping => grouping.Key,
+                grouping => (IReadOnlyList<CheckInPhotoDto>)grouping.ToList());
+    }
+
+    private static PhotoGalleryDto BuildPhotoGallery(IEnumerable<CheckInRecordDetailDto> records)
+    {
+        var groups = new List<PhotoGalleryGroupDto>();
+
+        foreach (var record in records)
+        {
+            foreach (var kvp in record.PhotosByCategory)
+            {
+                if (kvp.Value == null || kvp.Value.Count == 0)
+                {
+                    continue;
+                }
+
+                groups.Add(new PhotoGalleryGroupDto
+                {
+                    CheckInType = record.Record.Type,
+                    PhotoType = kvp.Key,
+                    Photos = kvp.Value
+                });
+            }
+        }
+
+        return new PhotoGalleryDto
+        {
+            Groups = groups
+        };
+    }
+
+    private static IReadOnlyList<TimelineEventDto> BuildTimeline(Domain.Entities.Booking booking, IReadOnlyList<CheckInRecordDetailDto> records)
+    {
+        var events = new List<TimelineEventDto>
+        {
+            new()
+            {
+                BookingId = booking.Id,
+                EventType = "BookingScheduledStart",
+                Title = "Booking scheduled start",
+                Description = "Planned start of booking window",
+                Timestamp = booking.StartAt
+            }
+        };
+
+        foreach (var record in records)
+        {
+            events.Add(new TimelineEventDto
+            {
+                BookingId = booking.Id,
+                CheckInId = record.Record.Id,
+                EventType = record.Record.Type == CheckInType.CheckOut ? "CheckOut" : "CheckIn",
+                Title = record.Record.Type == CheckInType.CheckOut ? "Vehicle checked out" : "Vehicle checked in",
+                Description = $"Odometer: {record.Record.Odometer}",
+                Timestamp = record.Record.CheckInTime
+            });
+
+            foreach (var damage in record.DamageReports)
+            {
+                events.Add(new TimelineEventDto
+                {
+                    BookingId = booking.Id,
+                    CheckInId = record.Record.Id,
+                    DamageReportId = damage.Id,
+                    EventType = "DamageReported",
+                    Title = "Damage reported",
+                    Description = damage.Description,
+                    Timestamp = damage.CreatedAt
+                });
+            }
+        }
+
+        events.Add(new TimelineEventDto
+        {
+            BookingId = booking.Id,
+            EventType = "BookingScheduledEnd",
+            Title = "Booking scheduled end",
+            Description = "Planned end of booking window",
+            Timestamp = booking.EndAt
+        });
+
+        return events
+            .OrderBy(e => e.Timestamp)
+            .ToList();
+    }
+
+    private static CheckInTripStatisticsDto CalculateTripStatistics(Domain.Entities.Booking booking, CheckIn? checkOut, CheckIn? checkIn)
+    {
+        var result = new CheckInTripStatisticsDto
+        {
+            PlannedStart = booking.StartAt,
+            PlannedEnd = booking.EndAt,
+            PlannedDurationMinutes = Math.Round((booking.EndAt - booking.StartAt).TotalMinutes, 1)
+        };
+
+        if (checkOut != null)
+        {
+            result.ActualCheckOut = checkOut.CheckInTime;
+            result.StartOdometer = checkOut.Odometer;
+        }
+
+        if (checkIn != null)
+        {
+            result.ActualCheckIn = checkIn.CheckInTime;
+            result.EndOdometer = checkIn.Odometer;
+            result.LateFeeAmount = checkIn.LateFeeAmount;
+        }
+
+        if (result.ActualCheckOut.HasValue && result.ActualCheckIn.HasValue)
+        {
+            var duration = (result.ActualCheckIn.Value - result.ActualCheckOut.Value).TotalMinutes;
+            if (duration >= 0)
+            {
+                result.ActualDurationMinutes = Math.Round(duration, 1);
+            }
+
+            if (result.StartOdometer.HasValue && result.EndOdometer.HasValue)
+            {
+                var distance = result.EndOdometer.Value - result.StartOdometer.Value;
+                if (distance >= 0)
+                {
+                    result.TripDistance = distance;
+                    if (result.ActualDurationMinutes.HasValue && result.ActualDurationMinutes.Value > 0)
+                    {
+                        result.AverageSpeedKph = Math.Round(distance / (result.ActualDurationMinutes.Value / 60d), 1);
+                    }
+                }
+            }
+
+            if (result.ActualCheckIn > booking.EndAt)
+            {
+                result.LateReturnMinutes = Math.Round((result.ActualCheckIn.Value - booking.EndAt).TotalMinutes, 1);
+            }
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<PhotoComparisonDto> BuildPhotoComparisons(CheckInRecordDetailDto? checkOut, CheckInRecordDetailDto? checkIn)
+    {
+        var comparisons = new List<PhotoComparisonDto>();
+
+        foreach (var photoType in Enum.GetValues<PhotoType>())
+        {
+            var checkOutPhotos = checkOut?.Record.Photos.Where(photo => photo.Type == photoType).ToList() ?? new List<CheckInPhotoDto>();
+            var checkInPhotos = checkIn?.Record.Photos.Where(photo => photo.Type == photoType).ToList() ?? new List<CheckInPhotoDto>();
+
+            if (checkOutPhotos.Count == 0 && checkInPhotos.Count == 0)
+            {
+                continue;
+            }
+
+            comparisons.Add(new PhotoComparisonDto
+            {
+                PhotoType = photoType,
+                CheckOutPhotos = checkOutPhotos,
+                CheckInPhotos = checkInPhotos
+            });
+        }
+
+        return comparisons;
+    }
+
+    private static IReadOnlyList<ConditionChangeDto> BuildConditionChanges(CheckInRecordDetailDto? checkOut, CheckInRecordDetailDto? checkIn)
+    {
+        var changes = new List<ConditionChangeDto>();
+
+        if (checkOut?.Record != null && checkIn?.Record != null)
+        {
+            var distance = checkIn.Record.Odometer - checkOut.Record.Odometer;
+            changes.Add(new ConditionChangeDto
+            {
+                Field = "Odometer",
+                CheckOutValue = checkOut.Record.Odometer.ToString(CultureInfo.InvariantCulture),
+                CheckInValue = checkIn.Record.Odometer.ToString(CultureInfo.InvariantCulture),
+                Highlight = distance >= 0 ? $"Distance travelled: {distance} km" : "Odometer decreased"
+            });
+
+            if (!string.Equals(checkOut.Record.Notes ?? string.Empty, checkIn.Record.Notes ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+            {
+                changes.Add(new ConditionChangeDto
+                {
+                    Field = "Notes",
+                    CheckOutValue = checkOut.Record.Notes,
+                    CheckInValue = checkIn.Record.Notes,
+                    Highlight = "Trip notes updated"
+                });
+            }
+
+            var previousDamage = new HashSet<Guid>(checkOut.DamageReports.Select(d => d.Id));
+            var newDamage = checkIn.DamageReports.Where(d => !previousDamage.Contains(d.Id)).ToList();
+
+            if (newDamage.Count > 0)
+            {
+                changes.Add(new ConditionChangeDto
+                {
+                    Field = "DamageReports",
+                    CheckOutValue = $"{checkOut.DamageReports.Count} report(s)",
+                    CheckInValue = $"{checkIn.DamageReports.Count} report(s)",
+                    Highlight = "New damage reported",
+                    RelatedDamageReports = newDamage
+                });
+            }
+        }
+
+        return changes;
+    }
+
+    private static string BuildVehicleDisplayName(Vehicle? vehicle)
+    {
+        if (vehicle == null)
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string>();
+        if (vehicle.Year > 0)
+        {
+            parts.Add(vehicle.Year.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (!string.IsNullOrWhiteSpace(vehicle.Model))
+        {
+            parts.Add(vehicle.Model);
+        }
+
+        if (!string.IsNullOrWhiteSpace(vehicle.PlateNumber))
+        {
+            parts.Add($"({vehicle.PlateNumber})");
+        }
+
+        return string.Join(' ', parts);
+    }
+
+    private static double? GetMinutesBetween(DateTime from, DateTime to)
+    {
+        var delta = (to - from).TotalMinutes;
+        return Math.Round(delta, 1);
     }
 
     private static SignaturePayload PrepareSignaturePayload(SignatureCaptureRequestDto request)
@@ -1249,6 +1683,10 @@ public class CheckInService : ICheckInService
             Type = entity.Type,
             Odometer = entity.Odometer,
             CheckInTime = entity.CheckInTime,
+            IsLateReturn = entity.IsLateReturn,
+            LateReturnMinutes = entity.LateReturnMinutes,
+            LateFeeAmount = entity.LateFeeAmount,
+            LateReturnFee = MapLateReturnFee(entity.LateReturnFee),
             Notes = entity.Notes,
             SignatureReference = entity.SignatureReference,
             SignatureMetadata = MapSignatureMetadata(entity),
@@ -1257,4 +1695,38 @@ public class CheckInService : ICheckInService
             UpdatedAt = entity.UpdatedAt
         };
     }
+
+    private static LateReturnFeeDto? MapLateReturnFee(LateReturnFee? fee)
+    {
+        if (fee == null)
+        {
+            return null;
+        }
+
+        return new LateReturnFeeDto
+        {
+            Id = fee.Id,
+            BookingId = fee.BookingId,
+            CheckInId = fee.CheckInId,
+            UserId = fee.UserId,
+            VehicleId = fee.VehicleId,
+            GroupId = fee.GroupId,
+            LateDurationMinutes = fee.LateDurationMinutes,
+            FeeAmount = fee.FeeAmount,
+            OriginalFeeAmount = fee.OriginalFeeAmount,
+            CalculationMethod = fee.CalculationMethod,
+            Status = fee.Status,
+            ExpenseId = fee.ExpenseId,
+            InvoiceId = fee.InvoiceId,
+            WaivedBy = fee.WaivedBy,
+            WaivedReason = fee.WaivedReason,
+            WaivedAt = fee.WaivedAt,
+            CreatedAt = fee.CreatedAt,
+            UpdatedAt = fee.UpdatedAt
+        };
+    }
 }
+
+
+
+

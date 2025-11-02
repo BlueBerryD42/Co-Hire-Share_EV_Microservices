@@ -1,4 +1,4 @@
-using CoOwnershipVehicle.Booking.Api.Services;
+using CoOwnershipVehicle.Booking.Api.Contracts;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
