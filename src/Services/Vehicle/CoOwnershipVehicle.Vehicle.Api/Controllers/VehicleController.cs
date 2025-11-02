@@ -19,19 +19,22 @@ public class VehicleController : ControllerBase
     private readonly IGroupServiceClient _groupServiceClient; // Injected
     private readonly IBookingServiceClient _bookingServiceClient; // Injected
     private readonly VehicleStatisticsService _statisticsService; // Injected
+    private readonly CostAnalysisService _costAnalysisService; // Injected
 
     public VehicleController(
         VehicleDbContext context,
         ILogger<VehicleController> logger,
         IGroupServiceClient groupServiceClient,
         IBookingServiceClient bookingServiceClient,
-        VehicleStatisticsService statisticsService)
+        VehicleStatisticsService statisticsService,
+        CostAnalysisService costAnalysisService)
     {
         _context = context;
         _logger = logger;
         _groupServiceClient = groupServiceClient; // Assigned
         _bookingServiceClient = bookingServiceClient; // Assigned
         _statisticsService = statisticsService; // Assigned
+        _costAnalysisService = costAnalysisService; // Assigned
     }
 
     [HttpGet]
@@ -352,6 +355,72 @@ public class VehicleController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving statistics for vehicle {VehicleId}", id);
             return StatusCode(500, new { message = "An error occurred while retrieving vehicle statistics" });
+        }
+    }
+
+    /// <summary>
+    /// Get comprehensive cost analysis for a vehicle
+    /// </summary>
+    /// <param name="id">Vehicle ID</param>
+    /// <param name="startDate">Start date for analysis (optional, default: 1 year ago)</param>
+    /// <param name="endDate">End date for analysis (optional, default: now)</param>
+    /// <param name="groupBy">Grouping period: month, quarter, year (default: month)</param>
+    /// <returns>Complete cost breakdown and analysis</returns>
+    [HttpGet("{id:guid}/cost-analysis")]
+    public async Task<IActionResult> GetCostAnalysis(
+        Guid id,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] string groupBy = "month")
+    {
+        try
+        {
+            // 1. Check if vehicle exists
+            var vehicle = await _context.Vehicles
+                .FirstOrDefaultAsync(v => v.Id == id);
+
+            if (vehicle == null)
+            {
+                return NotFound(new { message = $"Vehicle {id} not found" });
+            }
+
+            // 2. Check authorization - user must be in vehicle's group
+            var userGroupIds = await GetUserGroupIds();
+            if (!vehicle.GroupId.HasValue || !userGroupIds.Contains(vehicle.GroupId.Value))
+            {
+                return Forbidden(new { message = "You do not have permission to access this vehicle's cost analysis" });
+            }
+
+            // 3. Get access token for inter-service calls
+            var accessToken = GetAccessToken();
+
+            // 4. Build request
+            var request = new CostAnalysisRequest
+            {
+                StartDate = startDate,
+                EndDate = endDate,
+                GroupBy = groupBy
+            };
+
+            // 5. Get cost analysis from service
+            var costAnalysis = await _costAnalysisService.GetCostAnalysisAsync(id, request, accessToken);
+
+            return Ok(costAnalysis);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access to cost analysis for vehicle {VehicleId}", id);
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid operation for vehicle {VehicleId}", id);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving cost analysis for vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while retrieving cost analysis" });
         }
     }
 

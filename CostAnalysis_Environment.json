@@ -1,0 +1,26 @@
+{
+  "name": "Vehicle Cost Analysis - Local Environment",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "https://localhost:61603",
+      "enabled": true
+    },
+    {
+      "key": "auth_base_url",
+      "value": "https://localhost:61601",
+      "enabled": true
+    },
+    {
+      "key": "vehicle_id",
+      "value": "2296D6F7-F501-42D5-ABA9-56A3EBD835EC",
+      "enabled": true
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}

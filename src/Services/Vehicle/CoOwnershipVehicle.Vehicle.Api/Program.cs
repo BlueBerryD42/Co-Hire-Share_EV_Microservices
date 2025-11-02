@@ -95,6 +95,13 @@ namespace CoOwnershipVehicle.Vehicle.Api
                 client.BaseAddress = new Uri(builder.Configuration["ServiceUrls:BookingApi"] ?? throw new InvalidOperationException("ServiceUrls:BookingApi not configured"));
             });
 
+            // Add HTTP Client for Payment Service
+            builder.Services.AddHttpClient<IPaymentServiceClient, PaymentServiceClient>(client =>
+            {
+                var paymentServiceUrl = builder.Configuration["ServiceUrls:PaymentService"] ?? "https://localhost:61605";
+                client.BaseAddress = new Uri(paymentServiceUrl);
+            });
+
             // Add MassTransit for message bus (must be registered before services that use IPublishEndpoint)
             builder.Services.AddMassTransit(x =>
             {
@@ -111,6 +118,9 @@ namespace CoOwnershipVehicle.Vehicle.Api
 
             // Add Vehicle Statistics Service
             builder.Services.AddScoped<VehicleStatisticsService>();
+
+            // Add Cost Analysis Service
+            builder.Services.AddScoped<CostAnalysisService>();
 
             // Add Entity Framework
             var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
