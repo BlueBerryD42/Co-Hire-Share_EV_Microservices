@@ -34,6 +34,7 @@ public class Vehicle : BaseEntity
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public virtual ICollection<Expense> Expenses { get; set; } = new List<Expense>();
     public virtual ICollection<CheckIn> CheckIns { get; set; } = new List<CheckIn>();
+    public virtual ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();
 }
 
 public enum VehicleStatus

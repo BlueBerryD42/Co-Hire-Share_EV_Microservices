@@ -20,3 +20,7 @@ namespace CoOwnershipVehicle.Domain.Entities
     }
 }
 
+
+
+
+

@@ -379,12 +379,11 @@ public class AdminService : IAdminService
         return alerts;
     }
 
-    public async Task<byte[]> ExportDashboardToPdfAsync(DashboardRequestDto request)
+    public Task<byte[]> ExportDashboardToPdfAsync(DashboardRequestDto request)
     {
-        // This would implement PDF export using iTextSharp
+        // TODO: Implement PDF export using QuestPDF or iText7 (both .NET 8.0 compatible)
         // For now, return empty byte array
-        await Task.CompletedTask;
-        return Array.Empty<byte>();
+        return Task.FromResult(Array.Empty<byte>());
     }
 
     public async Task<byte[]> ExportDashboardToExcelAsync(DashboardRequestDto request)
@@ -393,6 +392,322 @@ public class AdminService : IAdminService
         // For now, return empty byte array
         await Task.CompletedTask;
         return Array.Empty<byte>();
+    }
+
+    // Financial endpoints implementation
+    public async Task<FinancialOverviewDto> GetFinancialOverviewAsync()
+    {
+        var now = DateTime.UtcNow;
+        var allTimeRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed).SumAsync(p => p.Amount);
+        var yearStart = new DateTime(now.Year, 1, 1);
+        var monthStart = new DateTime(now.Year, now.Month, 1);
+        var weekStart = now.AddDays(-7);
+        var dayStart = now.AddDays(-1);
+
+        var yearRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= yearStart).SumAsync(p => p.Amount);
+        var monthRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= monthStart).SumAsync(p => p.Amount);
+        var weekRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= weekStart).SumAsync(p => p.Amount);
+        var dayRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= dayStart).SumAsync(p => p.Amount);
+
+        // Revenue by source using ledger entry types and keyword heuristics
+        var revenueBySource = new List<KeyValuePair<string, decimal>>();
+        var ledger = await _context.LedgerEntries.ToListAsync();
+        revenueBySource.Add(new KeyValuePair<string, decimal>("Deposits", ledger.Where(l => l.Type == LedgerEntryType.Deposit).Sum(l => l.Amount)));
+        revenueBySource.Add(new KeyValuePair<string, decimal>("Fees", ledger.Where(l => l.Type == LedgerEntryType.Fee || (l.Description != null && l.Description.Contains("fee", StringComparison.OrdinalIgnoreCase))).Sum(l => l.Amount)));
+        revenueBySource.Add(new KeyValuePair<string, decimal>("RefundsReceived", ledger.Where(l => l.Type == LedgerEntryType.RefundReceived).Sum(l => l.Amount)));
+
+        var totalExpenses = await _context.Expenses.SumAsync(e => e.Amount);
+
+        // Total fund balances = sum latest balance per group
+        var latestLedgerPerGroup =
+            from l in _context.LedgerEntries
+            join m in _context.LedgerEntries
+                .GroupBy(x => x.GroupId)
+                .Select(g => new { GroupId = g.Key, MaxCreatedAt = g.Max(x => x.CreatedAt) })
+            on new { l.GroupId, l.CreatedAt } equals new { m.GroupId, CreatedAt = m.MaxCreatedAt }
+            select l;
+        var totalFundBalances = await latestLedgerPerGroup.SumAsync(x => x.BalanceAfter);
+
+        var totalPayments = await _context.Payments.CountAsync();
+        var successPayments = await _context.Payments.CountAsync(p => p.Status == PaymentStatus.Completed);
+        var failedPaymentsCount = await _context.Payments.CountAsync(p => p.Status == PaymentStatus.Failed);
+        var failedPaymentsAmount = await _context.Payments.Where(p => p.Status == PaymentStatus.Failed).SumAsync(p => p.Amount);
+        var pendingPayments = await _context.Payments.CountAsync(p => p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Processing);
+        var successRate = totalPayments == 0 ? 0 : (double)successPayments / totalPayments * 100d;
+
+        // Revenue trend (last 30 days)
+        var trendStart = now.AddDays(-30).Date;
+        var revenueTrend = await _context.Payments
+            .Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= trendStart)
+            .GroupBy(p => p.PaidAt!.Value.Date)
+            .Select(g => new TimeSeriesPointDto<decimal> { Date = g.Key, Value = g.Sum(p => p.Amount) })
+            .ToListAsync();
+
+        // Top spending groups (by expenses)
+        var topGroups = await _context.Expenses
+            .GroupBy(e => new { e.GroupId })
+            .Select(g => new { g.Key.GroupId, Total = g.Sum(x => x.Amount) })
+            .OrderByDescending(x => x.Total)
+            .Take(10)
+            .Join(_context.OwnershipGroups, g => g.GroupId, og => og.Id, (g, og) => new GroupSpendSummaryDto { GroupId = g.GroupId, GroupName = og.Name, TotalExpenses = g.Total })
+            .ToListAsync();
+
+        // Financial health score (simple composite)
+        var groupsCount = await _context.OwnershipGroups.CountAsync();
+        var negativeGroups = await GetNegativeBalanceGroupsAsync();
+        var healthScore = Math.Max(0, 100 - (int)(negativeGroups.Count * 100.0 / Math.Max(1, groupsCount)) - (int)Math.Min(50, failedPaymentsCount));
+
+        return new FinancialOverviewDto
+        {
+            TotalRevenueAllTime = allTimeRevenue,
+            TotalRevenueYear = yearRevenue,
+            TotalRevenueMonth = monthRevenue,
+            TotalRevenueWeek = weekRevenue,
+            TotalRevenueDay = dayRevenue,
+            RevenueBySource = revenueBySource,
+            TotalExpensesAllGroups = totalExpenses,
+            TotalFundBalances = totalFundBalances,
+            PaymentSuccessRate = Math.Round(successRate, 2),
+            FailedPaymentsCount = failedPaymentsCount,
+            FailedPaymentsAmount = failedPaymentsAmount,
+            PendingPaymentsCount = pendingPayments,
+            RevenueTrend = revenueTrend.OrderBy(x => x.Date).ToList(),
+            TopSpendingGroups = topGroups,
+            FinancialHealthScore = healthScore
+        };
+    }
+
+    public async Task<FinancialGroupBreakdownDto> GetFinancialByGroupsAsync()
+    {
+        var groups = await _context.OwnershipGroups
+            .AsNoTracking()
+            .Select(g => new { g.Id, g.Name })
+            .ToListAsync();
+        var expenses = await _context.Expenses
+            .AsNoTracking()
+            .Select(e => new { e.GroupId, e.ExpenseType, e.Amount, e.CreatedAt })
+            .ToListAsync();
+        var payments = await _context.Payments
+            .AsNoTracking()
+            .Select(p => new { p.Id, p.InvoiceId, p.Status })
+            .ToListAsync();
+        var invoiceRows = await _context.Invoices
+            .AsNoTracking()
+            .Select(i => new { i.Id, i.ExpenseId })
+            .ToListAsync();
+        var expenseIdToGroup = await _context.Expenses
+            .AsNoTracking()
+            .Select(e => new { e.Id, e.GroupId })
+            .ToListAsync();
+        var invoiceGroupMap = invoiceRows
+            .Join(expenseIdToGroup, i => i.ExpenseId, e => e.Id, (i, e) => new { i.Id, e.GroupId })
+            .ToList();
+
+        // Latest ledger balance per group
+        var balances = await _context.LedgerEntries
+            .GroupBy(l => l.GroupId)
+            .Select(g => new { GroupId = g.Key, Balance = g.OrderByDescending(x => x.CreatedAt).First().BalanceAfter })
+            .ToListAsync();
+
+        var items = new List<GroupFinancialItemDto>();
+        foreach (var g in groups)
+        {
+            var gExpenses = expenses.Where(e => e.GroupId == g.Id).ToList();
+            var byType = gExpenses
+                .GroupBy(e => e.ExpenseType)
+                .ToDictionary(k => k.Key.ToString(), v => v.Sum(x => x.Amount));
+            var balance = balances.FirstOrDefault(b => b.GroupId == g.Id)?.Balance ?? 0m;
+
+            var groupInvoiceIds = invoiceGroupMap.Where(x => x.GroupId == g.Id).Select(x => x.Id).ToHashSet();
+            var groupPayments = payments.Where(p => groupInvoiceIds.Contains(p.InvoiceId)).ToList();
+            var total = groupPayments.Count;
+            var completed = groupPayments.Count(p => p.Status == PaymentStatus.Completed);
+            var compliance = total == 0 ? 100d : (double)completed / total * 100d;
+
+            items.Add(new GroupFinancialItemDto
+            {
+                GroupId = g.Id,
+                GroupName = g.Name,
+                TotalExpenses = gExpenses.Sum(e => e.Amount),
+                ExpensesByType = byType,
+                FundBalance = balance,
+                HasFinancialIssues = balance < 0,
+                PaymentComplianceRate = Math.Round(compliance, 2)
+            });
+        }
+
+        return new FinancialGroupBreakdownDto { Groups = items.OrderByDescending(i => i.TotalExpenses).ToList() };
+    }
+
+    public async Task<PaymentStatisticsDto> GetPaymentStatisticsAsync()
+    {
+        var all = await _context.Payments.ToListAsync();
+        var total = all.Count;
+        var success = all.Count(p => p.Status == PaymentStatus.Completed);
+        var failed = all.Count(p => p.Status == PaymentStatus.Failed);
+        var avg = total == 0 ? 0 : all.Average(p => (double)p.Amount);
+        var methodCounts = all.GroupBy(p => p.Method).ToDictionary(g => g.Key, g => g.Count());
+
+        var start = DateTime.UtcNow.AddDays(-30).Date;
+        var volumeTrend = all.Where(p => p.CreatedAt >= start)
+            .GroupBy(p => p.CreatedAt.Date)
+            .Select(g => new TimeSeriesPointDto<int> { Date = g.Key, Value = g.Count() })
+            .OrderBy(x => x.Date)
+            .ToList();
+
+        // Failed reasons heuristic: parse from Notes or TransactionReference keywords
+        var failedReasons = all.Where(p => p.Status == PaymentStatus.Failed)
+            .Select(p => (Reason: ExtractFailureReason(p.Notes, p.TransactionReference), p))
+            .GroupBy(x => x.Reason)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // VNPay summary: treat EWallet method with VNPAY token in reference as VNPay
+        var vnp = all.Where(p => p.Method == PaymentMethod.EWallet && (p.TransactionReference ?? string.Empty).Contains("VNPAY", StringComparison.OrdinalIgnoreCase));
+        var vnSummary = new VnPaySummaryDto
+        {
+            SuccessCount = vnp.Count(p => p.Status == PaymentStatus.Completed),
+            FailedCount = vnp.Count(p => p.Status == PaymentStatus.Failed),
+            TotalAmount = vnp.Where(p => p.Status == PaymentStatus.Completed).Sum(p => p.Amount)
+        };
+
+        return new PaymentStatisticsDto
+        {
+            SuccessRate = total == 0 ? 0 : Math.Round((double)success / total * 100d, 2),
+            FailureRate = total == 0 ? 0 : Math.Round((double)failed / total * 100d, 2),
+            MethodCounts = methodCounts,
+            AverageAmount = (decimal)avg,
+            VolumeTrend = volumeTrend,
+            FailedReasons = failedReasons,
+            VnPay = vnSummary
+        };
+    }
+
+    public async Task<ExpenseAnalysisDto> GetExpenseAnalysisAsync()
+    {
+        // Select only necessary columns to avoid EF generating joins with mismatched shadow FKs
+        var expenseRows = await _context.Expenses
+            .AsNoTracking()
+            .Select(e => new { e.ExpenseType, e.Amount, e.CreatedAt, e.GroupId })
+            .ToListAsync();
+
+        var byType = expenseRows
+            .GroupBy(e => e.ExpenseType)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        var start = DateTime.UtcNow.AddDays(-90).Date;
+        var trend = expenseRows
+            .Where(e => e.CreatedAt.Date >= start)
+            .GroupBy(e => e.CreatedAt.Date)
+            .Select(g => new TimeSeriesPointDto<decimal> { Date = g.Key, Value = g.Sum(x => x.Amount) })
+            .OrderBy(x => x.Date)
+            .ToList();
+
+        var vehicleCount = await _context.Vehicles.AsNoTracking().CountAsync();
+        var avgPerVehicle = vehicleCount == 0 ? 0 : expenseRows.Sum(e => e.Amount) / vehicleCount;
+
+        var costPerGroup = expenseRows
+            .GroupBy(e => e.GroupId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        var optimizations = new List<string>();
+        var topType = byType.OrderByDescending(x => x.Value).FirstOrDefault();
+        if (topType.Value > 0)
+            optimizations.Add($"High spend in {topType.Key}. Review vendors and maintenance schedules.");
+
+        return new ExpenseAnalysisDto
+        {
+            TotalByType = byType,
+            ExpenseTrend = trend,
+            AverageCostPerVehicle = avgPerVehicle,
+            CostPerGroup = costPerGroup,
+            OptimizationOpportunities = optimizations
+        };
+    }
+
+    public async Task<FinancialAnomaliesDto> GetFinancialAnomaliesAsync()
+    {
+        var completed = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed).ToListAsync();
+        var amounts = completed.Select(p => (double)p.Amount).ToList();
+        var mean = amounts.Count == 0 ? 0 : amounts.Average();
+        var std = amounts.Count <= 1 ? 0 : Math.Sqrt(amounts.Sum(a => Math.Pow(a - mean, 2)) / (amounts.Count - 1));
+        var anomalies = new List<PaymentAnomalyDto>();
+        if (std > 0)
+        {
+            foreach (var p in completed)
+            {
+                var z = ((double)p.Amount - mean) / std;
+                if (Math.Abs(z) >= 3)
+                {
+                    anomalies.Add(new PaymentAnomalyDto { PaymentId = p.Id, Amount = p.Amount, ZScore = Math.Round(z, 2), PaidAt = p.PaidAt, Method = p.Method });
+                }
+            }
+        }
+
+        var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+        var suspicious = await _context.Payments
+            .Where(p => p.Status == PaymentStatus.Failed && p.CreatedAt >= sevenDaysAgo)
+            .GroupBy(p => p.PayerId)
+            .Select(g => new SuspiciousPatternDto { PayerId = g.Key, FailedCount7Days = g.Count() })
+            .Where(x => x.FailedCount7Days >= 3)
+            .ToListAsync();
+
+        var negative = await GetNegativeBalanceGroupsAsync();
+
+        return new FinancialAnomaliesDto
+        {
+            UnusualTransactions = anomalies,
+            SuspiciousPaymentPatterns = suspicious,
+            NegativeBalanceGroups = negative
+        };
+    }
+
+    public async Task<byte[]> GenerateFinancialPdfAsync(FinancialReportRequestDto request)
+    {
+        // Simple JSON-as-PDF placeholder
+        var overview = await GetFinancialOverviewAsync();
+        var groups = await GetFinancialByGroupsAsync();
+        var payments = await GetPaymentStatisticsAsync();
+        var expenses = await GetExpenseAnalysisAsync();
+        var anomalies = await GetFinancialAnomaliesAsync();
+        var payload = System.Text.Json.JsonSerializer.Serialize(new { request, overview, groups, payments, expenses, anomalies }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        return System.Text.Encoding.UTF8.GetBytes($"PDF Financial Report\n\n{payload}");
+    }
+
+    public async Task<byte[]> GenerateFinancialExcelAsync(FinancialReportRequestDto request)
+    {
+        var overview = await GetFinancialOverviewAsync();
+        var groups = await GetFinancialByGroupsAsync();
+        var payments = await GetPaymentStatisticsAsync();
+        var expenses = await GetExpenseAnalysisAsync();
+        var payload = System.Text.Json.JsonSerializer.Serialize(new { request, overview, groups, payments, expenses }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        return System.Text.Encoding.UTF8.GetBytes($"Excel Financial Report\n\n{payload}");
+    }
+
+    private string ExtractFailureReason(string? notes, string? reference)
+    {
+        var source = (notes ?? string.Empty) + " " + (reference ?? string.Empty);
+        if (source.Contains("insufficient", StringComparison.OrdinalIgnoreCase)) return "Insufficient funds";
+        if (source.Contains("timeout", StringComparison.OrdinalIgnoreCase)) return "Gateway timeout";
+        if (source.Contains("declined", StringComparison.OrdinalIgnoreCase)) return "Card declined";
+        if (source.Contains("network", StringComparison.OrdinalIgnoreCase)) return "Network error";
+        return "Unknown";
+    }
+
+    private async Task<List<GroupNegativeBalanceDto>> GetNegativeBalanceGroupsAsync()
+    {
+        var latestNegative =
+            from l in _context.LedgerEntries
+            join m in _context.LedgerEntries
+                .GroupBy(x => x.GroupId)
+                .Select(g => new { GroupId = g.Key, MaxCreatedAt = g.Max(x => x.CreatedAt) })
+            on new { l.GroupId, l.CreatedAt } equals new { m.GroupId, CreatedAt = m.MaxCreatedAt }
+            where l.BalanceAfter < 0
+            select new { l.GroupId, l.BalanceAfter };
+        var latest = await latestNegative.ToListAsync();
+        var map = await _context.OwnershipGroups.Where(g => latest.Select(l => l.GroupId).Contains(g.Id))
+            .Select(g => new { g.Id, g.Name })
+            .ToListAsync();
+        return latest.Join(map, l => l.GroupId, g => g.Id, (l, g) => new GroupNegativeBalanceDto { GroupId = l.GroupId, GroupName = g.Name, Balance = l.BalanceAfter }).ToList();
     }
 
     private DateTime GetPeriodStart(DateTime date, TimePeriod period)
@@ -1634,7 +1949,7 @@ public class AdminService : IAdminService
             var disputes = await _context.Disputes.ToListAsync();
 
             var resolvedDisputes = disputes.Where(d => d.Status == DisputeStatus.Resolved).ToList();
-            var averageResolutionTime = resolvedDisputes.Any() 
+            var averageResolutionTime = resolvedDisputes.Any()
                 ? resolvedDisputes.Where(d => d.ResolvedAt.HasValue)
                     .Average(d => (d.ResolvedAt.Value - d.CreatedAt).TotalHours)
                 : 0;
@@ -1658,6 +1973,12 @@ public class AdminService : IAdminService
                 DisputesResolvedThisMonth = disputes.Count(d => d.Status == DisputeStatus.Resolved && d.ResolvedAt >= startOfMonth),
                 DisputesCreatedThisMonth = disputes.Count(d => d.CreatedAt >= startOfMonth)
             };
+        }
+        catch (Microsoft.Data.SqlClient.SqlException sex) when (sex.Number == 208)
+        {
+            // Disputes table missing: return empty stats instead of failing in environments not yet migrated
+            _logger.LogWarning("Disputes table not found. Returning empty statistics.");
+            return new DisputeStatisticsDto();
         }
         catch (Exception ex)
         {

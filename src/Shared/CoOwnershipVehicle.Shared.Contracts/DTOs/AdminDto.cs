@@ -606,3 +606,167 @@ public enum InterventionType
         public int DisputesResolvedThisMonth { get; set; }
         public int DisputesCreatedThisMonth { get; set; }
     }
+
+    // System Health Monitoring DTOs
+    public class SystemHealthCheckDto
+    {
+        public List<ServiceHealthDto> Services { get; set; } = new();
+        public List<DependencyHealthDto> Dependencies { get; set; } = new();
+        public SystemHealthStatus OverallStatus { get; set; }
+        public DateTime CheckTime { get; set; } = DateTime.UtcNow;
+        public double TotalResponseTimeMs { get; set; }
+    }
+
+    public class ServiceHealthDto
+    {
+        public string ServiceName { get; set; } = string.Empty;
+        public string BaseUrl { get; set; } = string.Empty;
+        public HealthStatus Status { get; set; }
+        public double ResponseTimeMs { get; set; }
+        public double? ErrorRate { get; set; }
+        public DateTime? LastIncidentTimestamp { get; set; }
+        public string? ErrorMessage { get; set; }
+        public DateTime CheckTime { get; set; } = DateTime.UtcNow;
+    }
+
+    public class DependencyHealthDto
+    {
+        public string DependencyName { get; set; } = string.Empty;
+        public DependencyType Type { get; set; }
+        public HealthStatus Status { get; set; }
+        public double ResponseTimeMs { get; set; }
+        public string? ConnectionString { get; set; }
+        public DateTime? LastIncidentTimestamp { get; set; }
+        public string? ErrorMessage { get; set; }
+        public Dictionary<string, object>? AdditionalInfo { get; set; }
+    }
+
+    public class SystemMetricsDto
+    {
+        public List<ServiceMetricsDto> ServiceMetrics { get; set; } = new();
+        public SystemResourceMetricsDto SystemResources { get; set; } = new();
+        public DatabaseMetricsDto DatabaseMetrics { get; set; } = new();
+        public MessageQueueMetricsDto MessageQueueMetrics { get; set; } = new();
+        public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+        public TimeSpan CollectionPeriod { get; set; }
+    }
+
+    public class ServiceMetricsDto
+    {
+        public string ServiceName { get; set; } = string.Empty;
+        public long RequestCount { get; set; }
+        public double AverageResponseTimeMs { get; set; }
+        public double P95ResponseTimeMs { get; set; }
+        public double P99ResponseTimeMs { get; set; }
+        public double ErrorRate { get; set; }
+        public long ErrorCount { get; set; }
+        public long SuccessCount { get; set; }
+        public Dictionary<string, long> EndpointRequestCounts { get; set; } = new();
+        public Dictionary<string, double> EndpointAverageResponseTimes { get; set; } = new();
+        public Dictionary<string, double> EndpointErrorRates { get; set; } = new();
+    }
+
+    public class SystemResourceMetricsDto
+    {
+        public double CpuUsagePercent { get; set; }
+        public long MemoryUsageBytes { get; set; }
+        public long MemoryTotalBytes { get; set; }
+        public double MemoryUsagePercent { get; set; }
+        public long DiskUsageBytes { get; set; }
+        public long DiskTotalBytes { get; set; }
+        public double DiskUsagePercent { get; set; }
+        public long ActiveConnections { get; set; }
+        public int ThreadCount { get; set; }
+    }
+
+    public class DatabaseMetricsDto
+    {
+        public long TotalQueries { get; set; }
+        public double AverageQueryTimeMs { get; set; }
+        public double P95QueryTimeMs { get; set; }
+        public long SlowQueries { get; set; }
+        public long ActiveConnections { get; set; }
+        public long ConnectionPoolSize { get; set; }
+        public Dictionary<string, long> QueryCountsByEntity { get; set; } = new();
+    }
+
+    public class MessageQueueMetricsDto
+    {
+        public string QueueName { get; set; } = string.Empty;
+        public long QueueDepth { get; set; }
+        public long MessagesProcessed { get; set; }
+        public double AverageProcessingTimeMs { get; set; }
+        public long FailedMessages { get; set; }
+        public double FailureRate { get; set; }
+    }
+
+    public class SystemLogsRequestDto
+    {
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 50;
+        public string? Service { get; set; }
+        public string? Level { get; set; }
+        public DateTime? FromDate { get; set; }
+        public DateTime? ToDate { get; set; }
+        public string? Search { get; set; }
+        public string? SortBy { get; set; } = "Timestamp";
+        public string? SortDirection { get; set; } = "desc";
+    }
+
+    public class SystemLogsResponseDto
+    {
+        public List<LogEntryDto> Logs { get; set; } = new();
+        public int TotalCount { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int TotalPages { get; set; }
+    }
+
+    public class LogEntryDto
+    {
+        public Guid Id { get; set; }
+        public string Service { get; set; } = string.Empty;
+        public string Level { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string? Exception { get; set; }
+        public DateTime Timestamp { get; set; }
+        public Dictionary<string, object>? Properties { get; set; }
+        public string? UserId { get; set; }
+        public string? RequestId { get; set; }
+        public string? IpAddress { get; set; }
+    }
+
+    public enum HealthStatus
+    {
+        Healthy = 0,
+        Degraded = 1,
+        Unhealthy = 2,
+        Unknown = 3
+    }
+
+    public enum SystemHealthStatus
+    {
+        Healthy = 0,
+        Degraded = 1,
+        Unhealthy = 2,
+        Critical = 3
+    }
+
+    public enum DependencyType
+    {
+        Database = 0,
+        RabbitMQ = 1,
+        Redis = 2,
+        FileStorage = 3,
+        ExternalApi = 4
+    }
+
+    public enum LogLevel
+    {
+        Trace = 0,
+        Debug = 1,
+        Information = 2,
+        Warning = 3,
+        Error = 4,
+        Critical = 5
+    }

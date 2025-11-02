@@ -71,3 +71,7 @@ namespace CoOwnershipVehicle.Domain.Entities
     }
 }
 
+
+
+
+

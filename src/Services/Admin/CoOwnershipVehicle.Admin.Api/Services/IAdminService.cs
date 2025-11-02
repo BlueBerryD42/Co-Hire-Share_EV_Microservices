@@ -34,4 +34,13 @@ public interface IAdminService
         Task<bool> AddDisputeCommentAsync(Guid disputeId, AddDisputeCommentDto request, Guid userId);
         Task<bool> ResolveDisputeAsync(Guid disputeId, ResolveDisputeDto request, Guid adminUserId);
         Task<DisputeStatisticsDto> GetDisputeStatisticsAsync();
+
+    // Financial endpoints
+    Task<FinancialOverviewDto> GetFinancialOverviewAsync();
+    Task<FinancialGroupBreakdownDto> GetFinancialByGroupsAsync();
+    Task<PaymentStatisticsDto> GetPaymentStatisticsAsync();
+    Task<ExpenseAnalysisDto> GetExpenseAnalysisAsync();
+    Task<FinancialAnomaliesDto> GetFinancialAnomaliesAsync();
+    Task<byte[]> GenerateFinancialPdfAsync(FinancialReportRequestDto request);
+    Task<byte[]> GenerateFinancialExcelAsync(FinancialReportRequestDto request);
 }

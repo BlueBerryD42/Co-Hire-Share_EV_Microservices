@@ -5,6 +5,7 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using CoOwnershipVehicle.Admin.Api.Data;
 using CoOwnershipVehicle.Admin.Api.Services;
+using CoOwnershipVehicle.Admin.Api.Middleware;
 using CoOwnershipVehicle.Shared.Configuration;
 using Microsoft.Extensions.Caching.Memory;
 using MassTransit;
@@ -109,6 +110,13 @@ builder.Services.AddMemoryCache();
 
 // Services
 builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<ISystemHealthService, SystemHealthService>();
+builder.Services.AddScoped<ISystemMetricsService, SystemMetricsService>();
+builder.Services.AddScoped<ISystemLogsService, SystemLogsService>();
+builder.Services.AddScoped<IAlertService, AlertService>();
+
+// HttpClient for health checks
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
@@ -126,18 +134,19 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 
+// Performance tracking middleware
+app.UsePerformanceTracking();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created
+// Apply pending migrations at startup
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AdminDbContext>();
-    
-    // Ensure database is created
-    await context.Database.EnsureCreatedAsync();
+    await context.Database.MigrateAsync();
 }
 
 app.Run();

@@ -13,13 +13,13 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
-    <PackageReference Include="System.Text.Json" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <!-- Microsoft.Extensions.Caching.Memory is provided by .NET 8.0 framework - no explicit reference needed -->
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.0" />
     <PackageReference Include="MassTransit" Version="8.1.3" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
     <PackageReference Include="EPPlus" Version="7.0.0" />
-    <PackageReference Include="iTextSharp" Version="5.5.13.3" />
+    <!-- iTextSharp removed - not compatible with .NET 8.0. Use QuestPDF or iText7 for PDF generation if needed -->
   </ItemGroup>
 
   <ItemGroup>

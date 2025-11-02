@@ -97,6 +97,18 @@
       "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE"]
     },
     {
+      "DownstreamPathTemplate": "/api/maintenance/{everything}",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5009
+        }
+      ],
+      "UpstreamPathTemplate": "/api/maintenance/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE"]
+    },
+    {
       "DownstreamPathTemplate": "/api/vehicle/{everything}",
       "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [

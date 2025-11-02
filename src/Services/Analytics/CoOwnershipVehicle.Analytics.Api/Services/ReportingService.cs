@@ -1,5 +1,6 @@
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using System.Text.Json;
+using System.Text;
 
 namespace CoOwnershipVehicle.Analytics.Api.Services;
 
@@ -204,5 +205,84 @@ public class ReportingService : IReportingService
             ["period"] = $"{request.StartDate:yyyy-MM-dd} to {request.EndDate:yyyy-MM-dd}",
             ["kpiMetrics"] = kpiMetrics
         };
+    }
+
+    public async Task<byte[]> GenerateFairnessReportPdfAsync(AnalyticsRequestDto request, Guid groupId)
+    {
+        _logger.LogInformation("Generating fairness PDF report for GroupId: {GroupId}", groupId);
+        
+        try
+        {
+            var report = await _analyticsService.GetFairnessReportAsync(
+                groupId, 
+                request.StartDate, 
+                request.EndDate);
+
+            // Convert report to PDF bytes
+            // Note: This is a simplified implementation
+            // In production, you would use a library like iTextSharp, QuestPDF, or PuppeteerSharp
+            var reportContent = BuildFairnessReportText(report);
+            var pdfBytes = Encoding.UTF8.GetBytes(reportContent);
+
+            // For a proper PDF, you would use:
+            // using var ms = new MemoryStream();
+            // using var writer = new PdfWriter(ms);
+            // using var pdf = new PdfDocument(writer);
+            // using var document = new Document(pdf);
+            // ... add content ...
+            // document.Close();
+            // return ms.ToArray();
+
+            _logger.LogInformation("Successfully generated fairness PDF report for GroupId: {GroupId}", groupId);
+            return pdfBytes;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating fairness PDF report for GroupId: {GroupId}", groupId);
+            throw;
+        }
+    }
+
+    private string BuildFairnessReportText(FairnessReportDto report)
+    {
+        var sb = new StringBuilder();
+        
+        sb.AppendLine("=".PadRight(80, '='));
+        sb.AppendLine($"FAIRNESS REPORT - {report.GroupName}");
+        sb.AppendLine("=".PadRight(80, '='));
+        sb.AppendLine($"Generated: {report.ReportDate:yyyy-MM-dd HH:mm:ss UTC}");
+        sb.AppendLine($"Period: {report.PeriodStart:yyyy-MM-dd} to {report.PeriodEnd:yyyy-MM-dd}");
+        sb.AppendLine();
+        
+        sb.AppendLine($"Overall Fairness Score: {report.OverallFairnessScore:F1}/100");
+        sb.AppendLine($"Assessment: {report.OverallAssessment}");
+        sb.AppendLine();
+        
+        sb.AppendLine("MEMBER BREAKDOWN");
+        sb.AppendLine("-".PadRight(80, '-'));
+        foreach (var member in report.MemberBreakdown)
+        {
+            sb.AppendLine($"Member: {member.MemberName}");
+            sb.AppendLine($"  Ownership: {member.OwnershipPercentage:F1}%");
+            sb.AppendLine($"  Usage: {member.OverallUsagePercentage:F1}%");
+            sb.AppendLine($"  Difference: {member.UsageDifference:+#.##;-#.##}%");
+            sb.AppendLine($"  Fair Share: {member.FairShareIndicator}");
+            sb.AppendLine($"  Fairness Score: {member.FairnessScore:F1}/100");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine("RECOMMENDATIONS");
+        sb.AppendLine("-".PadRight(80, '-'));
+        foreach (var rec in report.Recommendations)
+        {
+            sb.AppendLine($"[{rec.Priority}] {rec.Title}");
+            sb.AppendLine($"  {rec.Description}");
+            sb.AppendLine($"  Impact: {rec.Impact}");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine("=".PadRight(80, '='));
+        
+        return sb.ToString();
     }
 }

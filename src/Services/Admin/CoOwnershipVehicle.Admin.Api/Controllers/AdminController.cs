@@ -22,6 +22,118 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// \\Description Provide admin tools for monitoring system-wide financial health and generating financial reports. Belongs to Admin Service.
+    /// Financial overview: totals, sources, balances, payment KPIs, trends, top spenders, health score.
+    /// </summary>
+    [HttpGet("financial/overview")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(FinancialOverviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<FinancialOverviewDto>> GetFinancialOverview()
+    {
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetFinancialOverviewAsync(),
+            "retrieving financial overview");
+    }
+
+    /// <summary>
+    /// Get revenue/expense breakdown per group with balances, flags, and compliance rates.
+    /// </summary>
+    [HttpGet("financial/groups")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(FinancialGroupBreakdownDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<FinancialGroupBreakdownDto>> GetFinancialByGroups()
+    {
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetFinancialByGroupsAsync(),
+            "retrieving financial groups breakdown");
+    }
+
+    /// <summary>
+    /// Payment statistics: success/failure rates, methods, averages, trends, VNPay summary.
+    /// </summary>
+    [HttpGet("financial/payments")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(PaymentStatisticsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<PaymentStatisticsDto>> GetPaymentStatistics()
+    {
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetPaymentStatisticsAsync(),
+            "retrieving payment statistics");
+    }
+
+    /// <summary>
+    /// Expense analysis: totals by type, trends, averages, and optimization hints.
+    /// </summary>
+    [HttpGet("financial/expenses")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(ExpenseAnalysisDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<ExpenseAnalysisDto>> GetExpenseAnalysis()
+    {
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetExpenseAnalysisAsync(),
+            "retrieving expense analysis");
+    }
+
+    /// <summary>
+    /// Financial anomaly detection: unusual transactions, suspicious patterns, negative balances.
+    /// </summary>
+    [HttpGet("financial/anomalies")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(FinancialAnomaliesDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<FinancialAnomaliesDto>> GetFinancialAnomalies()
+    {
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetFinancialAnomaliesAsync(),
+            "retrieving financial anomalies");
+    }
+
+    /// <summary>
+    /// Generate financial report (PDF).
+    /// </summary>
+    [HttpGet("financial/reports/pdf")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GenerateFinancialPdf([FromQuery] FinancialReportRequestDto request)
+    {
+        return await ExecuteAdminFileActionAsync(async () =>
+        {
+            var bytes = await _adminService.GenerateFinancialPdfAsync(request);
+            var fileName = $"financial_{request.Type}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.pdf";
+            return File(bytes, "application/pdf", fileName);
+        }, "generating financial PDF report");
+    }
+
+    /// <summary>
+    /// Generate financial report (Excel).
+    /// </summary>
+    [HttpGet("financial/reports/excel")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GenerateFinancialExcel([FromQuery] FinancialReportRequestDto request)
+    {
+        return await ExecuteAdminFileActionAsync(async () =>
+        {
+            var bytes = await _adminService.GenerateFinancialExcelAsync(request);
+            var fileName = $"financial_{request.Type}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }, "generating financial Excel report");
+    }
+
+    /// <summary>
     /// Get system-wide dashboard metrics
     /// </summary>
     /// <param name="request">Dashboard request parameters</param>
@@ -568,5 +680,164 @@ public class AdminController : ControllerBase
             throw new UnauthorizedAccessException("Unable to determine current user ID");
         }
         return userId;
+    }
+}
+
+/// <summary>
+/// System health monitoring and metrics controller
+/// </summary>
+[ApiController]
+[Route("api/admin/system")]
+[Authorize(Roles = "SystemAdmin,Staff")]
+public class SystemMonitoringController : ControllerBase
+{
+    private readonly ISystemHealthService _healthService;
+    private readonly ISystemMetricsService _metricsService;
+    private readonly ISystemLogsService _logsService;
+    private readonly IAlertService _alertService;
+    private readonly ILogger<SystemMonitoringController> _logger;
+
+    public SystemMonitoringController(
+        ISystemHealthService healthService,
+        ISystemMetricsService metricsService,
+        ISystemLogsService logsService,
+        IAlertService alertService,
+        ILogger<SystemMonitoringController> logger)
+    {
+        _healthService = healthService;
+        _metricsService = metricsService;
+        _logsService = logsService;
+        _alertService = alertService;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// System health check - checks status of all microservices and dependencies
+    /// </summary>
+    [HttpGet("health")]
+    [ProducesResponseType(typeof(SystemHealthCheckDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<SystemHealthCheckDto>> GetSystemHealth()
+    {
+        try
+        {
+            var health = await _healthService.CheckSystemHealthAsync();
+            return Ok(health);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving system health");
+            return StatusCode(500, new { message = "An error occurred while checking system health" });
+        }
+    }
+
+    /// <summary>
+    /// System metrics - performance metrics for all services
+    /// </summary>
+    [HttpGet("metrics")]
+    [ProducesResponseType(typeof(SystemMetricsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<SystemMetricsDto>> GetSystemMetrics([FromQuery] int? minutes = 15)
+    {
+        try
+        {
+            var period = TimeSpan.FromMinutes(minutes ?? 15);
+            var metrics = await _metricsService.GetSystemMetricsAsync(period);
+            return Ok(metrics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving system metrics");
+            return StatusCode(500, new { message = "An error occurred while retrieving system metrics" });
+        }
+    }
+
+    /// <summary>
+    /// System logs - centralized log viewing with filtering and search
+    /// </summary>
+    [HttpGet("logs")]
+    [ProducesResponseType(typeof(SystemLogsResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<SystemLogsResponseDto>> GetSystemLogs([FromQuery] SystemLogsRequestDto request)
+    {
+        try
+        {
+            var logs = await _logsService.GetLogsAsync(request);
+            return Ok(logs);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving system logs");
+            return StatusCode(500, new { message = "An error occurred while retrieving system logs" });
+        }
+    }
+
+    /// <summary>
+    /// Export system logs
+    /// </summary>
+    [HttpGet("logs/export")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ExportLogs([FromQuery] SystemLogsRequestDto request, [FromQuery] string format = "json")
+    {
+        try
+        {
+            var logs = await _logsService.ExportLogsAsync(request, format);
+            var contentType = format.ToLower() == "csv" ? "text/csv" : "application/json";
+            var fileName = $"system_logs_{DateTime.UtcNow:yyyyMMdd_HHmmss}.{format}";
+            
+            return File(logs, contentType, fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting system logs");
+            return StatusCode(500, new { message = "An error occurred while exporting system logs" });
+        }
+    }
+
+    /// <summary>
+    /// Get active system alerts
+    /// </summary>
+    [HttpGet("alerts")]
+    [ProducesResponseType(typeof(List<AlertDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<List<AlertDto>>> GetSystemAlerts()
+    {
+        try
+        {
+            var alerts = await _alertService.GetActiveAlertsAsync();
+            return Ok(alerts);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving system alerts");
+            return StatusCode(500, new { message = "An error occurred while retrieving system alerts" });
+        }
+    }
+
+    /// <summary>
+    /// Trigger alert check (manually trigger alert evaluation)
+    /// </summary>
+    [HttpPost("alerts/check")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> CheckAlerts()
+    {
+        try
+        {
+            await _alertService.CheckAndTriggerAlertsAsync();
+            return Ok(new { message = "Alert check completed" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking alerts");
+            return StatusCode(500, new { message = "An error occurred while checking alerts" });
+        }
     }
 }
