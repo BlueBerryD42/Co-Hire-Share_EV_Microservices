@@ -1,3 +1,5 @@
+using CoOwnershipVehicle.Vehicle.Api.DTOs;
+
 namespace CoOwnershipVehicle.Vehicle.Api.Services;
 
 public interface IGroupServiceClient

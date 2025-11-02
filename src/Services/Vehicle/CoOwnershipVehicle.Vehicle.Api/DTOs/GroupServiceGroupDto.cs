@@ -1,4 +1,4 @@
-namespace CoOwnershipVehicle.Vehicle.Api.Services;
+namespace CoOwnershipVehicle.Vehicle.Api.DTOs;
 
 public class GroupServiceGroupDto
 {

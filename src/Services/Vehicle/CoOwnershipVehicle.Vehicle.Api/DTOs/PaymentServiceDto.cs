@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace CoOwnershipVehicle.Vehicle.Api.Services
+namespace CoOwnershipVehicle.Vehicle.Api.DTOs
 {
     /// <summary>
     /// Response from Payment Service for vehicle expenses

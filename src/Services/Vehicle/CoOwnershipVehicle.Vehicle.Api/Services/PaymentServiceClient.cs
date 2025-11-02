@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using CoOwnershipVehicle.Vehicle.Api.DTOs;
 
 namespace CoOwnershipVehicle.Vehicle.Api.Services
 {

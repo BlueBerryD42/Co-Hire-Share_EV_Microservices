@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using CoOwnershipVehicle.Vehicle.Api.DTOs;
 
 namespace CoOwnershipVehicle.Vehicle.Api.Services
 {

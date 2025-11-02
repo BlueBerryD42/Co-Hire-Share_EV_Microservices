@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Vehicle.Api.DTOs;
 
 namespace CoOwnershipVehicle.Vehicle.Api.Services;
 
