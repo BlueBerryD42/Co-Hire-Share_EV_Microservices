@@ -56,6 +56,16 @@ public class RecurringBookingService : IRecurringBookingService
             throw new InvalidOperationException("Vehicle is not associated with a group.");
         }
 
+        if (request.GroupId == Guid.Empty)
+        {
+            throw new InvalidOperationException("GroupId is required for recurring bookings.");
+        }
+
+        if (request.GroupId != vehicle.GroupId.Value)
+        {
+            throw new InvalidOperationException("GroupId does not match the vehicle's group.");
+        }
+
         var nowUtc = DateTime.UtcNow;
         var (occurrences, _) = await GenerateOccurrencesAsync(
             request,
@@ -72,7 +82,7 @@ public class RecurringBookingService : IRecurringBookingService
         {
             Id = Guid.NewGuid(),
             VehicleId = request.VehicleId,
-            GroupId = vehicle.GroupId.Value,
+            GroupId = request.GroupId,
             UserId = userId,
             Pattern = request.Pattern,
             Interval = request.Interval,

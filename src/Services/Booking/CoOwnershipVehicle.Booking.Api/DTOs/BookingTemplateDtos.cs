@@ -62,3 +62,11 @@ public class BookingTemplateResponse
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
+
+public class CreateBookingFromTemplateRequest
+{
+    [Required]
+    public DateTime StartDateTime { get; set; }
+
+    public Guid? VehicleId { get; set; }
+}

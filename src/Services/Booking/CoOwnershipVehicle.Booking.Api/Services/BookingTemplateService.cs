@@ -39,6 +39,25 @@ public class BookingTemplateService : IBookingTemplateService
             throw new ArgumentNullException(nameof(request));
         }
 
+        if (request.Duration <= TimeSpan.Zero)
+        {
+            throw new ArgumentException("Duration must be greater than zero.", nameof(request.Duration));
+        }
+
+        if (request.PreferredStartTime < TimeSpan.Zero || request.PreferredStartTime >= TimeSpan.FromDays(1))
+        {
+            throw new ArgumentException("PreferredStartTime must fall within a 24-hour range.", nameof(request.PreferredStartTime));
+        }
+
+        if (request.VehicleId.HasValue)
+        {
+            var hasAccess = await _bookingRepository.UserHasVehicleAccessAsync(request.VehicleId.Value, userId);
+            if (!hasAccess)
+            {
+                throw new UnauthorizedAccessException("You do not have access to the specified vehicle.");
+            }
+        }
+
         var template = new BookingTemplate
         {
             Id = Guid.NewGuid(),
@@ -79,7 +98,7 @@ public class BookingTemplateService : IBookingTemplateService
         return MapToDto(template);
     }
 
-    public async Task<BookingDto> CreateBookingFromTemplateAsync(Guid templateId, CoOwnershipVehicle.Booking.Api.Controllers.CreateBookingFromTemplateRequest request, Guid userId)
+    public async Task<BookingDto> CreateBookingFromTemplateAsync(Guid templateId, CreateBookingFromTemplateRequest request, Guid userId)
     {
         if (request == null)
         {
@@ -98,6 +117,12 @@ public class BookingTemplateService : IBookingTemplateService
             throw new InvalidOperationException("VehicleId must be specified in the template or request.");
         }
 
+        var hasAccess = await _bookingRepository.UserHasVehicleAccessAsync(vehicleId.Value, userId);
+        if (!hasAccess)
+        {
+            throw new UnauthorizedAccessException("You do not have access to the specified vehicle.");
+        }
+
         // Get vehicle to ensure it exists and to get GroupId
         var vehicle = await _bookingRepository.GetVehicleByIdAsync(vehicleId.Value)
                       ?? throw new InvalidOperationException($"Vehicle with ID {vehicleId} not found.");
@@ -107,7 +132,7 @@ public class BookingTemplateService : IBookingTemplateService
             throw new InvalidOperationException($"Vehicle with ID {vehicleId} is not associated with a group.");
         }
 
-        var startAtUtc = request.StartDateTime;
+        var startAtUtc = NormalizeToUtc(request.StartDateTime);
         var endAtUtc = startAtUtc.Add(template.Duration);
 
         // Check for conflicts
@@ -180,13 +205,56 @@ public class BookingTemplateService : IBookingTemplateService
             return null;
         }
 
-        if (request.Name != null) template.Name = request.Name;
-        if (request.VehicleId != null) template.VehicleId = request.VehicleId;
-        if (request.Duration != null) template.Duration = request.Duration.Value;
-        if (request.PreferredStartTime != null) template.PreferredStartTime = request.PreferredStartTime.Value;
-        if (request.Purpose != null) template.Purpose = request.Purpose;
-        if (request.Notes != null) template.Notes = request.Notes;
-        if (request.Priority != null) template.Priority = request.Priority.Value;
+        if (request.Name != null)
+        {
+            template.Name = request.Name;
+        }
+
+        if (request.VehicleId.HasValue)
+        {
+            var hasAccess = await _bookingRepository.UserHasVehicleAccessAsync(request.VehicleId.Value, userId);
+            if (!hasAccess)
+            {
+                throw new UnauthorizedAccessException("You do not have access to the specified vehicle.");
+            }
+
+            template.VehicleId = request.VehicleId;
+        }
+
+        if (request.Duration.HasValue)
+        {
+            if (request.Duration.Value <= TimeSpan.Zero)
+            {
+                throw new ArgumentException("Duration must be greater than zero.", nameof(request.Duration));
+            }
+
+            template.Duration = request.Duration.Value;
+        }
+
+        if (request.PreferredStartTime.HasValue)
+        {
+            if (request.PreferredStartTime.Value < TimeSpan.Zero || request.PreferredStartTime.Value >= TimeSpan.FromDays(1))
+            {
+                throw new ArgumentException("PreferredStartTime must fall within a 24-hour range.", nameof(request.PreferredStartTime));
+            }
+
+            template.PreferredStartTime = request.PreferredStartTime.Value;
+        }
+
+        if (request.Purpose != null)
+        {
+            template.Purpose = request.Purpose;
+        }
+
+        if (request.Notes != null)
+        {
+            template.Notes = request.Notes;
+        }
+
+        if (request.Priority.HasValue)
+        {
+            template.Priority = request.Priority.Value;
+        }
 
         template.UpdatedAt = DateTime.UtcNow;
 
@@ -247,6 +315,16 @@ public class BookingTemplateService : IBookingTemplateService
             IsEmergency = booking.IsEmergency,
             Priority = booking.Priority,
             CreatedAt = booking.CreatedAt,
+        };
+    }
+
+    private static DateTime NormalizeToUtc(DateTime dateTime)
+    {
+        return dateTime.Kind switch
+        {
+            DateTimeKind.Utc => dateTime,
+            DateTimeKind.Local => dateTime.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
         };
     }
 }

@@ -47,6 +47,11 @@ public class CreateBookingDto
     [StringLength(1000)] // Added validation for EmergencyReason
     public string? EmergencyReason { get; set; } // Added EmergencyReason
     
+    /// <summary>
+    /// For emergency bookings, determines whether conflicting bookings should be auto-cancelled.
+    /// </summary>
+    public bool EmergencyAutoCancelConflicts { get; set; }
+    
     public BookingPriority Priority { get; set; } = BookingPriority.Normal;
     
     // These will be set by the system

@@ -335,3 +335,54 @@ public class DamageReportStatusChangedEvent : BaseEvent
         EventType = nameof(DamageReportStatusChangedEvent);
     }
 }
+
+public class BookingRescheduledEvent : BaseEvent
+{
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid UserId { get; set; }
+    public DateTime OriginalStartAt { get; set; }
+    public DateTime OriginalEndAt { get; set; }
+    public DateTime NewStartAt { get; set; }
+    public DateTime NewEndAt { get; set; }
+    public string Reason { get; set; } = string.Empty;
+
+    public BookingRescheduledEvent()
+    {
+        EventType = nameof(BookingRescheduledEvent);
+    }
+}
+
+public class EmergencyBookingAuditEvent : BaseEvent
+{
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public bool AutoCancelApplied { get; set; }
+    public IReadOnlyList<Guid> ConflictingBookingIds { get; set; } = Array.Empty<Guid>();
+    public IReadOnlyList<Guid> AutoCancelledBookingIds { get; set; } = Array.Empty<Guid>();
+    public IReadOnlyList<Guid> RescheduledBookingIds { get; set; } = Array.Empty<Guid>();
+    public IReadOnlyList<Guid> PendingResolutionBookingIds { get; set; } = Array.Empty<Guid>();
+
+    public EmergencyBookingAuditEvent()
+    {
+        EventType = nameof(EmergencyBookingAuditEvent);
+    }
+}
+
+public class EmergencyBookingUsageEvent : BaseEvent
+{
+    public Guid BookingId { get; set; }
+    public Guid VehicleId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid UserId { get; set; }
+
+    public EmergencyBookingUsageEvent()
+    {
+        EventType = nameof(EmergencyBookingUsageEvent);
+    }
+}

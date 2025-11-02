@@ -48,6 +48,9 @@ public class BookingService : IBookingService
 
         createDto.GroupId = vehicle.GroupId.Value; // Set GroupId from vehicle
 
+        IReadOnlyList<Domain.Entities.Booking> conflictingBookings = Array.Empty<Domain.Entities.Booking>();
+        EmergencyConflictResolutionResult? emergencyConflictResult = null;
+
         if (isEmergency)
         {
             // Validate user is group admin
@@ -72,81 +75,16 @@ public class BookingService : IBookingService
                 _logger.LogWarning("User {UserId} exceeded emergency booking limit for month {Month}. Count: {Count}", userId, currentMonth.ToString("yyyy-MM"), emergencyBookingCount);
                 throw new InvalidOperationException($"Emergency booking limit of {MaxEmergencyBookingsPerMonth} per month exceeded.");
             }
+            
+            conflictingBookings = await _bookingRepository.GetBookingsInPeriodAsync(createDto.VehicleId, createDto.StartAt, createDto.EndAt);
+            emergencyConflictResult = await HandleEmergencyConflictsAsync(
+                conflictingBookings,
+                createDto,
+                vehicle,
+                userId,
+                emergencyReason);
 
-            // Identify and cancel conflicting bookings
-            var conflictingBookings = await _bookingRepository.GetBookingsInPeriodAsync(createDto.VehicleId, createDto.StartAt, createDto.EndAt);
-            var cancelledBookingIds = new List<Guid>();
-
-            foreach (var conflict in conflictingBookings)
-            {
-                if (conflict.IsEmergency)
-                {
-                    _logger.LogInformation("Emergency booking {NewBookingStartAt} - {NewBookingEndAt} by {UserId} for vehicle {VehicleId} cannot override existing emergency booking {ExistingBookingId}.", createDto.StartAt, createDto.EndAt, userId, createDto.VehicleId, conflict.Id);
-                    throw new InvalidOperationException("Cannot override an existing emergency booking with another emergency booking.");
-                }
-
-                conflict.Status = Domain.Entities.BookingStatus.Cancelled;
-                conflict.UpdatedAt = DateTime.UtcNow;
-                conflict.Notes = $"[AUTO-CANCELLED BY EMERGENCY BOOKING {createDto.StartAt:o}] {emergencyReason}";
-                cancelledBookingIds.Add(conflict.Id);
-
-                await _publishEndpoint.Publish(new BookingCancelledEvent
-                {
-                    BookingId = conflict.Id,
-                    VehicleId = conflict.VehicleId,
-                    UserId = conflict.UserId,
-                    CancelledBy = userId,
-                    Reason = $"Cancelled by emergency booking. Reason: {emergencyReason}",
-                    StartAt = conflict.StartAt,
-                    EndAt = conflict.EndAt
-                });
-
-                _logger.LogInformation("Conflicting booking {ConflictingBookingId} cancelled by emergency booking {NewBookingUser} for vehicle {VehicleId}. Reason: {EmergencyReason}", conflict.Id, userId, createDto.VehicleId, emergencyReason);
-            }
-
-            if (cancelledBookingIds.Any())
-            {
-                await _bookingRepository.SaveChangesAsync(); // Save changes for cancelled bookings
-
-                // Notify affected users
-                foreach (var conflict in conflictingBookings)
-                {
-                    await _publishEndpoint.Publish(new BulkNotificationEvent
-                    {
-                        UserIds = new List<Guid> { conflict.UserId },
-                        GroupId = conflict.GroupId,
-                        Title = "Your booking has been cancelled due to an emergency booking",
-                        Message = $"Your booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) from {conflict.StartAt:F} to {conflict.EndAt:F} has been cancelled due to an emergency booking. Reason: {emergencyReason}",
-                        Type = "EmergencyBookingCancellation",
-                        Priority = "High",
-                        CreatedAt = DateTime.UtcNow,
-                        ActionUrl = $"/bookings/{conflict.Id}",
-                        ActionText = "View cancelled booking"
-                    });
-
-                    _logger.LogInformation("Notified user {ConflictingUserId} about booking {ConflictingBookingId} cancellation due to emergency booking.", conflict.UserId, conflict.Id);
-                }
-            }
-
-            // Notify all group members about the emergency booking
-            var groupMembers = await _bookingRepository.GetGroupMembersAsync(createDto.GroupId);
-            var groupMemberUserIds = groupMembers.Select(gm => gm.UserId).ToList();
-            if (groupMemberUserIds.Any())
-            {
-                await _publishEndpoint.Publish(new BulkNotificationEvent
-                {
-                    UserIds = groupMemberUserIds,
-                    GroupId = createDto.GroupId,
-                    Title = "New Emergency Vehicle Booking",
-                    Message = $"An emergency booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) has been created by {userId} from {createDto.StartAt:F} to {createDto.EndAt:F}. Reason: {emergencyReason}",
-                    Type = "EmergencyBookingCreation",
-                    Priority = "High",
-                    CreatedAt = DateTime.UtcNow,
-                    ActionUrl = $"/bookings/vehicle/{createDto.VehicleId}",
-                    ActionText = "View vehicle calendar"
-                });
-                _logger.LogInformation("Notified {Count} group members about new emergency booking {NewBookingStartAt} - {NewBookingEndAt}.", groupMemberUserIds.Count, createDto.StartAt, createDto.EndAt);
-            }
+            await NotifyGroupOfEmergencyBookingAsync(createDto, vehicle, userId, emergencyReason);
         }
         else // Not an emergency booking, proceed with normal conflict checks
         {
@@ -202,6 +140,16 @@ public class BookingService : IBookingService
         });
 
         _logger.LogInformation("Booking {BookingId} created for vehicle {VehicleId} by user {UserId}. IsEmergency: {IsEmergency}", booking.Id, booking.VehicleId, userId, isEmergency);
+
+        if (isEmergency)
+        {
+            await PublishEmergencySummaryEventsAsync(
+                booking,
+                emergencyReason!,
+                emergencyConflictResult ?? new EmergencyConflictResolutionResult(),
+                conflictingBookings,
+                createDto.EmergencyAutoCancelConflicts);
+        }
 
         return await GetBookingByIdAsync(booking.Id);
     }
@@ -454,4 +402,277 @@ public class BookingService : IBookingService
             CreatedAt = booking.CreatedAt
         };
     }
+
+    private async Task NotifyGroupOfEmergencyBookingAsync(CreateBookingDto createDto, Vehicle vehicle, Guid createdByUserId, string emergencyReason)
+    {
+        var groupMembers = await _bookingRepository.GetGroupMembersAsync(createDto.GroupId);
+        var groupMemberUserIds = groupMembers.Select(gm => gm.UserId).Distinct().ToList();
+        if (!groupMemberUserIds.Any())
+        {
+            return;
+        }
+
+        await _publishEndpoint.Publish(new BulkNotificationEvent
+        {
+            UserIds = groupMemberUserIds,
+            GroupId = createDto.GroupId,
+            Title = "New Emergency Vehicle Booking",
+            Message = $"An emergency booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) has been created by user {createdByUserId} from {createDto.StartAt:F} to {createDto.EndAt:F}. Reason: {emergencyReason}",
+            Type = "EmergencyBookingCreation",
+            Priority = "High",
+            CreatedAt = DateTime.UtcNow,
+            ActionUrl = $"/bookings/vehicle/{createDto.VehicleId}",
+            ActionText = "View vehicle calendar"
+        });
+
+        _logger.LogInformation("Notified {Count} group members about emergency booking {StartAt} - {EndAt}.", groupMemberUserIds.Count, createDto.StartAt, createDto.EndAt);
+    }
+
+    private async Task<EmergencyConflictResolutionResult> HandleEmergencyConflictsAsync(
+        IReadOnlyList<Domain.Entities.Booking> conflictingBookings,
+        CreateBookingDto createDto,
+        Vehicle vehicle,
+        Guid emergencyCreatorId,
+        string emergencyReason)
+    {
+        var result = new EmergencyConflictResolutionResult();
+
+        if (!conflictingBookings.Any())
+        {
+            return result;
+        }
+
+        foreach (var conflict in conflictingBookings)
+        {
+            if (conflict.IsEmergency)
+            {
+                _logger.LogInformation(
+                    "Emergency booking {StartAt} - {EndAt} by {UserId} for vehicle {VehicleId} cannot override existing emergency booking {ExistingBookingId}.",
+                    createDto.StartAt,
+                    createDto.EndAt,
+                    emergencyCreatorId,
+                    createDto.VehicleId,
+                    conflict.Id);
+                throw new InvalidOperationException("Cannot override an existing emergency booking with another emergency booking.");
+            }
+
+            var rescheduleInfo = await TryRescheduleBookingAsync(conflict, createDto.StartAt, createDto.EndAt);
+            if (rescheduleInfo != null)
+            {
+                result.Rescheduled.Add(rescheduleInfo);
+
+                await _publishEndpoint.Publish(new BookingRescheduledEvent
+                {
+                    BookingId = conflict.Id,
+                    VehicleId = conflict.VehicleId,
+                    GroupId = conflict.GroupId,
+                    UserId = conflict.UserId,
+                    OriginalStartAt = rescheduleInfo.OriginalStartAt,
+                    OriginalEndAt = rescheduleInfo.OriginalEndAt,
+                    NewStartAt = rescheduleInfo.NewStartAt,
+                    NewEndAt = rescheduleInfo.NewEndAt,
+                    Reason = $"Rescheduled due to emergency booking {createDto.StartAt:u} - {createDto.EndAt:u}"
+                });
+
+                await _publishEndpoint.Publish(new BulkNotificationEvent
+                {
+                    UserIds = new List<Guid> { conflict.UserId },
+                    GroupId = conflict.GroupId,
+                    Title = "Your booking has been rescheduled",
+                    Message = $"Your booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) was moved to {rescheduleInfo.NewStartAt:F} - {rescheduleInfo.NewEndAt:F} due to an emergency booking. Please review the new time.",
+                    Type = "EmergencyBookingRescheduled",
+                    Priority = "High",
+                    CreatedAt = DateTime.UtcNow,
+                    ActionUrl = $"/bookings/{conflict.Id}",
+                    ActionText = "Review booking"
+                });
+
+                _logger.LogInformation("Rescheduled booking {BookingId} to {Start} - {End} due to emergency override.", conflict.Id, rescheduleInfo.NewStartAt, rescheduleInfo.NewEndAt);
+                continue;
+            }
+
+            if (createDto.EmergencyAutoCancelConflicts)
+            {
+                conflict.Status = Domain.Entities.BookingStatus.Cancelled;
+                conflict.UpdatedAt = DateTime.UtcNow;
+                conflict.Notes = AppendNote(conflict.Notes, $"[AUTO-CANCELLED BY EMERGENCY {createDto.StartAt:u}] {emergencyReason}");
+                result.AutoCancelled.Add(conflict.Id);
+
+                await _publishEndpoint.Publish(new BookingCancelledEvent
+                {
+                    BookingId = conflict.Id,
+                    VehicleId = conflict.VehicleId,
+                    UserId = conflict.UserId,
+                    CancelledBy = emergencyCreatorId,
+                    Reason = $"Cancelled by emergency booking. Reason: {emergencyReason}",
+                    CancellationReason = emergencyReason,
+                    StartAt = conflict.StartAt,
+                    EndAt = conflict.EndAt
+                });
+
+                await _publishEndpoint.Publish(new BulkNotificationEvent
+                {
+                    UserIds = new List<Guid> { conflict.UserId },
+                    GroupId = conflict.GroupId,
+                    Title = "Booking cancelled due to emergency",
+                    Message = $"Your booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) from {conflict.StartAt:F} to {conflict.EndAt:F} was cancelled due to an emergency booking. Reason: {emergencyReason}",
+                    Type = "EmergencyBookingCancellation",
+                    Priority = "High",
+                    CreatedAt = DateTime.UtcNow,
+                    ActionUrl = $"/bookings/{conflict.Id}",
+                    ActionText = "Review booking"
+                });
+
+                _logger.LogInformation("Auto-cancelled booking {BookingId} due to emergency override by user {UserId}.", conflict.Id, emergencyCreatorId);
+            }
+            else
+            {
+                conflict.Status = Domain.Entities.BookingStatus.PendingApproval;
+                conflict.UpdatedAt = DateTime.UtcNow;
+                conflict.Notes = AppendNote(conflict.Notes, $"[PENDING RESCHEDULE DUE TO EMERGENCY {createDto.StartAt:u}] {emergencyReason}");
+                result.PendingResolution.Add(conflict.Id);
+
+                await _publishEndpoint.Publish(new BulkNotificationEvent
+                {
+                    UserIds = new List<Guid> { conflict.UserId },
+                    GroupId = conflict.GroupId,
+                    Title = "Action required: booking affected by emergency",
+                    Message = $"Your booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) from {conflict.StartAt:F} to {conflict.EndAt:F} was affected by an emergency booking. Please reschedule or contact your group admin.",
+                    Type = "EmergencyBookingPendingResolution",
+                    Priority = "High",
+                    CreatedAt = DateTime.UtcNow,
+                    ActionUrl = $"/bookings/{conflict.Id}",
+                    ActionText = "Reschedule booking"
+                });
+
+                _logger.LogInformation("Marked booking {BookingId} as pending resolution due to emergency override by user {UserId}.", conflict.Id, emergencyCreatorId);
+            }
+        }
+
+        if (!createDto.EmergencyAutoCancelConflicts && result.PendingResolution.Count > 0)
+        {
+            await _publishEndpoint.Publish(new BulkNotificationEvent
+            {
+                UserIds = new List<Guid> { emergencyCreatorId },
+                GroupId = createDto.GroupId,
+                Title = "Emergency booking requires follow-up",
+                Message = $"Emergency booking {createDto.StartAt:F} - {createDto.EndAt:F} could not automatically resolve {result.PendingResolution.Count} conflicting bookings. Please review them.",
+                Type = "EmergencyBookingManualResolution",
+                Priority = "High",
+                CreatedAt = DateTime.UtcNow,
+                ActionUrl = $"/bookings/vehicle/{createDto.VehicleId}",
+                ActionText = "Review conflicts"
+            });
+        }
+
+        return result;
+    }
+
+    private async Task<RescheduledBookingInfo?> TryRescheduleBookingAsync(Domain.Entities.Booking booking, DateTime emergencyStart, DateTime emergencyEnd)
+    {
+        var duration = booking.EndAt - booking.StartAt;
+        if (duration <= TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        var originalStart = booking.StartAt;
+        var originalEnd = booking.EndAt;
+
+        var candidateStart = emergencyEnd > DateTime.UtcNow ? emergencyEnd : DateTime.UtcNow;
+        const int maxAttempts = 12;
+
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            var candidateEnd = candidateStart.Add(duration);
+            var conflicts = await _bookingRepository.GetConflictingBookingsAsync(
+                booking.VehicleId,
+                candidateStart,
+                candidateEnd,
+                booking.Id,
+                booking.RecurringBookingId);
+
+            if (!conflicts.Any())
+            {
+                booking.StartAt = candidateStart;
+                booking.EndAt = candidateEnd;
+                booking.UpdatedAt = DateTime.UtcNow;
+                booking.Notes = AppendNote(booking.Notes, $"[RESCHEDULED due to emergency {emergencyStart:u} - {emergencyEnd:u}]");
+
+                return new RescheduledBookingInfo(
+                    booking.Id,
+                    booking.UserId,
+                    originalStart,
+                    originalEnd,
+                    candidateStart,
+                    candidateEnd);
+            }
+
+            candidateStart = candidateStart.AddMinutes(30);
+        }
+
+        return null;
+    }
+
+    private async Task PublishEmergencySummaryEventsAsync(
+        Domain.Entities.Booking booking,
+        string emergencyReason,
+        EmergencyConflictResolutionResult conflictResult,
+        IReadOnlyList<Domain.Entities.Booking> initialConflicts,
+        bool autoCancelApplied)
+    {
+        await _publishEndpoint.Publish(new EmergencyBookingUsageEvent
+        {
+            BookingId = booking.Id,
+            VehicleId = booking.VehicleId,
+            GroupId = booking.GroupId,
+            UserId = booking.UserId,
+            OccurredAt = booking.CreatedAt
+        });
+
+        await _publishEndpoint.Publish(new EmergencyBookingAuditEvent
+        {
+            BookingId = booking.Id,
+            VehicleId = booking.VehicleId,
+            GroupId = booking.GroupId,
+            CreatedBy = booking.UserId,
+            CreatedAt = booking.CreatedAt,
+            Reason = emergencyReason,
+            AutoCancelApplied = autoCancelApplied,
+            ConflictingBookingIds = initialConflicts.Select(b => b.Id).ToList(),
+            AutoCancelledBookingIds = conflictResult.AutoCancelled.ToList(),
+            RescheduledBookingIds = conflictResult.Rescheduled.Select(r => r.BookingId).ToList(),
+            PendingResolutionBookingIds = conflictResult.PendingResolution.ToList()
+        });
+    }
+
+    private static string AppendNote(string? existing, string note)
+    {
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            return existing ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(existing))
+        {
+            return note;
+        }
+
+        return $"{existing}\n{note}";
+    }
+
+    private sealed class EmergencyConflictResolutionResult
+    {
+        public List<RescheduledBookingInfo> Rescheduled { get; } = new();
+        public List<Guid> AutoCancelled { get; } = new();
+        public List<Guid> PendingResolution { get; } = new();
+    }
+
+    private sealed record RescheduledBookingInfo(
+        Guid BookingId,
+        Guid UserId,
+        DateTime OriginalStartAt,
+        DateTime OriginalEndAt,
+        DateTime NewStartAt,
+        DateTime NewEndAt);
 }
