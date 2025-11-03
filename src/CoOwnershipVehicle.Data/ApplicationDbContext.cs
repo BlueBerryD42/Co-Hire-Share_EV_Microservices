@@ -213,24 +213,36 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
         });
 
         // Document entity configuration
+
         builder.Entity<Document>(entity =>
         {
             entity.Property(e => e.Type).HasConversion<int>();
             entity.Property(e => e.StorageKey).IsRequired().HasMaxLength(500);
             entity.Property(e => e.FileName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
             entity.Property(e => e.SignatureStatus).HasConversion<int>();
             entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.FileHash).HasMaxLength(64);
+            entity.Property(e => e.Author).HasMaxLength(200);
 
             entity.HasOne(e => e.Group)
                   .WithMany(g => g.Documents)
                   .HasForeignKey(e => e.GroupId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            // Add indexes
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.StorageKey).IsUnique();
+            entity.HasIndex(e => new { e.GroupId, e.FileHash });
+            entity.HasIndex(e => e.CreatedAt);
         });
 
         // DocumentSignature entity configuration
         builder.Entity<DocumentSignature>(entity =>
         {
-            entity.Property(e => e.SignatureReference).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.SignatureReference).HasMaxLength(500);
+            entity.Property(e => e.SignatureMetadata).HasMaxLength(2000);
+            entity.Property(e => e.Status).HasConversion<int>();
 
             entity.HasOne(e => e.Document)
                   .WithMany(d => d.Signatures)
@@ -242,7 +254,10 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
                   .HasForeignKey(e => e.SignerId)
                   .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasIndex(e => new { e.DocumentId, e.SignerId }).IsUnique();
+            // Add indexes
+            entity.HasIndex(e => e.DocumentId);
+            entity.HasIndex(e => new { e.DocumentId, e.SignerId });
+            entity.HasIndex(e => new { e.DocumentId, e.SignatureOrder });
         });
 
         // CheckIn entity configuration
