@@ -4,6 +4,7 @@ using CoOwnershipVehicle.Group.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 {
     [DbContext(typeof(GroupDbContext))]
-    partial class GroupDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251101164145_AddDocumentSupport")]
+    partial class AddDocumentSupport
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -81,9 +84,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETUTCDATE()");
 
-                    b.Property<Guid?>("UploadedBy")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<bool?>("VirusScanPassed")
                         .HasColumnType("bit");
 
@@ -96,58 +96,9 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasIndex("StorageKey")
                         .IsUnique();
 
-                    b.HasIndex("UploadedBy");
-
                     b.HasIndex("GroupId", "FileHash");
 
                     b.ToTable("Documents");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentDownload", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("DocumentId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("DownloadedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<string>("IpAddress")
-                        .IsRequired()
-                        .HasMaxLength(45)
-                        .HasColumnType("nvarchar(45)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<string>("UserAgent")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DocumentId");
-
-                    b.HasIndex("DownloadedAt");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("DocumentId", "UserId");
-
-                    b.ToTable("DocumentDownloads");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentSignature", b =>
@@ -453,25 +404,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.Navigation("Group");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentDownload", b =>
-                {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Document", "Document")
-                        .WithMany("Downloads")
-                        .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Document");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentSignature", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.Document", "Document")
@@ -533,8 +465,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Document", b =>
                 {
-                    b.Navigation("Downloads");
-
                     b.Navigation("Signatures");
                 });
 
