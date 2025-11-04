@@ -33,7 +33,7 @@
     },
     {
       "key": "admin_password",
-      "value": "Admin123!",
+      "value": "",
       "enabled": true
     },
     {
