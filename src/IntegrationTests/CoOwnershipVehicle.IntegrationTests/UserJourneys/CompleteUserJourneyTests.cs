@@ -161,10 +161,10 @@ public class CompleteUserJourneyTests : IntegrationTestBase
         {
             Id = Guid.NewGuid(),
             VehicleId = vehicle1.Id,
-            MaintenanceType = MaintenanceType.Scheduled,
+            ServiceType = MaintenanceServiceType.GeneralService,
             ScheduledDate = DateTime.UtcNow.AddDays(7),
             Status = MaintenanceStatus.Scheduled,
-            Description = "Regular service",
+            Notes = "Regular service",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

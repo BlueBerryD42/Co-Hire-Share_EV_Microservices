@@ -61,7 +61,7 @@ public class LoadTests : IntegrationTestBase
 
         // At least 90% should succeed under load
         successRate.Should().BeGreaterThan(90);
-        successCount.Should().BeGreaterThan(concurrentUsers * 0.9);
+        successCount.Should().BeGreaterThan((int)(concurrentUsers * 0.9));
         
         // Performance should be reasonable (operations complete within reasonable time)
         var avgTimePerOperation = stopwatch.ElapsedMilliseconds / (double)totalOperations;
@@ -194,4 +194,8 @@ public class LoadTests : IntegrationTestBase
         improvement.Should().BeGreaterThan(0); // At least some improvement
     }
 }
+
+
+
+
 

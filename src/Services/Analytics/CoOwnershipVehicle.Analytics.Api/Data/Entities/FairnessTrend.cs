@@ -16,3 +16,7 @@ public class FairnessTrend : BaseEntity
 
 
 
+
+
+
+

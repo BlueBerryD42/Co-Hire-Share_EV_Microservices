@@ -117,9 +117,9 @@ public class AdminWorkflowTests : IntegrationTestBase
         {
             Id = Guid.NewGuid(),
             DisputeId = dispute.Id,
+            CommentedBy = admin.Id,
             Comment = "Reviewing vehicle damage photos",
             IsInternal = true,
-            CreatedBy = admin.Id,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -222,4 +222,8 @@ public class AdminWorkflowTests : IntegrationTestBase
         exportData.Bookings.Should().BeGreaterThan(0);
     }
 }
+
+
+
+
 

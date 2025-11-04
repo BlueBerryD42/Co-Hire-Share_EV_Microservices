@@ -140,7 +140,7 @@ public class CrossServiceQueryTests : IntegrationTestBase
             {
                 TotalUsers = await DbContext.Users.CountAsync(),
                 ActiveUsers = await DbContext.Users
-                    .Where(u => u.AccountStatus == UserAccountStatus.Active)
+                    .Where(u => u.KycStatus == KycStatus.Approved)
                     .CountAsync(),
                 PendingKyc = await DbContext.Users
                     .Where(u => u.KycStatus == KycStatus.Pending)
@@ -230,7 +230,8 @@ public class CrossServiceQueryTests : IntegrationTestBase
             var expense = TestDataBuilder.CreateTestExpense(
                 vehicle.GroupId.Value,
                 vehicle.Id,
-                200.00m
+                200.00m,
+                ExpenseType.Maintenance
             );
             expenses.Add(expense);
             DbContext.Expenses.Add(expense);
@@ -295,4 +296,8 @@ public class CrossServiceQueryTests : IntegrationTestBase
         report.TotalRevenue.Should().BeGreaterThan(0);
     }
 }
+
+
+
+
 

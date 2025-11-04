@@ -24,3 +24,7 @@ namespace CoOwnershipVehicle.Domain.Entities
 
 
 
+
+
+
+

@@ -794,7 +794,7 @@ public class AdminServiceTests : IDisposable
         result.Should().NotBeNull();
         result.SuccessRate.Should().BeApproximately(75.0, 0.1); // 3 out of 4
         result.FailureRate.Should().BeApproximately(25.0, 0.1); // 1 out of 4
-        result.AverageAmount.Should().BeApproximately(250.0, 0.1); // Average of all amounts
+        result.AverageAmount.Should().BeInRange(249.9m, 250.1m); // Average of all amounts
         result.MethodCounts.Should().ContainKey(PaymentMethod.CreditCard);
         result.MethodCounts.Should().ContainKey(PaymentMethod.EWallet);
         result.MethodCounts.Should().ContainKey(PaymentMethod.BankTransfer);

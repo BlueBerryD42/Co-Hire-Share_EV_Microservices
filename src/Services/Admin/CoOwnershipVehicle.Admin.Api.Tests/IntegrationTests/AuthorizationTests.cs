@@ -7,6 +7,7 @@ using Moq;
 using CoOwnershipVehicle.Admin.Api.Controllers;
 using CoOwnershipVehicle.Admin.Api.Services;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 using System.Security.Claims;
 
 namespace CoOwnershipVehicle.Admin.Api.Tests.IntegrationTests;
@@ -378,6 +379,15 @@ public class AuthorizationTests
         };
     }
 
+    private int GetStatusCode(object? result)
+    {
+        if (result is StatusCodeResult statusCodeResult)
+            return statusCodeResult.StatusCode;
+        if (result is ObjectResult objectResult)
+            return objectResult.StatusCode ?? 200;
+        return 200;
+    }
+
     #endregion
 
     #region Comprehensive Role-Based Permission Tests
@@ -614,47 +624,6 @@ public class AuthorizationTests
         // Assert
         result.Should().BeOfType<OkObjectResult>();
         // Note: CheckAccess doesn't require authentication based on the controller code
-    }
-
-    #endregion
-
-    #region Helper Methods
-
-    private void SetupUserWithRole(string role)
-    {
-        var user = new ClaimsPrincipal(new ClaimsIdentity(new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
-            new Claim(ClaimTypes.Role, role)
-        }, "Test"));
-        
-        _controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext { User = user }
-        };
-    }
-
-    private void SetupUserWithRoleAndId(string role, Guid userId)
-    {
-        var user = new ClaimsPrincipal(new ClaimsIdentity(new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-            new Claim(ClaimTypes.Role, role)
-        }, "Test"));
-        
-        _controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext { User = user }
-        };
-    }
-
-    private int GetStatusCode(object? result)
-    {
-        if (result is StatusCodeResult statusCodeResult)
-            return statusCodeResult.StatusCode;
-        if (result is ObjectResult objectResult)
-            return objectResult.StatusCode ?? 200;
-        return 200;
     }
 
     #endregion

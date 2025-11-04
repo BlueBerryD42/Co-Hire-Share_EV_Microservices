@@ -2,7 +2,6 @@ using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.IntegrationTests.TestFixtures;
 using FluentAssertions;
 using Polly;
-using Polly.CircuitBreaker;
 
 namespace CoOwnershipVehicle.IntegrationTests.FailureScenarios;
 
@@ -29,12 +28,8 @@ public class FailureScenarioTests : IntegrationTestBase
                 // Log retry attempt
             });
 
-        var circuitBreakerPolicy = Policy
-            .Handle<Exception>()
-            .CircuitBreakerAsync(
-                handledEventsAllowedBeforeBreaking: 3,
-                durationOfBreak: TimeSpan.FromSeconds(30)
-            );
+        // Note: Circuit breaker would be implemented in production code
+        // For this test, we're just demonstrating retry logic with graceful degradation
 
         try
         {
@@ -171,8 +166,8 @@ public class FailureScenarioTests : IntegrationTestBase
                 UserId = user.Id,
                 Title = "Booking Created",
                 Message = "Your booking has been created",
-                Type = NotificationType.Booking,
-                Priority = NotificationPriority.Medium,
+                Type = NotificationType.BookingCreated,
+                Priority = NotificationPriority.Normal,
                 Status = NotificationStatus.Unread,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow

@@ -62,7 +62,7 @@ public abstract class IntegrationTestBase : IDisposable
                 group.Id, 
                 memberId, 
                 sharePerMember,
-                memberId == createdBy ? GroupRole.Owner : GroupRole.Member
+                memberId == createdBy ? GroupRole.Admin : GroupRole.Member
             );
             DbContext.GroupMembers.Add(member);
         }
@@ -114,4 +114,8 @@ public abstract class IntegrationTestBase : IDisposable
         }
     }
 }
+
+
+
+
 
