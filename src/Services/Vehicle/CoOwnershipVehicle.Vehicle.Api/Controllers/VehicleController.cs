@@ -21,6 +21,7 @@ public class VehicleController : ControllerBase
     private readonly VehicleStatisticsService _statisticsService; // Injected
     private readonly CostAnalysisService _costAnalysisService; // Injected
     private readonly MemberUsageService _memberUsageService; // Injected
+    private readonly VehicleHealthScoreService _healthScoreService; // Injected
 
     public VehicleController(
         VehicleDbContext context,
@@ -29,7 +30,8 @@ public class VehicleController : ControllerBase
         IBookingServiceClient bookingServiceClient,
         VehicleStatisticsService statisticsService,
         CostAnalysisService costAnalysisService,
-        MemberUsageService memberUsageService)
+        MemberUsageService memberUsageService,
+        VehicleHealthScoreService healthScoreService)
     {
         _context = context;
         _logger = logger;
@@ -38,9 +40,14 @@ public class VehicleController : ControllerBase
         _statisticsService = statisticsService; // Assigned
         _costAnalysisService = costAnalysisService; // Assigned
         _memberUsageService = memberUsageService; // Assigned
+        _healthScoreService = healthScoreService; // Assigned
     }
 
+    /// <summary>
+    /// Get all vehicles accessible to the current user, including health scores
+    /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(List<VehicleListItemDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetVehicles()
     {
         var userGroupIds = await GetUserGroupIds(); // Await the async method
@@ -48,13 +55,39 @@ public class VehicleController : ControllerBase
         if (!userGroupIds.Any())
         {
             // If the user is not part of any group, they shouldn't see any vehicles
-            return Ok(new List<Domain.Entities.Vehicle>());
+            return Ok(new List<VehicleListItemDto>());
         }
 
         var vehicles = await _context.Vehicles
                                      .Where(v => userGroupIds.Contains((Guid)v.GroupId))
                                      .ToListAsync();
-        return Ok(vehicles);
+
+        // Map to DTOs and include health scores
+        var vehicleList = new List<VehicleListItemDto>();
+
+        foreach (var vehicle in vehicles)
+        {
+            var healthSummary = await _healthScoreService.GetHealthSummaryAsync(vehicle.Id);
+
+            vehicleList.Add(new VehicleListItemDto
+            {
+                Id = vehicle.Id,
+                Vin = vehicle.Vin,
+                PlateNumber = vehicle.PlateNumber,
+                Model = vehicle.Model,
+                Year = vehicle.Year,
+                Color = vehicle.Color,
+                Status = vehicle.Status.ToString(),
+                LastServiceDate = vehicle.LastServiceDate,
+                Odometer = vehicle.Odometer,
+                GroupId = vehicle.GroupId,
+                CreatedAt = vehicle.CreatedAt,
+                UpdatedAt = vehicle.UpdatedAt,
+                HealthScore = healthSummary
+            });
+        }
+
+        return Ok(vehicleList);
     }
 
     [HttpGet("{id:guid}")]
@@ -487,6 +520,83 @@ public class VehicleController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving member usage for vehicle {VehicleId}", id);
             return StatusCode(500, new { message = "An error occurred while retrieving member usage data" });
+        }
+    }
+
+    /// <summary>
+    /// Get comprehensive health score for a vehicle
+    /// </summary>
+    /// <param name="id">Vehicle ID</param>
+    /// <param name="includeHistory">Include historical score trend (default: true)</param>
+    /// <param name="includeBenchmark">Include benchmark comparison (default: true)</param>
+    /// <param name="historyMonths">Number of months for historical data (default: 6)</param>
+    /// <returns>Complete health score analysis with recommendations</returns>
+    [HttpGet("{id:guid}/health-score")]
+    [ProducesResponseType(typeof(HealthScoreResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetHealthScore(
+        Guid id,
+        [FromQuery] bool includeHistory = true,
+        [FromQuery] bool includeBenchmark = true,
+        [FromQuery] int historyMonths = 6)
+    {
+        try
+        {
+            // 1. Validate vehicle exists
+            var vehicle = await _context.Vehicles
+                .FirstOrDefaultAsync(v => v.Id == id);
+
+            if (vehicle == null)
+            {
+                _logger.LogWarning("Vehicle {VehicleId} not found", id);
+                return NotFound(new { message = $"Vehicle {id} not found" });
+            }
+
+            // 2. Check authorization - user must be in the vehicle's group
+            var userGroupIds = await GetUserGroupIds();
+            if (!vehicle.GroupId.HasValue || !userGroupIds.Contains(vehicle.GroupId.Value))
+            {
+                _logger.LogWarning("User {UserId} attempted to access health score for vehicle {VehicleId} without authorization",
+                    GetCurrentUserId(), id);
+                return Forbidden(new { message = "You do not have permission to view health score for this vehicle" });
+            }
+
+            // 3. Get access token for inter-service calls
+            var accessToken = GetAccessToken();
+
+            // 4. Build request
+            var request = new HealthScoreRequest
+            {
+                IncludeHistory = includeHistory,
+                IncludeBenchmark = includeBenchmark,
+                HistoryMonths = historyMonths
+            };
+
+            // 5. Calculate health score
+            var healthScore = await _healthScoreService.CalculateHealthScoreAsync(id, request, accessToken);
+
+            _logger.LogInformation(
+                "Retrieved health score {Score} ({Category}) for vehicle {VehicleId}",
+                healthScore.OverallScore, healthScore.Category, id);
+
+            return Ok(healthScore);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            _logger.LogWarning(ex, "Vehicle {VehicleId} not found", id);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access to vehicle health score");
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving health score for vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while calculating health score" });
         }
     }
 

@@ -16,6 +16,9 @@ public class VehicleDbContext : DbContext
     public DbSet<MaintenanceSchedule> MaintenanceSchedules { get; set; }
     public DbSet<MaintenanceRecord> MaintenanceRecords { get; set; }
 
+    // Health score tracking
+    public DbSet<VehicleHealthScore> VehicleHealthScores { get; set; }
+
     // We might need other entities for validation, but without managing them.
     // For simplicity in fixing the issue, we will define a minimal DbContext.
     // The controller logic that depends on other DbSets will need to be adjusted or will fail.
@@ -93,6 +96,33 @@ public class VehicleDbContext : DbContext
             entity.HasIndex(e => e.VehicleId);
             entity.HasIndex(e => e.ServiceDate);
             entity.HasIndex(e => e.OdometerReading);
+        });
+
+        // VehicleHealthScore entity configuration
+        builder.Entity<VehicleHealthScore>(entity =>
+        {
+            entity.ToTable("VehicleHealthScores");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.OverallScore).HasColumnType("decimal(5,2)").IsRequired();
+            entity.Property(e => e.Category).HasConversion<int>().IsRequired();
+            entity.Property(e => e.MaintenanceScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.OdometerAgeScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.DamageScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.ServiceFrequencyScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.VehicleAgeScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.InspectionScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.Note).HasMaxLength(500);
+
+            // Foreign key to Vehicle
+            entity.HasOne(e => e.Vehicle)
+                .WithMany()
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.CalculatedAt);
+            entity.HasIndex(e => new { e.VehicleId, e.CalculatedAt });
         });
 
         // Ignore all other entities that might be discovered transitively
