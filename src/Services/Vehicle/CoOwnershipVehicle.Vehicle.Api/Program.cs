@@ -122,6 +122,9 @@ namespace CoOwnershipVehicle.Vehicle.Api
             // Add Cost Analysis Service
             builder.Services.AddScoped<CostAnalysisService>();
 
+            // Add Member Usage Service
+            builder.Services.AddScoped<MemberUsageService>();
+
             // Add Entity Framework
             var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
             dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_VEHICLE", builder.Configuration) ?? "CoOwnershipVehicle_Vehicle";

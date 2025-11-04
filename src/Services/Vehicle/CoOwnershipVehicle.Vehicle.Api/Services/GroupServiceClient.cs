@@ -72,4 +72,71 @@ public class GroupServiceClient : IGroupServiceClient
             return false;
         }
     }
+
+    public async Task<GroupDetailsDto?> GetGroupDetailsAsync(Guid groupId, string accessToken)
+    {
+        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        try
+        {
+            var url = $"api/Group/{groupId}/details";
+            _logger.LogInformation("Requesting group details from Group Service: {Url}", url);
+
+            var response = await _httpClient.GetAsync(url);
+
+            _logger.LogInformation("Group Service response status: {StatusCode} for GroupId: {GroupId}",
+                response.StatusCode, groupId);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("Group Service returned content length: {Length} bytes", content.Length);
+
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+                var result = JsonSerializer.Deserialize<GroupDetailsDto>(content, options);
+
+                if (result != null)
+                {
+                    _logger.LogInformation("Successfully deserialized group details. Members count: {Count}",
+                        result.Members?.Count ?? 0);
+                }
+
+                return result;
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning("Group {GroupId} not found in Group Service", groupId);
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("Group Service 404 response: {Response}", errorContent);
+                return null;
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("Failed to get group details for {GroupId}. Status code: {StatusCode}, Response: {Response}",
+                    groupId, response.StatusCode, errorContent);
+                return null;
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Group Service is not available at {BaseUrl}. Group ID: {GroupId}",
+                _httpClient.BaseAddress, groupId);
+            // Graceful degradation - return default data
+            return new GroupDetailsDto
+            {
+                GroupId = groupId,
+                GroupName = "Unknown Group",
+                Members = new List<GroupMemberWithOwnership>()
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception getting group details for {GroupId}", groupId);
+            return null;
+        }
+    }
 }

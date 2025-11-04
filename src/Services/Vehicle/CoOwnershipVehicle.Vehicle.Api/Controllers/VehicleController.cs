@@ -20,6 +20,7 @@ public class VehicleController : ControllerBase
     private readonly IBookingServiceClient _bookingServiceClient; // Injected
     private readonly VehicleStatisticsService _statisticsService; // Injected
     private readonly CostAnalysisService _costAnalysisService; // Injected
+    private readonly MemberUsageService _memberUsageService; // Injected
 
     public VehicleController(
         VehicleDbContext context,
@@ -27,7 +28,8 @@ public class VehicleController : ControllerBase
         IGroupServiceClient groupServiceClient,
         IBookingServiceClient bookingServiceClient,
         VehicleStatisticsService statisticsService,
-        CostAnalysisService costAnalysisService)
+        CostAnalysisService costAnalysisService,
+        MemberUsageService memberUsageService)
     {
         _context = context;
         _logger = logger;
@@ -35,6 +37,7 @@ public class VehicleController : ControllerBase
         _bookingServiceClient = bookingServiceClient; // Assigned
         _statisticsService = statisticsService; // Assigned
         _costAnalysisService = costAnalysisService; // Assigned
+        _memberUsageService = memberUsageService; // Assigned
     }
 
     [HttpGet]
@@ -421,6 +424,69 @@ public class VehicleController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving cost analysis for vehicle {VehicleId}", id);
             return StatusCode(500, new { message = "An error occurred while retrieving cost analysis" });
+        }
+    }
+
+    /// <summary>
+    /// Get per-member usage analysis for a vehicle
+    /// </summary>
+    /// <param name="id">Vehicle ID</param>
+    /// <param name="startDate">Start date for analysis (optional, default: 3 months ago)</param>
+    /// <param name="endDate">End date for analysis (optional, default: now)</param>
+    /// <returns>Member usage breakdown with fairness analysis</returns>
+    [HttpGet("{id:guid}/member-usage")]
+    public async Task<IActionResult> GetMemberUsage(
+        Guid id,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null)
+    {
+        try
+        {
+            // 1. Check if vehicle exists
+            var vehicle = await _context.Vehicles
+                .FirstOrDefaultAsync(v => v.Id == id);
+
+            if (vehicle == null)
+            {
+                return NotFound(new { message = $"Vehicle {id} not found" });
+            }
+
+            // 2. Check authorization - user must be in vehicle's group
+            var userGroupIds = await GetUserGroupIds();
+            if (!vehicle.GroupId.HasValue || !userGroupIds.Contains(vehicle.GroupId.Value))
+            {
+                return Forbidden(new { message = "You do not have permission to access this vehicle's member usage data" });
+            }
+
+            // 3. Get access token for inter-service calls
+            var accessToken = GetAccessToken();
+
+            // 4. Build request
+            var request = new MemberUsageRequest
+            {
+                StartDate = startDate,
+                EndDate = endDate
+            };
+
+            // 5. Get member usage analysis from service
+            var memberUsage = await _memberUsageService.GetMemberUsageAsync(id, request, accessToken);
+
+            return Ok(memberUsage);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access to member usage for vehicle {VehicleId}", id);
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid operation for vehicle {VehicleId}", id);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving member usage for vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while retrieving member usage data" });
         }
     }
 
