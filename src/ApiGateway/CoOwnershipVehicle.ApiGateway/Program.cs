@@ -118,7 +118,7 @@ app.Use(async (context, next) =>
     context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
     context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
     context.Response.Headers.Append("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
-    
+
     await next();
 });
 
@@ -135,16 +135,16 @@ app.UseAuthentication();
 app.Use(async (context, next) =>
 {
     var start = DateTime.UtcNow;
-    Log.Information("API Gateway Request: {Method} {Path} from {IP}", 
-        context.Request.Method, 
-        context.Request.Path, 
+    Log.Information("API Gateway Request: {Method} {Path} from {IP}",
+        context.Request.Method,
+        context.Request.Path,
         context.Connection.RemoteIpAddress);
-    
+
     await next();
-    
+
     var duration = DateTime.UtcNow - start;
-    Log.Information("API Gateway Response: {StatusCode} in {Duration}ms", 
-        context.Response.StatusCode, 
+    Log.Information("API Gateway Response: {StatusCode} in {Duration}ms",
+        context.Response.StatusCode,
         duration.TotalMilliseconds);
 });
 

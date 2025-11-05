@@ -22,16 +22,63 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("CoOwnershipVehicle.Booking.Api.Entities.BookingNotificationPreference", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("EnableEmail")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("EnableReminders")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("EnableSms")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("PreferredTimeZoneId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("BookingNotificationPreference", (string)null);
+                });
+
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Booking", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("BookingTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("EmergencyReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<DateTime>("EndAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FinalCheckoutReminderSentAt")
                         .HasColumnType("datetime2");
 
                     b.Property<Guid>("GroupId")
@@ -40,9 +87,15 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.Property<bool>("IsEmergency")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("MissedCheckoutReminderSentAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("PreCheckoutReminderSentAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("Priority")
                         .HasColumnType("int");
@@ -53,6 +106,14 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.Property<string>("Purpose")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("RecurringBookingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("RequiresDamageReview")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<DateTime>("StartAt")
                         .HasColumnType("datetime2");
@@ -73,7 +134,11 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BookingTemplateId");
+
                     b.HasIndex("GroupId");
+
+                    b.HasIndex("RecurringBookingId");
 
                     b.HasIndex("StartAt");
 
@@ -82,6 +147,62 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.HasIndex("VehicleId", "StartAt", "EndAt");
 
                     b.ToTable("Bookings");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.BookingTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<TimeSpan>("Duration")
+                        .HasColumnType("time");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<TimeSpan>("PreferredStartTime")
+                        .HasColumnType("time");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int>("UsageCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("BookingTemplates");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckIn", b =>
@@ -99,12 +220,53 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("IsLateReturn")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<decimal?>("LateFeeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<double?>("LateReturnMinutes")
+                        .HasColumnType("float");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
                     b.Property<int>("Odometer")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("SignatureCapturedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SignatureCertificateUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("SignatureDevice")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SignatureDeviceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SignatureHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("SignatureIpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<bool?>("SignatureMatchesPrevious")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SignatureMetadataJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("SignatureReference")
                         .HasMaxLength(500)
@@ -132,7 +294,7 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("CheckIn");
+                    b.ToTable("CheckIn", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckInPhoto", b =>
@@ -141,8 +303,15 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("CapturedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("CheckInId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -151,8 +320,31 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
+
                     b.Property<string>("PhotoUrl")
                         .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("StoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ThumbnailPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ThumbnailUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
@@ -168,7 +360,81 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
 
                     b.HasIndex("CheckInId");
 
-                    b.ToTable("CheckInPhoto");
+                    b.ToTable("CheckInPhoto", (string)null);
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DamageReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CheckInId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal?>("EstimatedCost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("ExpenseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Location")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PhotoIdsJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("ReportedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("CheckInId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("DamageReport", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentSignature", b =>
@@ -245,59 +511,97 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.ToTable("GroupMembers");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.MaintenanceBlock", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.MaintenanceBlock", b =>
+{
+    b.Property<Guid>("Id")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("uniqueidentifier");
+    b.Property<DateTime>("CreatedAt")
+        .HasColumnType("datetime2");
+    b.Property<DateTime>("EndTime")
+        .HasColumnType("datetime2");
+    b.Property<Guid>("GroupId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<Guid>("MaintenanceScheduleId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<string>("Notes")
+        .HasMaxLength(1000)
+        .HasColumnType("nvarchar(1000)");
+    b.Property<int>("Priority")
+        .HasColumnType("int");
+    b.Property<int>("ServiceType")
+        .HasColumnType("int");
+    b.Property<DateTime>("StartTime")
+        .HasColumnType("datetime2");
+    b.Property<int>("Status")
+        .HasColumnType("int");
+    b.Property<DateTime>("UpdatedAt")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("datetime2")
+        .HasDefaultValueSql("GETUTCDATE()");
+    b.Property<Guid>("VehicleId")
+        .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+    b.HasKey("Id");
+    b.HasIndex("MaintenanceScheduleId").IsUnique();
+    b.HasIndex("Status");
+    b.HasIndex("VehicleId", "StartTime", "EndTime");
+    b.ToTable("MaintenanceBlocks");
+});
 
-                    b.Property<DateTime>("EndTime")
-                        .HasColumnType("datetime2");
+modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.LateReturnFee", b =>
+{
+    b.Property<Guid>("Id")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("uniqueidentifier");
+    b.Property<Guid>("BookingId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<string>("CalculationMethod")
+        .HasMaxLength(200)
+        .HasColumnType("nvarchar(200)");
+    b.Property<Guid>("CheckInId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<DateTime>("CreatedAt")
+        .HasColumnType("datetime2");
+    b.Property<Guid?>("ExpenseId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<decimal>("FeeAmount")
+        .HasColumnType("decimal(18,2)");
+    b.Property<Guid>("GroupId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<Guid?>("InvoiceId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<int>("LateDurationMinutes")
+        .HasColumnType("int");
+    b.Property<decimal?>("OriginalFeeAmount")
+        .HasColumnType("decimal(18,2)");
+    b.Property<int>("Status")
+        .HasColumnType("int");
+    b.Property<DateTime>("UpdatedAt")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("datetime2")
+        .HasDefaultValueSql("GETUTCDATE()");
+    b.Property<Guid>("UserId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<Guid>("VehicleId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<DateTime?>("WaivedAt")
+        .HasColumnType("datetime2");
+    b.Property<Guid?>("WaivedBy")
+        .HasColumnType("uniqueidentifier");
+    b.Property<string>("WaivedReason")
+        .HasMaxLength(500)
+        .HasColumnType("nvarchar(500)");
 
-                    b.Property<Guid>("GroupId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("MaintenanceScheduleId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<int>("Priority")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ServiceType")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("StartTime")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<Guid>("VehicleId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MaintenanceScheduleId")
-                        .IsUnique();
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("VehicleId", "StartTime", "EndTime");
-
-                    b.ToTable("MaintenanceBlocks");
-                });
+    b.HasKey("Id");
+    b.HasIndex("BookingId");
+    b.HasIndex("CheckInId").IsUnique();
+    b.HasIndex("GroupId");
+    b.HasIndex("Status");
+    b.HasIndex("UserId");
+    b.HasIndex("VehicleId");
+    b.ToTable("LateReturnFee");
+});
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
                 {
@@ -335,6 +639,96 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.HasIndex("Name");
 
                     b.ToTable("OwnershipGroups");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.RecurringBooking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DaysOfWeekMask")
+                        .HasColumnType("int");
+
+                    b.Property<TimeSpan>("EndTime")
+                        .HasColumnType("time");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Interval")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<DateTime?>("LastGeneratedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastGenerationRunAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Pattern")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("PausedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateOnly?>("RecurrenceEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("RecurrenceStartDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeSpan>("StartTime")
+                        .HasColumnType("time");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("RecurringBookings");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.User", b =>
@@ -504,11 +898,21 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Booking", b =>
                 {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.BookingTemplate", "BookingTemplate")
+                        .WithMany()
+                        .HasForeignKey("BookingTemplateId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
                         .WithMany("Bookings")
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.RecurringBooking", "RecurringBooking")
+                        .WithMany("GeneratedBookings")
+                        .HasForeignKey("RecurringBookingId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
                         .WithMany("Bookings")
@@ -522,7 +926,29 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("BookingTemplate");
+
                     b.Navigation("Group");
+
+                    b.Navigation("RecurringBooking");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Vehicle");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.BookingTemplate", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("User");
 
@@ -543,19 +969,33 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", null)
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
                         .WithMany("CheckIns")
-                        .HasForeignKey("VehicleId");
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Booking");
 
                     b.Navigation("User");
+
+                    b.Navigation("Vehicle");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckInPhoto", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.CheckIn", "CheckIn")
                         .WithMany("Photos")
+                        .HasForeignKey("CheckInId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CheckIn");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DamageReport", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.CheckIn", "CheckIn")
+                        .WithMany()
                         .HasForeignKey("CheckInId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -593,6 +1033,47 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.LateReturnFee", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Booking", "Booking")
+                        .WithMany("LateReturnFees")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.CheckIn", "CheckIn")
+                        .WithOne("LateReturnFee")
+                        .HasForeignKey("CoOwnershipVehicle.Domain.Entities.LateReturnFee", "CheckInId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("CheckIn");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Vehicle");
+                });
+
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Creator")
@@ -602,6 +1083,33 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                         .IsRequired();
 
                     b.Navigation("Creator");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.RecurringBooking", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
+                        .WithMany("RecurringBookings")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
+                        .WithMany("RecurringBookings")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany("RecurringBookings")
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Group");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Vehicle");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
@@ -617,10 +1125,14 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Booking", b =>
                 {
                     b.Navigation("CheckIns");
+
+                    b.Navigation("LateReturnFees");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckIn", b =>
                 {
+                    b.Navigation("LateReturnFee");
+
                     b.Navigation("Photos");
                 });
 
@@ -630,7 +1142,14 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
 
                     b.Navigation("Members");
 
+                    b.Navigation("RecurringBookings");
+
                     b.Navigation("Vehicles");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.RecurringBooking", b =>
+                {
+                    b.Navigation("GeneratedBookings");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.User", b =>
@@ -638,6 +1157,8 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.Navigation("Bookings");
 
                     b.Navigation("GroupMemberships");
+
+                    b.Navigation("RecurringBookings");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
@@ -645,6 +1166,8 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.Navigation("Bookings");
 
                     b.Navigation("CheckIns");
+
+                    b.Navigation("RecurringBookings");
                 });
 #pragma warning restore 612, 618
         }

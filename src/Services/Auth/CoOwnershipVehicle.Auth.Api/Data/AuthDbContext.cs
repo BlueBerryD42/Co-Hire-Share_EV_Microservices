@@ -64,6 +64,24 @@ public class AuthDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         builder.Ignore<LedgerEntry>();
         builder.Ignore<Proposal>();
         builder.Ignore<AuditLog>();
+        builder.Ignore<Vote>();
+        builder.Ignore<CheckInPhoto>();
+        builder.Ignore<UserAnalytics>();
+        builder.Ignore<VehicleAnalytics>();
+        builder.Ignore<GroupAnalytics>();
+
+        // Ignore new document management entities
+        builder.Ignore<DocumentTemplate>();
+        builder.Ignore<DocumentShare>();
+        builder.Ignore<DocumentShareAccess>();
+        builder.Ignore<DocumentTag>();
+        builder.Ignore<DocumentTagMapping>();
+        builder.Ignore<SavedDocumentSearch>();
+        builder.Ignore<DocumentSignature>();
+        builder.Ignore<DocumentDownload>();
+        builder.Ignore<SigningCertificate>();
+        builder.Ignore<DocumentVersion>();
+        builder.Ignore<SignatureReminder>();
 
         // Configure automatic timestamp updates
         foreach (var entityType in builder.Model.GetEntityTypes())

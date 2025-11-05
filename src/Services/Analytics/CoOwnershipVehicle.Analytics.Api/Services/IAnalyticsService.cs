@@ -15,4 +15,13 @@ public interface IAnalyticsService
     Task<bool> GeneratePeriodicAnalyticsAsync(AnalyticsPeriod period, DateTime? startDate = null);
     Task<Dictionary<string, object>> GetKpiMetricsAsync(AnalyticsRequestDto request);
     Task<List<Dictionary<string, object>>> GetTrendDataAsync(AnalyticsRequestDto request);
+    
+    // Usage vs Ownership Analytics
+    Task<UsageVsOwnershipDto> GetUsageVsOwnershipAsync(Guid groupId, DateTime? startDate = null, DateTime? endDate = null);
+    Task<MemberComparisonDto> GetMemberComparisonAsync(Guid groupId, DateTime? startDate = null, DateTime? endDate = null);
+    Task<VisualizationDataDto> GetVisualizationDataAsync(Guid groupId, DateTime? startDate = null, DateTime? endDate = null);
+    Task<FairnessReportDto> GetFairnessReportAsync(Guid groupId, DateTime? startDate = null, DateTime? endDate = null);
+    
+    // Time period comparisons
+    Task<List<PeriodComparisonDto>> GetPeriodComparisonsAsync(Guid groupId, string comparisonType = "month"); // "month", "quarter", "year"
 }

@@ -169,3 +169,205 @@ public class AnalyticsRequestDto
     public int? Limit { get; set; }
     public int? Offset { get; set; }
 }
+
+// Usage vs Ownership DTOs
+public class MemberUsageMetricsDto
+{
+    public Guid MemberId { get; set; }
+    public string MemberName { get; set; } = string.Empty;
+    public decimal OwnershipPercentage { get; set; }
+    
+    // Usage by different metrics
+    public UsageMetricsDto ByTrips { get; set; } = new();
+    public UsageMetricsDto ByDistance { get; set; } = new();
+    public UsageMetricsDto ByTime { get; set; } = new();
+    public UsageMetricsDto ByCost { get; set; } = new();
+    
+    // Fairness indicators
+    public decimal OverallUsagePercentage { get; set; }
+    public decimal UsageDifference { get; set; } // Positive = over-utilizing, Negative = under-utilizing
+    public string FairShareIndicator { get; set; } = string.Empty; // "Fair", "Over", "Under"
+    public decimal FairnessScore { get; set; } // 0-100
+}
+
+public class UsageMetricsDto
+{
+    public decimal ActualUsagePercentage { get; set; }
+    public decimal ExpectedUsagePercentage { get; set; }
+    public decimal Difference { get; set; }
+    public decimal Value { get; set; } // Total trips, distance, hours, or cost
+}
+
+public class UsageVsOwnershipDto
+{
+    public Guid GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public DateTime PeriodStart { get; set; }
+    public DateTime PeriodEnd { get; set; }
+    public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+    
+    // Member-level metrics
+    public List<MemberUsageMetricsDto> Members { get; set; } = new();
+    
+    // Group-level metrics
+    public GroupFairnessMetricsDto GroupMetrics { get; set; } = new();
+    
+    // Historical trends
+    public List<PeriodComparisonDto> HistoricalTrends { get; set; } = new();
+}
+
+public class GroupFairnessMetricsDto
+{
+    public decimal OverallFairnessScore { get; set; } // 0-100
+    public decimal DistributionBalance { get; set; } // 0-1, higher is more balanced
+    public decimal UsageConcentration { get; set; } // 0-1, higher = few members using most
+    
+    // Gini coefficient for usage distribution (0 = perfect equality, 1 = maximum inequality)
+    public decimal GiniCoefficient { get; set; }
+    
+    // Top users
+    public int TopUsersCount { get; set; }
+    public decimal TopUsersUsagePercentage { get; set; }
+    
+    // Recommendations
+    public List<string> Recommendations { get; set; } = new();
+}
+
+public class PeriodComparisonDto
+{
+    public string PeriodLabel { get; set; } = string.Empty;
+    public DateTime PeriodStart { get; set; }
+    public DateTime PeriodEnd { get; set; }
+    public decimal AverageFairnessScore { get; set; }
+    public decimal AverageUsageBalance { get; set; }
+    public int ActiveMembers { get; set; }
+}
+
+public class MemberComparisonDto
+{
+    public Guid GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public DateTime PeriodStart { get; set; }
+    public DateTime PeriodEnd { get; set; }
+    public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+    
+    public List<MemberComparisonItemDto> Members { get; set; } = new();
+}
+
+public class MemberComparisonItemDto
+{
+    public Guid MemberId { get; set; }
+    public string MemberName { get; set; } = string.Empty;
+    public decimal OwnershipPercentage { get; set; }
+    
+    // Usage patterns
+    public int TotalTrips { get; set; }
+    public decimal TotalDistance { get; set; }
+    public int TotalHours { get; set; }
+    public decimal TotalCost { get; set; }
+    
+    // Usage percentages
+    public decimal UsagePercentageByTrips { get; set; }
+    public decimal UsagePercentageByDistance { get; set; }
+    public decimal UsagePercentageByTime { get; set; }
+    public decimal UsagePercentageByCost { get; set; }
+    
+    // Efficiency metrics
+    public decimal DistancePerTrip { get; set; }
+    public decimal HoursPerTrip { get; set; }
+    public decimal CostPerTrip { get; set; }
+    public decimal CostPerHour { get; set; }
+    public decimal CostPerKm { get; set; }
+    
+    // Activity level
+    public string ActivityLevel { get; set; } = string.Empty; // "Active", "Moderate", "Inactive"
+    public int DaysSinceLastBooking { get; set; }
+    public decimal BookingFrequency { get; set; } // Bookings per week
+    
+    // Fairness indicators
+    public decimal FairnessScore { get; set; }
+    public string FairShareStatus { get; set; } = string.Empty;
+}
+
+public class VisualizationDataDto
+{
+    public Guid GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    
+    // Pie chart data - usage distribution by member
+    public List<ChartDataPointDto> UsageDistributionByMember { get; set; } = new();
+    
+    // Bar chart data - ownership vs usage comparison
+    public List<ComparisonBarDataDto> OwnershipVsUsage { get; set; } = new();
+    
+    // Timeline chart data - usage trends
+    public List<TimelineDataPointDto> UsageTrends { get; set; } = new();
+    
+    // Heat map data - usage by time/day
+    public List<HeatMapDataPointDto> UsageHeatMap { get; set; } = new();
+}
+
+public class ChartDataPointDto
+{
+    public string Label { get; set; } = string.Empty;
+    public decimal Value { get; set; }
+    public decimal Percentage { get; set; }
+}
+
+public class ComparisonBarDataDto
+{
+    public string MemberName { get; set; } = string.Empty;
+    public decimal OwnershipPercentage { get; set; }
+    public decimal UsagePercentage { get; set; }
+    public string Metric { get; set; } = string.Empty; // "Trips", "Distance", "Time", "Cost"
+}
+
+public class TimelineDataPointDto
+{
+    public DateTime Date { get; set; }
+    public decimal TotalUsage { get; set; }
+    public decimal AverageFairnessScore { get; set; }
+    public int ActiveMembers { get; set; }
+}
+
+public class HeatMapDataPointDto
+{
+    public string DayOfWeek { get; set; } = string.Empty;
+    public int Hour { get; set; }
+    public decimal UsageValue { get; set; }
+    public int BookingCount { get; set; }
+}
+
+public class FairnessReportDto
+{
+    public Guid GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public DateTime ReportDate { get; set; } = DateTime.UtcNow;
+    public DateTime PeriodStart { get; set; }
+    public DateTime PeriodEnd { get; set; }
+    
+    // Summary
+    public decimal OverallFairnessScore { get; set; }
+    public string OverallAssessment { get; set; } = string.Empty;
+    
+    // Member breakdown
+    public List<MemberUsageMetricsDto> MemberBreakdown { get; set; } = new();
+    
+    // Historical comparison
+    public List<PeriodComparisonDto> HistoricalComparison { get; set; } = new();
+    
+    // Recommendations
+    public List<RecommendationDto> Recommendations { get; set; } = new();
+    
+    // Visualization data
+    public VisualizationDataDto VisualizationData { get; set; } = new();
+}
+
+public class RecommendationDto
+{
+    public string Category { get; set; } = string.Empty; // "Ownership", "Usage", "Cost", "Activity"
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Priority { get; set; } = string.Empty; // "High", "Medium", "Low"
+    public string Impact { get; set; } = string.Empty; // Expected impact description
+}

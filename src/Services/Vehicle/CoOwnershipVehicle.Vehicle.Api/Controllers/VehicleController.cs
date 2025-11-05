@@ -204,45 +204,88 @@ public class VehicleController : ControllerBase
     }
 
     /// <summary>
-    /// Update the status of a vehicle (Group Admin or SystemAdmin only)
-    /// </summary>
-    [HttpPut("{id:guid}/status")]
-    [Authorize]
-    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto updateDto)
+/// Update the status of a vehicle (Group Admin or SystemAdmin only)
+/// </summary>
+[HttpPut("{id:guid}/status")]
+[Authorize]
+public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto updateDto)
+{
+    try
     {
-        try
+        var vehicle = await _context.Vehicles.FindAsync(id);
+        if (vehicle == null)
+            return NotFound();
+
+        var userId = GetCurrentUserId();
+        var roles = User.Claims
+            .Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role)
+            .Select(c => c.Value)
+            .ToList();
+
+        var isSystemAdmin = roles.Contains("SystemAdmin");
+        var isGroupAdmin = roles.Contains("GroupAdmin");
+
+        // ✅ Quyền hạn kiểm tra trước
+        if (!isSystemAdmin && !isGroupAdmin)
         {
-            var vehicle = await _context.Vehicles.FindAsync(id);
-            if (vehicle == null) return NotFound();
+            return Forbid("Insufficient permissions to update vehicle status");
+        }
 
-            var userId = GetCurrentUserId();
-            var roles = User.Claims
-                .Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role)
-                .Select(c => c.Value);
+        // ✅ (Tuỳ chọn) — kiểm tra xung đột booking nếu DTO có khoảng thời gian
+        if (updateDto.From != null && updateDto.To != null)
+        {
+            var conflictingBookings = await _context.Bookings
+                .Include(b => b.User)
+                .Where(b => b.VehicleId == id &&
+                            b.Status != Domain.Entities.BookingStatus.Cancelled &&
+                            b.Status != Domain.Entities.BookingStatus.Completed &&
+                            (
+                                (b.StartAt <= updateDto.From && b.EndAt > updateDto.From) ||
+                                (b.StartAt < updateDto.To && b.EndAt >= updateDto.To) ||
+                                (b.StartAt >= updateDto.From && b.EndAt <= updateDto.To)
+                            ))
+                .Select(b => new BookingDto
+                {
+                    Id = b.Id,
+                    VehicleId = b.VehicleId,
+                    UserId = b.UserId,
+                    UserFirstName = b.User.FirstName,
+                    UserLastName = b.User.LastName,
+                    StartAt = b.StartAt,
+                    EndAt = b.EndAt,
+                    Status = (BookingStatus)b.Status,
+                    Notes = b.Notes,
+                    RequiresDamageReview = b.RequiresDamageReview
+                })
+                .ToListAsync();
 
-            var isSystemAdmin = roles.Contains("SystemAdmin");
-            var isGroupAdmin = roles.Contains("GroupAdmin");
-
-            if (!isSystemAdmin && !isGroupAdmin)
+            if (conflictingBookings.Any())
             {
-                return Forbidden(new { message = "Insufficient permissions to update vehicle status" });
+                return Conflict(new
+                {
+                    message = "Cannot update status due to active or overlapping bookings",
+                    conflictingBookings
+                });
             }
-
-            vehicle.Status = updateDto.Status;
-            vehicle.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Vehicle {VehicleId} status updated to {Status} by user {UserId}", vehicle.Id, vehicle.Status, userId);
-
-            return Ok(vehicle);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating vehicle status");
-            return StatusCode(500, new { message = "An error occurred while updating vehicle status" });
-        }
+
+        // ✅ Cập nhật trạng thái
+        vehicle.Status = updateDto.Status;
+        vehicle.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Vehicle {VehicleId} status updated to {Status} by user {UserId}", vehicle.Id, vehicle.Status, userId);
+
+        return Ok(vehicle);
     }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error updating vehicle status");
+        return StatusCode(500, new { message = "An error occurred while updating vehicle status" });
+    }
+}
+
 
     private async Task<List<Guid>> GetUserGroupIds() // Made async
     {

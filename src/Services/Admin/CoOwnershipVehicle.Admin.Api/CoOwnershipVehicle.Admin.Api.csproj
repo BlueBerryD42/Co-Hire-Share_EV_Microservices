@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <!-- Microsoft.Extensions.Caching.Memory is provided by .NET 8.0 framework - no explicit reference needed -->
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.0" />
+    <PackageReference Include="MassTransit" Version="8.1.3" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
+    <PackageReference Include="EPPlus" Version="7.0.0" />
+    <!-- iTextSharp removed - not compatible with .NET 8.0. Use QuestPDF or iText7 for PDF generation if needed -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\CoOwnershipVehicle.Data\CoOwnershipVehicle.Data.csproj" />
+    <ProjectReference Include="..\..\..\CoOwnershipVehicle.Domain\CoOwnershipVehicle.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\CoOwnershipVehicle.Shared.Contracts\CoOwnershipVehicle.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\CoOwnershipVehicle.Shared\CoOwnershipVehicle.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

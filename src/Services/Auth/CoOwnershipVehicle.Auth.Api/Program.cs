@@ -89,14 +89,16 @@ builder.Services.AddMassTransit(x =>
 });
 
 // Add Redis
+// Add Redis
 var redisConfig = EnvironmentHelper.GetRedisConfigParams(builder.Configuration);
-builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
+
+StackExchange.Redis.IConnectionMultiplexer? redisConnection = null;
+try
 {
-    var programLogger = sp.GetRequiredService<ILogger<Program>>();
+    var programLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
     programLogger.LogInformation("Redis Connection String: {ConnectionString}", redisConfig.ConnectionString);
     programLogger.LogInformation("Redis Database: {Database}", redisConfig.Database);
 
-    // Parse the connection string and create configuration manually
     var configuration = new StackExchange.Redis.ConfigurationOptions();
 
     // Handle redis:// format
@@ -106,47 +108,60 @@ builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
         configuration.EndPoints.Add(uri.Host, uri.Port);
         if (uri.UserInfo.Contains(':'))
         {
-            configuration.Password = uri.UserInfo.Split(':')[1]; // Get password after colon
+            configuration.Password = uri.UserInfo.Split(':')[1];
         }
         programLogger.LogInformation("Redis Host: {Host}, Port: {Port}, Has Password: {HasPassword}",
             uri.Host, uri.Port, !string.IsNullOrEmpty(configuration.Password));
     }
     else
     {
-        // Handle host:port format
         configuration = StackExchange.Redis.ConfigurationOptions.Parse(redisConfig.ConnectionString);
         programLogger.LogInformation("Redis parsed from simple format");
     }
 
-    // Add retry and connection settings
+    // ✅ Combine reliability settings from both branches
     configuration.AbortOnConnectFail = false;
-    configuration.ConnectRetry = 3;
-    configuration.ConnectTimeout = 15000;
-    configuration.SyncTimeout = 5000;
+    configuration.ConnectRetry = 5;
+    configuration.ConnectTimeout = 30000;
+    configuration.SyncTimeout = 10000;
+    configuration.AsyncTimeout = 10000;
+    configuration.ResponseTimeout = 10000;
+    configuration.KeepAlive = 60;
+    configuration.ClientName = "CoOwnershipVehicle-Auth";
 
-    try
-    {
-        var multiplexer = StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
-        programLogger.LogInformation("Successfully connected to Redis");
-        return multiplexer;
-    }
-    catch (Exception ex)
-    {
-        programLogger.LogError(ex, "Failed to connect to Redis. Using in-memory fallback for refresh tokens.");
+    programLogger.LogInformation("Attempting to connect to Redis...");
 
-        // Return null - this is allowed because we don't use GetRequiredService
-        return null!;
-    }
-});
-builder.Services.AddScoped<StackExchange.Redis.IDatabase>(sp =>
+    redisConnection = StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
+
+    // Quick ping test
+    var db = redisConnection.GetDatabase(redisConfig.Database);
+    db.Ping();
+
+    programLogger.LogInformation("✅ Successfully connected to Redis");
+}
+catch (Exception ex)
 {
-    var redis = sp.GetService<StackExchange.Redis.IConnectionMultiplexer>();
-    if (redis == null)
+    var programLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+    programLogger.LogError(ex, "❌ Failed to connect to Redis. Falling back to in-memory mode.");
+    redisConnection = null;
+}
+
+// ✅ Register Redis DI services safely
+if (redisConnection != null)
+{
+    builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(redisConnection);
+    builder.Services.AddScoped<StackExchange.Redis.IDatabase>(sp =>
     {
-        return null!;
-    }
-    return redis.GetDatabase(redisConfig.Database);
-});
+        var redis = sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
+        return redis.GetDatabase(redisConfig.Database);
+    });
+}
+else
+{
+    // Allow app to continue gracefully without Redis
+    builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer?>(sp => null);
+    builder.Services.AddScoped<StackExchange.Redis.IDatabase?>(sp => null);
+}
 
 // Add application services
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();

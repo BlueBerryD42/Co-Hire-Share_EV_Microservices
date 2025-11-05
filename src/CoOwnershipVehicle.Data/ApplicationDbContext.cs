@@ -28,6 +28,14 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
     public DbSet<LedgerEntry> LedgerEntries { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<KycDocument> KycDocuments { get; set; }
+    public DbSet<RecurringBooking> RecurringBookings { get; set; }
+    
+    // Dispute entities
+    public DbSet<Dispute> Disputes { get; set; }
+    public DbSet<DisputeComment> DisputeComments { get; set; }
+    
+    // Maintenance entities
+    public DbSet<MaintenanceRecord> MaintenanceRecords { get; set; }
     
     // Notification entities
     public DbSet<Notification> Notifications { get; set; }
@@ -123,6 +131,10 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.PriorityScore).HasColumnType("decimal(10,4)");
             entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.PreCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.FinalCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.MissedCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.RecurringBookingId);
 
             entity.HasOne(e => e.Vehicle)
                   .WithMany(v => v.Bookings)
@@ -139,8 +151,49 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Restrict);
 
+            entity.HasOne(e => e.RecurringBooking)
+                  .WithMany(rb => rb.GeneratedBookings)
+                  .HasForeignKey(e => e.RecurringBookingId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasIndex(e => new { e.VehicleId, e.StartAt, e.EndAt });
             entity.HasIndex(e => e.StartAt);
+        });
+
+        // Recurring booking entity configuration
+        builder.Entity<RecurringBooking>(entity =>
+        {
+            entity.Property(e => e.Pattern).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Interval).HasDefaultValue(1);
+            entity.Property(e => e.DaysOfWeekMask);
+            entity.Property(e => e.StartTime).HasColumnType("time");
+            entity.Property(e => e.EndTime).HasColumnType("time");
+            entity.Property(e => e.RecurrenceStartDate).HasColumnType("date");
+            entity.Property(e => e.RecurrenceEndDate).HasColumnType("date");
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.Purpose).HasMaxLength(200);
+            entity.Property(e => e.CancellationReason).HasMaxLength(200);
+            entity.Property(e => e.TimeZoneId).HasMaxLength(100);
+
+            entity.HasOne(e => e.Vehicle)
+                  .WithMany(v => v.RecurringBookings)
+                  .HasForeignKey(e => e.VehicleId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany(g => g.RecurringBookings)
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.RecurringBookings)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.UserId);
         });
 
         // Expense entity configuration
@@ -213,24 +266,36 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
         });
 
         // Document entity configuration
+
         builder.Entity<Document>(entity =>
         {
             entity.Property(e => e.Type).HasConversion<int>();
             entity.Property(e => e.StorageKey).IsRequired().HasMaxLength(500);
             entity.Property(e => e.FileName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
             entity.Property(e => e.SignatureStatus).HasConversion<int>();
             entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.FileHash).HasMaxLength(64);
+            entity.Property(e => e.Author).HasMaxLength(200);
 
             entity.HasOne(e => e.Group)
                   .WithMany(g => g.Documents)
                   .HasForeignKey(e => e.GroupId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            // Add indexes
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.StorageKey).IsUnique();
+            entity.HasIndex(e => new { e.GroupId, e.FileHash });
+            entity.HasIndex(e => e.CreatedAt);
         });
 
         // DocumentSignature entity configuration
         builder.Entity<DocumentSignature>(entity =>
         {
-            entity.Property(e => e.SignatureReference).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.SignatureReference).HasMaxLength(500);
+            entity.Property(e => e.SignatureMetadata).HasMaxLength(2000);
+            entity.Property(e => e.Status).HasConversion<int>();
 
             entity.HasOne(e => e.Document)
                   .WithMany(d => d.Signatures)
@@ -242,7 +307,10 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
                   .HasForeignKey(e => e.SignerId)
                   .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasIndex(e => new { e.DocumentId, e.SignerId }).IsUnique();
+            // Add indexes
+            entity.HasIndex(e => e.DocumentId);
+            entity.HasIndex(e => new { e.DocumentId, e.SignerId });
+            entity.HasIndex(e => new { e.DocumentId, e.SignatureOrder });
         });
 
         // CheckIn entity configuration
@@ -402,6 +470,88 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => e.ScheduledFor);
+        });
+
+        // Dispute entity configuration
+        builder.Entity<Dispute>(entity =>
+        {
+            entity.Property(e => e.Subject).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.Category).HasConversion<int>();
+            entity.Property(e => e.Priority).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Resolution).HasMaxLength(2000);
+
+            entity.HasOne(e => e.Group)
+                .WithMany()
+                .HasForeignKey(e => e.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Reporter)
+                .WithMany()
+                .HasForeignKey(e => e.ReportedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.AssignedStaff)
+                .WithMany()
+                .HasForeignKey(e => e.AssignedTo)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.Resolver)
+                .WithMany()
+                .HasForeignKey(e => e.ResolvedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.ReportedBy);
+            entity.HasIndex(e => e.Status);
+        });
+
+        // DisputeComment entity configuration
+        builder.Entity<DisputeComment>(entity =>
+        {
+            entity.Property(e => e.Comment).IsRequired().HasMaxLength(2000);
+
+            entity.HasOne(e => e.Dispute)
+                .WithMany(d => d.Comments)
+                .HasForeignKey(e => e.DisputeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Commenter)
+                .WithMany()
+                .HasForeignKey(e => e.CommentedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.DisputeId);
+            entity.HasIndex(e => e.CommentedBy);
+        });
+
+        // MaintenanceRecord entity configuration
+        builder.Entity<MaintenanceRecord>(entity =>
+        {
+            entity.Property(e => e.ServiceType).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Priority).HasConversion<int>();
+            entity.Property(e => e.EstimatedCost).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ActualCost).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Provider).HasMaxLength(200);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.WorkPerformed).HasMaxLength(2000);
+            entity.Property(e => e.PartsUsed).HasMaxLength(2000);
+
+            entity.HasOne(e => e.Vehicle)
+                .WithMany(v => v.MaintenanceRecords)
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Group)
+                .WithMany()
+                .HasForeignKey(e => e.GroupId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.ScheduledDate);
         });
 
         // NotificationTemplate entity configuration

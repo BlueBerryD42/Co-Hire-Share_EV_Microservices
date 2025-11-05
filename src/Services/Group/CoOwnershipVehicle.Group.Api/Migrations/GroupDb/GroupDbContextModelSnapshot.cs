@@ -22,23 +22,53 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckInPhoto", b =>
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Document", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("CheckInId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("Author")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("FileHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<string>("PhotoUrl")
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsVirusScanned")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SignatureStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StorageKey")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -51,9 +81,73 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETUTCDATE()");
 
+                    b.Property<Guid?>("UploadedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("VirusScanPassed")
+                        .HasColumnType("bit");
+
                     b.HasKey("Id");
 
-                    b.ToTable("CheckInPhoto");
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("UploadedBy");
+
+                    b.HasIndex("GroupId", "FileHash");
+
+                    b.ToTable("Documents", (string)null);
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentDownload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("DownloadedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("IpAddress")
+                        .IsRequired()
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("DownloadedAt");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("DocumentId", "UserId");
+
+                    b.ToTable("DocumentDownloads", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentSignature", b =>
@@ -68,16 +162,25 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("SignatureMetadata")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("SignatureOrder")
+                        .HasColumnType("int");
+
                     b.Property<string>("SignatureReference")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<DateTime>("SignedAt")
+                    b.Property<DateTime?>("SignedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<Guid>("SignerId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -86,9 +189,15 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DocumentId");
+
                     b.HasIndex("SignerId");
 
-                    b.ToTable("DocumentSignature");
+                    b.HasIndex("DocumentId", "SignatureOrder");
+
+                    b.HasIndex("DocumentId", "SignerId");
+
+                    b.ToTable("DocumentSignatures", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupMember", b =>
@@ -127,7 +236,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasIndex("GroupId", "UserId")
                         .IsUnique();
 
-                    b.ToTable("GroupMembers");
+                    b.ToTable("GroupMembers", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
@@ -165,7 +274,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("Name");
 
-                    b.ToTable("OwnershipGroups");
+                    b.ToTable("OwnershipGroups", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.User", b =>
@@ -269,7 +378,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("Phone");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
@@ -330,16 +439,54 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasIndex("Vin")
                         .IsUnique();
 
-                    b.ToTable("Vehicles");
+                    b.ToTable("Vehicles", (string)null);
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Document", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
+                        .WithMany("Documents")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentDownload", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Document", "Document")
+                        .WithMany("Downloads")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentSignature", b =>
                 {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Document", "Document")
+                        .WithMany("Signatures")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Signer")
                         .WithMany()
                         .HasForeignKey("SignerId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Document");
 
                     b.Navigation("Signer");
                 });
@@ -384,8 +531,17 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.Navigation("Group");
                 });
 
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Document", b =>
+                {
+                    b.Navigation("Downloads");
+
+                    b.Navigation("Signatures");
+                });
+
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
                 {
+                    b.Navigation("Documents");
+
                     b.Navigation("Members");
 
                     b.Navigation("Vehicles");
