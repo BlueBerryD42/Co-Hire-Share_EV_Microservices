@@ -93,15 +93,25 @@ public class JwtTokenService : IJwtTokenService
     {
         if (_redisDatabase != null)
         {
-            var key = $"{_keyPrefix}refresh_token:{refreshToken}";
-            await _redisDatabase.KeyDeleteAsync(key);
-            _logger.LogInformation("Refresh token revoked from Redis");
+            try
+            {
+                var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+                await _redisDatabase.KeyDeleteAsync(key);
+                _logger.LogInformation("Refresh token revoked from Redis");
+                // Also remove from in-memory cache if present
+                _inMemoryRefreshTokens.Remove(refreshToken);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to revoke refresh token in Redis. Revoking from in-memory storage.");
+                // Fall through to in-memory removal
+            }
         }
-        else
-        {
-            _inMemoryRefreshTokens.Remove(refreshToken);
-            _logger.LogInformation("Refresh token revoked from memory (Redis unavailable)");
-        }
+
+        // Remove from in-memory storage
+        _inMemoryRefreshTokens.Remove(refreshToken);
+        _logger.LogInformation("Refresh token revoked from memory (Redis unavailable)");
     }
 
     public async Task<bool> ValidateTokenAsync(string token)
@@ -185,39 +195,54 @@ public class JwtTokenService : IJwtTokenService
     {
         if (_redisDatabase != null)
         {
-            var key = $"{_keyPrefix}refresh_token:{refreshToken}";
-            var expiry = TimeSpan.FromDays(7); // 7 days expiry
-            
-            await _redisDatabase.StringSetAsync(key, userId.ToString(), expiry);
-            _logger.LogInformation("Refresh token stored in Redis for user {UserId}", userId);
+            try
+            {
+                var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+                var expiry = TimeSpan.FromDays(7); // 7 days expiry
+
+                await _redisDatabase.StringSetAsync(key, userId.ToString(), expiry);
+                _logger.LogInformation("Refresh token stored in Redis for user {UserId}", userId);
+                return; // Successfully stored in Redis
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to store refresh token in Redis. Falling back to in-memory storage.");
+                // Fall through to in-memory storage
+            }
         }
-        else
-        {
-            _inMemoryRefreshTokens[refreshToken] = userId;
-            _logger.LogInformation("Refresh token stored in memory for user {UserId} (Redis unavailable)", userId);
-        }
+
+        // Use in-memory storage as fallback
+        _inMemoryRefreshTokens[refreshToken] = userId;
+        _logger.LogInformation("Refresh token stored in memory for user {UserId} (Redis unavailable)", userId);
     }
 
     private async Task<Guid?> ValidateRefreshTokenAsync(string refreshToken)
     {
         if (_redisDatabase != null)
         {
-            var key = $"{_keyPrefix}refresh_token:{refreshToken}";
-            var userIdString = await _redisDatabase.StringGetAsync(key);
-            
-            if (userIdString.HasValue && Guid.TryParse(userIdString, out var userId))
+            try
             {
-                return userId;
+                var key = $"{_keyPrefix}refresh_token:{refreshToken}";
+                var userIdString = await _redisDatabase.StringGetAsync(key);
+
+                if (userIdString.HasValue && Guid.TryParse(userIdString, out var userId))
+                {
+                    return userId;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to validate refresh token in Redis. Checking in-memory storage.");
+                // Fall through to in-memory storage
             }
         }
-        else
+
+        // Check in-memory storage as fallback
+        if (_inMemoryRefreshTokens.TryGetValue(refreshToken, out var userIdFromMemory))
         {
-            if (_inMemoryRefreshTokens.TryGetValue(refreshToken, out var userId))
-            {
-                return userId;
-            }
+            return userIdFromMemory;
         }
-        
+
         return null; // Token not found or expired
     }
 

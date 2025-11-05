@@ -100,7 +100,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("GroupId", "FileHash");
 
-                    b.ToTable("Documents");
+                    b.ToTable("Documents", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentDownload", b =>
@@ -147,7 +147,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("DocumentId", "UserId");
 
-                    b.ToTable("DocumentDownloads");
+                    b.ToTable("DocumentDownloads", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentSignature", b =>
@@ -197,7 +197,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("DocumentId", "SignerId");
 
-                    b.ToTable("DocumentSignatures");
+                    b.ToTable("DocumentSignatures", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupMember", b =>
@@ -236,7 +236,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasIndex("GroupId", "UserId")
                         .IsUnique();
 
-                    b.ToTable("GroupMembers");
+                    b.ToTable("GroupMembers", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
@@ -274,7 +274,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("Name");
 
-                    b.ToTable("OwnershipGroups");
+                    b.ToTable("OwnershipGroups", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.User", b =>
@@ -378,7 +378,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("Phone");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
@@ -439,7 +439,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasIndex("Vin")
                         .IsUnique();
 
-                    b.ToTable("Vehicles");
+                    b.ToTable("Vehicles", (string)null);
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Document", b =>

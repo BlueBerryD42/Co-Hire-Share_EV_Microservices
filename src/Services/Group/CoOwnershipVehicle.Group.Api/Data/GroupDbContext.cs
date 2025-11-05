@@ -18,6 +18,16 @@ public class GroupDbContext : DbContext
     public DbSet<DocumentSignature> DocumentSignatures { get; set; } // For document signatures
     public DbSet<DocumentDownload> DocumentDownloads { get; set; } // For download tracking
     public DbSet<SigningCertificate> SigningCertificates { get; set; } // For signing certificates
+    public DbSet<DocumentVersion> DocumentVersions { get; set; } // For version control
+    public DbSet<SignatureReminder> SignatureReminders { get; set; } // For signature reminders
+
+    // New document features
+    public DbSet<DocumentTemplate> DocumentTemplates { get; set; } // For pre-built templates
+    public DbSet<DocumentShare> DocumentShares { get; set; } // For external sharing
+    public DbSet<DocumentShareAccess> DocumentShareAccesses { get; set; } // For share access logs
+    public DbSet<DocumentTag> DocumentTags { get; set; } // For document tagging
+    public DbSet<DocumentTagMapping> DocumentTagMappings { get; set; } // For document-tag relationships
+    public DbSet<SavedDocumentSearch> SavedDocumentSearches { get; set; } // For saved searches
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -131,6 +141,7 @@ public class GroupDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.FileHash).HasMaxLength(64);
             entity.Property(e => e.Author).HasMaxLength(200);
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
 
             entity.HasOne(e => e.Group)
                   .WithMany(g => g.Documents)
@@ -143,6 +154,11 @@ public class GroupDbContext : DbContext
             entity.HasIndex(e => new { e.GroupId, e.FileHash });
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => e.UploadedBy);
+            entity.HasIndex(e => e.IsDeleted);
+            entity.HasIndex(e => new { e.IsDeleted, e.DeletedAt });
+
+            // Add query filter for soft delete (global filter)
+            entity.HasQueryFilter(e => !e.IsDeleted);
         });
 
         // DocumentSignature entity configuration
@@ -218,6 +234,209 @@ public class GroupDbContext : DbContext
             entity.HasIndex(e => e.DocumentId).IsUnique(); // One certificate per document
             entity.HasIndex(e => e.GeneratedAt);
             entity.HasIndex(e => new { e.DocumentHash, e.CertificateId });
+        });
+
+        // DocumentVersion entity configuration
+        builder.Entity<DocumentVersion>(entity =>
+        {
+            entity.Property(e => e.StorageKey).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.FileName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.FileHash).HasMaxLength(64);
+            entity.Property(e => e.ChangeDescription).HasMaxLength(1000);
+            entity.Property(e => e.UploadedAt).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Document)
+                  .WithMany(d => d.Versions)
+                  .HasForeignKey(e => e.DocumentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Uploader)
+                  .WithMany()
+                  .HasForeignKey(e => e.UploadedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            // Add indexes
+            entity.HasIndex(e => e.DocumentId);
+            entity.HasIndex(e => e.StorageKey).IsUnique();
+            entity.HasIndex(e => new { e.DocumentId, e.VersionNumber }).IsUnique();
+            entity.HasIndex(e => new { e.DocumentId, e.IsCurrent });
+            entity.HasIndex(e => e.UploadedAt);
+        });
+
+        // SignatureReminder entity configuration
+        builder.Entity<SignatureReminder>(entity =>
+        {
+            entity.Property(e => e.ReminderType).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Message).HasMaxLength(500);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
+            entity.Property(e => e.SentAt).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.DocumentSignature)
+                  .WithMany()
+                  .HasForeignKey(e => e.DocumentSignatureId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // Add indexes
+            entity.HasIndex(e => e.DocumentSignatureId);
+            entity.HasIndex(e => e.SentAt);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.DocumentSignatureId, e.ReminderType });
+        });
+
+        // DocumentTemplate entity configuration
+        builder.Entity<DocumentTemplate>(entity =>
+        {
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.Category).HasConversion<int>();
+            entity.Property(e => e.TemplateContent).IsRequired();
+            entity.Property(e => e.VariablesJson).HasDefaultValue("[]");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.Version).HasDefaultValue(1);
+            entity.Property(e => e.PreviewImageUrl).HasMaxLength(500);
+
+            entity.HasOne(e => e.Creator)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.Name);
+            entity.HasIndex(e => e.Category);
+            entity.HasIndex(e => e.IsActive);
+            entity.HasIndex(e => new { e.Category, e.IsActive });
+        });
+
+        // DocumentShare entity configuration
+        builder.Entity<DocumentShare>(entity =>
+        {
+            entity.Property(e => e.ShareToken).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.SharedWith).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.RecipientEmail).HasMaxLength(200);
+            entity.Property(e => e.Permissions).HasConversion<int>();
+            entity.Property(e => e.Message).HasMaxLength(1000);
+            entity.Property(e => e.AccessCount).HasDefaultValue(0);
+            entity.Property(e => e.IsRevoked).HasDefaultValue(false);
+            entity.Property(e => e.PasswordHash).HasMaxLength(500);
+
+            entity.HasOne(e => e.Document)
+                  .WithMany(d => d.Shares)
+                  .HasForeignKey(e => e.DocumentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Sharer)
+                  .WithMany()
+                  .HasForeignKey(e => e.SharedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.ShareToken).IsUnique();
+            entity.HasIndex(e => e.DocumentId);
+            entity.HasIndex(e => e.ExpiresAt);
+            entity.HasIndex(e => e.IsRevoked);
+            entity.HasIndex(e => new { e.ShareToken, e.IsRevoked, e.ExpiresAt });
+        });
+
+        // DocumentShareAccess entity configuration
+        builder.Entity<DocumentShareAccess>(entity =>
+        {
+            entity.Property(e => e.IpAddress).HasMaxLength(45);
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.Location).HasMaxLength(200);
+            entity.Property(e => e.Action).HasConversion<int>();
+            entity.Property(e => e.FailureReason).HasMaxLength(500);
+
+            entity.HasOne(e => e.DocumentShare)
+                  .WithMany(s => s.AccessLog)
+                  .HasForeignKey(e => e.DocumentShareId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.DocumentShareId);
+            entity.HasIndex(e => e.AccessedAt);
+            entity.HasIndex(e => e.Action);
+        });
+
+        // DocumentTag entity configuration
+        builder.Entity<DocumentTag>(entity =>
+        {
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Color).HasMaxLength(20);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.UsageCount).HasDefaultValue(0);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(e => e.Creator)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.Name);
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => new { e.Name, e.GroupId }).IsUnique();
+        });
+
+        // DocumentTagMapping entity configuration
+        builder.Entity<DocumentTagMapping>(entity =>
+        {
+            entity.HasKey(e => new { e.DocumentId, e.TagId });
+
+            entity.HasOne(e => e.Document)
+                  .WithMany(d => d.TagMappings)
+                  .HasForeignKey(e => e.DocumentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Tag)
+                  .WithMany(t => t.DocumentMappings)
+                  .HasForeignKey(e => e.TagId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.TaggerUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.TaggedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.DocumentId);
+            entity.HasIndex(e => e.TagId);
+            entity.HasIndex(e => e.TaggedAt);
+        });
+
+        // SavedDocumentSearch entity configuration
+        builder.Entity<SavedDocumentSearch>(entity =>
+        {
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.SearchCriteriaJson).HasDefaultValue("{}");
+            entity.Property(e => e.UsageCount).HasDefaultValue(0);
+            entity.Property(e => e.IsDefault).HasDefaultValue(false);
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => new { e.UserId, e.IsDefault });
+        });
+
+        // Update Document entity to include template relationship
+        builder.Entity<Document>(entity =>
+        {
+            entity.HasOne(e => e.Template)
+                  .WithMany(t => t.GeneratedDocuments)
+                  .HasForeignKey(e => e.TemplateId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.TemplateId);
         });
 
         // Configure automatic timestamp updates
