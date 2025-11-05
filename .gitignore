@@ -433,3 +433,7 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+Jsontest/CostAnalysis_TestCollection.json
+Jsontest/Vehicle_HealthScore_API_Tests.postman_collection.json
+Jsontest/Vehicle_MemberUsage_API_Tests.postman_collection.json
+Jsontest/VehicleStatistics_TestCollection.json
