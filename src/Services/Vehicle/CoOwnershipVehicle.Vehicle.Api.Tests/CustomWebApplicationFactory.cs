@@ -71,9 +71,9 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
                 // Mock IGroupServiceClient
                 var mockGroupService = new Mock<IGroupServiceClient>();
                 mockGroupService.Setup(x => x.GetUserGroups(It.IsAny<string>()))
-                    .ReturnsAsync(new List<CoOwnershipVehicle.Vehicle.Api.Services.GroupServiceGroupDto>
+                    .ReturnsAsync(new List<CoOwnershipVehicle.Vehicle.Api.DTOs.GroupServiceGroupDto>
                     {
-                        new CoOwnershipVehicle.Vehicle.Api.Services.GroupServiceGroupDto
+                        new CoOwnershipVehicle.Vehicle.Api.DTOs.GroupServiceGroupDto
                         {
                             Id = new Guid("3fa85f64-5717-4562-b3fc-2c963f66afa7") // Same GroupId as test vehicles
                         }
@@ -87,11 +87,11 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
                     It.IsAny<DateTime>(),
                     It.IsAny<DateTime>(),
                     It.IsAny<string>()))
-                    .ReturnsAsync(new CoOwnershipVehicle.Vehicle.Api.Services.BookingConflictDto
+                    .ReturnsAsync(new CoOwnershipVehicle.Vehicle.Api.DTOs.BookingConflictDto
                     {
                         VehicleId = It.IsAny<Guid>(),
                         HasConflicts = false,
-                        ConflictingBookings = new List<CoOwnershipVehicle.Vehicle.Api.Services.BookingDto>()
+                        ConflictingBookings = new List<CoOwnershipVehicle.Vehicle.Api.DTOs.BookingDto>()
                     });
                 services.AddSingleton(mockBookingService.Object);
 
