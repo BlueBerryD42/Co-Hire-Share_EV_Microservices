@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using DotNetEnv;
 
 namespace CoOwnershipVehicle.Shared.Configuration;
 
@@ -11,6 +12,51 @@ namespace CoOwnershipVehicle.Shared.Configuration;
 /// </summary>
 public static class EnvironmentHelper
 {
+    private static bool _envFileLoaded = false;
+    private static readonly object _lock = new object();
+
+    /// <summary>
+    /// Ensures the .env file is loaded. This is called automatically by other methods.
+    /// </summary>
+    private static void EnsureEnvFileLoaded()
+    {
+        if (_envFileLoaded) return;
+
+        lock (_lock)
+        {
+            if (_envFileLoaded) return;
+
+            // Try multiple possible paths for the .env file
+            var possibleEnvPaths = new[]
+            {
+                Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", ".env"),
+                Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "..", ".env"),
+                Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), @"..\..\..\..\..\.env")),
+                @"D:\FPT\ki_8\PRN232\Co-Hire-Share_EV_Microservices\.env"
+            };
+
+            foreach (var envPath in possibleEnvPaths)
+            {
+                if (File.Exists(envPath))
+                {
+                    try
+                    {
+                        Env.Load(envPath);
+                        Console.WriteLine($"✓ [EnvironmentHelper] Successfully loaded .env file from: {envPath}");
+                        _envFileLoaded = true;
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠ [EnvironmentHelper] Failed to load .env from {envPath}: {ex.Message}");
+                    }
+                }
+            }
+
+            Console.WriteLine($"⚠ [EnvironmentHelper] Warning: .env file not found in any expected location");
+            _envFileLoaded = true; // Mark as attempted to avoid repeated searches
+        }
+    }
     /// <summary>
     /// Gets an environment variable with fallback support.
     /// </summary>
@@ -20,6 +66,9 @@ public static class EnvironmentHelper
     /// <returns>The environment variable value or null if not found</returns>
     public static string? GetEnvironmentVariable(string key, IConfiguration? configuration = null, string? defaultValue = null)
     {
+        // Load .env file if not already loaded
+        EnsureEnvFileLoaded();
+
         // 1. Try system environment variable (production)
         var value = Environment.GetEnvironmentVariable(key);
         if (!string.IsNullOrEmpty(value))
