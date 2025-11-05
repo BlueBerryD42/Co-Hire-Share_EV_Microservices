@@ -204,7 +204,8 @@ public class VehicleController : ControllerBase
                     StartAt = b.StartAt,
                     EndAt = b.EndAt,
                     Status = (BookingStatus)b.Status,
-                    Notes = b.Notes
+                    Notes = b.Notes,
+                    RequiresDamageReview = b.RequiresDamageReview
                 })
                 .ToListAsync();
 

@@ -15,14 +15,15 @@ public class VehicleDbContext : DbContext
     public DbSet<GroupMember> GroupMembers { get; set; } // For access control
     public DbSet<Booking> Bookings { get; set; } // For availability checks
     public DbSet<User> Users { get; set; } // For booking details
+	public DbSet<MaintenanceRecord> MaintenanceRecords { get; set; }
+	public DbSet<Expense> Expenses { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
 
-        // Ignore entities not relevant to Vehicle service
+		// Ignore entities not relevant to Vehicle service
         builder.Ignore<KycDocument>();
-        builder.Ignore<Expense>();
         builder.Ignore<Invoice>();
         builder.Ignore<Payment>();
         builder.Ignore<Notification>();
@@ -107,12 +108,42 @@ public class VehicleDbContext : DbContext
             entity.HasIndex(e => e.PlateNumber).IsUnique();
         });
 
+		// MaintenanceRecord configuration
+		builder.Entity<MaintenanceRecord>(entity =>
+		{
+			entity.Property(e => e.Status).HasConversion<int>();
+			entity.Property(e => e.ServiceType).HasConversion<int>();
+			entity.Property(e => e.Priority).HasConversion<int>();
+
+			entity.HasOne(e => e.Vehicle)
+				.WithMany(v => v.MaintenanceRecords)
+				.HasForeignKey(e => e.VehicleId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			entity.HasOne(e => e.Group)
+				.WithMany()
+				.HasForeignKey(e => e.GroupId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			entity.HasIndex(e => new { e.VehicleId, e.Status, e.ScheduledDate });
+		});
+
+		// Expense minimal configuration for linking (read-only in this service)
+		builder.Entity<Expense>(entity =>
+		{
+			entity.Property(e => e.ExpenseType).HasConversion<int>();
+			entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+		});
+
         // Booking entity configuration (simplified for Vehicle service)
         builder.Entity<CoOwnershipVehicle.Domain.Entities.Booking>(entity =>
         {
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.PriorityScore).HasColumnType("decimal(10,4)");
             entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.PreCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.FinalCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.MissedCheckoutReminderSentAt).HasColumnType("datetime2");
 
             entity.HasOne(e => e.Vehicle)
                   .WithMany(v => v.Bookings)
