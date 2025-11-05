@@ -9,6 +9,7 @@ using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using CoOwnershipVehicle.Analytics.Api.Consumers;
+using CoOwnershipVehicle.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -64,6 +65,13 @@ EnvironmentHelper.LogFinalConnectionDetails("Analytics Service", dbParams.Databa
 builder.Services.AddDbContext<AnalyticsDbContext>(options =>
     options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CoOwnershipVehicle.Analytics.Api")));
 
+// Add ApplicationDbContext for accessing shared entities (bookings, expenses, etc.)
+// Note: In a proper microservices architecture, this would be replaced with HTTP calls or event-based communication
+var mainDbConnectionString = EnvironmentHelper.GetEnvironmentVariable("DB_CONNECTION_STRING", builder.Configuration) 
+    ?? EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration).GetConnectionString();
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(mainDbConnectionString));
+
 // JWT Authentication
 var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
 
@@ -103,7 +111,19 @@ builder.Services.AddMassTransit(x =>
 // Services
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IReportingService, ReportingService>();
+builder.Services.AddScoped<CoOwnershipVehicle.Analytics.Api.Services.IAIService, CoOwnershipVehicle.Analytics.Api.Services.AIService>();
 builder.Services.AddHostedService<AnalyticsProcessorService>();
+
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
 
 var app = builder.Build();
 
@@ -114,15 +134,25 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Co-Ownership Vehicle Analytics API");
-        c.RoutePrefix = string.Empty;
+        c.RoutePrefix = string.Empty; // Makes Swagger available at root
     });
 }
 
 app.UseHttpsRedirection();
+app.UseCors("AllowAll");
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Ensure database is created
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AnalyticsDbContext>();
+    
+    // Ensure database is created
+    await context.Database.EnsureCreatedAsync();
+}
 
 app.Run();
