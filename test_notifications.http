@@ -1,0 +1,97 @@
+### Test Notification Sending
+### Prerequisites:
+### 1. Start Group API
+### 2. Configure SMTP settings in .env
+### 3. Get JWT token from Auth API login
+
+@baseUrl = https://localhost:61600
+@token = YOUR_JWT_TOKEN_HERE
+
+### Test 1: Send Test Email
+POST {{baseUrl}}/api/document/test/send-email
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "email": "tpthaongyen04@gmail.com",
+  "subject": "Test Notification System",
+  "message": "This is a test email to verify the notification system is working correctly."
+}
+
+### Expected Response:
+### {
+###   "success": true,
+###   "message": "Test email sent to tpthaongyen04@gmail.com"
+### }
+
+###
+
+### Test 2: Manual Signature Reminder (requires existing document with pending signatures)
+PUT {{baseUrl}}/api/document/{documentId}/remind
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "signerIds": ["signer-guid-here"],
+  "customMessage": "Please sign this document at your earliest convenience"
+}
+
+### Expected Response:
+### {
+###   "message": "Reminders sent successfully",
+###   "remindersSent": 1,
+###   "remindersFailed": 0
+### }
+
+###
+
+### Test 3: Get Reminder History
+GET {{baseUrl}}/api/document/{documentId}/reminders
+Authorization: Bearer {{token}}
+
+### Expected Response:
+### {
+###   "documentId": "...",
+###   "totalReminders": 2,
+###   "reminders": [
+###     {
+###       "id": "...",
+###       "reminderType": "Manual",
+###       "sentAt": "2025-01-04T...",
+###       "status": "Sent",
+###       "isManual": true
+###     }
+###   ]
+### }
+
+###
+
+### Test 4: Trigger Background Reminder Job (Test endpoint)
+POST {{baseUrl}}/api/document/test/trigger-reminders
+Authorization: Bearer {{token}}
+
+### Expected Response:
+### {
+###   "success": true,
+###   "message": "Reminder check triggered. Check logs for results.",
+###   "note": "Background service runs automatically every 24 hours"
+### }
+
+###
+
+### SMTP Configuration Check
+### Ensure these environment variables are set:
+###
+### SMTP_HOST=smtp.gmail.com
+### SMTP_PORT=587
+### SMTP_USERNAME=your-email@gmail.com
+### SMTP_PASSWORD=your-16-char-app-password
+### SMTP_USE_SSL=true
+### EMAIL_FROM=your-email@gmail.com
+### EMAIL_FROM_NAME=Co-Ownership Vehicle
+
+### Common Issues:
+### 1. "Email settings not configured" - Check .env file
+### 2. "Authentication Required" - Use Gmail App Password, not regular password
+### 3. "Connection timeout" - Check SMTP port and SSL settings
+### 4. "Failed to send email" - Check logs for detailed error

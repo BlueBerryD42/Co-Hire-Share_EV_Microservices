@@ -4,15 +4,40 @@ using CoOwnershipVehicle.Group.Api.Services.Interfaces;
 using CoOwnershipVehicle.Shared.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Force reload of configuration
-builder.Configuration.Sources.Clear();
-builder.Configuration
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
-    .AddEnvironmentVariables();
+// Configure logging to exclude EventLog (prevents disposal issues on Windows)
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Logging.SetMinimumLevel(LogLevel.Debug);
+}
+
+// Map environment variables to configuration keys for services that need them
+builder.Configuration["FileStorage:StorageType"] = EnvironmentHelper.GetEnvironmentVariable("STORAGE_TYPE", builder.Configuration, "Local");
+builder.Configuration["FileStorage:LocalStoragePath"] = EnvironmentHelper.GetEnvironmentVariable("LOCAL_STORAGE_PATH", builder.Configuration)
+    ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+builder.Configuration["JwtSettings:SecretKey"] = EnvironmentHelper.GetEnvironmentVariable("JWT_SECRET_KEY", builder.Configuration);
+builder.Configuration["VirusScan:Enabled"] = EnvironmentHelper.GetEnvironmentVariable("VIRUS_SCAN_ENABLED", builder.Configuration, "true");
+builder.Configuration["VirusScan:ScanEngine"] = EnvironmentHelper.GetEnvironmentVariable("VIRUS_SCAN_ENGINE", builder.Configuration, "Mock");
+builder.Configuration["VirusScan:ClamAVHost"] = EnvironmentHelper.GetEnvironmentVariable("CLAMAV_HOST", builder.Configuration, "localhost");
+builder.Configuration["VirusScan:ClamAVPort"] = EnvironmentHelper.GetEnvironmentVariable("CLAMAV_PORT", builder.Configuration, "3310");
+builder.Configuration["VirusScan:TimeoutSeconds"] = EnvironmentHelper.GetEnvironmentVariable("VIRUS_SCAN_TIMEOUT_SECONDS", builder.Configuration, "30");
+builder.Configuration["EmailSettings:SmtpHost"] = EnvironmentHelper.GetEnvironmentVariable("SMTP_HOST", builder.Configuration);
+builder.Configuration["EmailSettings:SmtpPort"] = EnvironmentHelper.GetEnvironmentVariable("SMTP_PORT", builder.Configuration, "587");
+builder.Configuration["EmailSettings:Username"] = EnvironmentHelper.GetEnvironmentVariable("SMTP_USERNAME", builder.Configuration);
+builder.Configuration["EmailSettings:Password"] = EnvironmentHelper.GetEnvironmentVariable("SMTP_PASSWORD", builder.Configuration);
+builder.Configuration["EmailSettings:FromEmail"] = EnvironmentHelper.GetEnvironmentVariable("EMAIL_FROM", builder.Configuration);
+builder.Configuration["EmailSettings:FromName"] = EnvironmentHelper.GetEnvironmentVariable("EMAIL_FROM_NAME", builder.Configuration);
+builder.Configuration["EmailSettings:EnableSsl"] = EnvironmentHelper.GetEnvironmentVariable("SMTP_USE_SSL", builder.Configuration, "true");
+builder.Configuration["SignatureReminders:IntervalHours"] = EnvironmentHelper.GetEnvironmentVariable("SIGNATURE_REMINDER_INTERVAL_HOURS", builder.Configuration, "24");
+builder.Configuration["SignatureReminders:BaseUrl"] = EnvironmentHelper.GetEnvironmentVariable("SIGNATURE_REMINDER_BASE_URL", builder.Configuration);
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -84,6 +109,15 @@ builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IVirusScanService, VirusScanService>();
 builder.Services.AddScoped<ISigningTokenService, SigningTokenService>();
 builder.Services.AddScoped<ICertificateGenerationService, CertificateGenerationService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Register New Document Management Services
+builder.Services.AddScoped<ITemplateService, TemplateService>();
+builder.Services.AddScoped<IDocumentSearchService, DocumentSearchService>();
+builder.Services.AddScoped<IDocumentShareService, DocumentShareService>();
+
+// Register Background Services
+builder.Services.AddHostedService<CoOwnershipVehicle.Group.Api.BackgroundServices.SignatureReminderBackgroundService>();
 
 // Configure request size limits for file uploads (50MB)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
@@ -110,6 +144,45 @@ builder.Services.AddDbContext<GroupDbContext>(options =>
     options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Group.Api")));
 
+// Add JWT Authentication
+var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
+
+// Configure JWT settings in configuration
+builder.Configuration["JwtSettings:Issuer"] = jwtConfig.Issuer;
+builder.Configuration["JwtSettings:Audience"] = jwtConfig.Audience;
+builder.Configuration["JwtSettings:ExpiryMinutes"] = jwtConfig.ExpiryMinutes.ToString();
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig.SecretKey)),
+        ValidateIssuer = true,
+        ValidIssuer = jwtConfig.Issuer,
+        ValidateAudience = true,
+        ValidAudience = jwtConfig.Audience,
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 var app = builder.Build();
 
 // Log the configured path for debugging
@@ -123,7 +196,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("AllowAll");
+
+app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
 
 app.Run();

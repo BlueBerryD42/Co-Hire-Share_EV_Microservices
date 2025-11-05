@@ -16,6 +16,7 @@ public class DocumentService : IDocumentService
     private readonly IVirusScanService _virusScan;
     private readonly ISigningTokenService _signingTokenService;
     private readonly ICertificateGenerationService _certificateService;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<DocumentService> _logger;
 
     private static readonly string[] AllowedExtensions = { ".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png" };
@@ -35,6 +36,7 @@ public class DocumentService : IDocumentService
         IVirusScanService virusScan,
         ISigningTokenService signingTokenService,
         ICertificateGenerationService certificateService,
+        INotificationService notificationService,
         ILogger<DocumentService> logger)
     {
         _context = context;
@@ -42,6 +44,7 @@ public class DocumentService : IDocumentService
         _virusScan = virusScan;
         _signingTokenService = signingTokenService;
         _certificateService = certificateService;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -181,19 +184,45 @@ public class DocumentService : IDocumentService
     public async Task<PaginatedDocumentResponse> GetGroupDocumentsPaginatedAsync(
         Guid groupId, Guid userId, DocumentQueryParameters parameters)
     {
-        var hasAccess = await _context.GroupMembers
-            .AnyAsync(gm => gm.GroupId == groupId && gm.UserId == userId);
+        // Check if user is a member of the group
+        var membership = await _context.GroupMembers
+            .FirstOrDefaultAsync(gm => gm.GroupId == groupId && gm.UserId == userId);
 
-        if (!hasAccess)
+        if (membership == null)
         {
             throw new UnauthorizedAccessException("User does not have access to this group");
         }
 
-        var query = _context.Documents
+        // Check if user is admin (required for viewing deleted documents)
+        var isAdmin = membership.RoleInGroup == GroupRole.Admin;
+
+        // Validate admin-only parameters
+        if ((parameters.IncludeDeleted || parameters.OnlyDeleted) && !isAdmin)
+        {
+            throw new UnauthorizedAccessException("Only group admins can view deleted documents");
+        }
+
+        // Build query - use IgnoreQueryFilters if we need to see deleted documents
+        var query = (parameters.IncludeDeleted || parameters.OnlyDeleted)
+            ? _context.Documents.IgnoreQueryFilters()
+            : _context.Documents;
+
+        query = query
             .Where(d => d.GroupId == groupId)
             .Include(d => d.Signatures)
             .Include(d => d.Downloads)
             .AsQueryable();
+
+        // Apply deleted document filter
+        if (parameters.OnlyDeleted)
+        {
+            query = query.Where(d => d.IsDeleted);
+        }
+        else if (!parameters.IncludeDeleted)
+        {
+            // Default: exclude deleted (query filter handles this automatically if not using IgnoreQueryFilters)
+            query = query.Where(d => !d.IsDeleted);
+        }
 
         // Apply filters
         if (parameters.DocumentType.HasValue)
@@ -256,7 +285,17 @@ public class DocumentService : IDocumentService
                     .Where(u => u.Id == d.UploadedBy)
                     .Select(u => u.Email)
                     .FirstOrDefault() ?? "Unknown",
-                DownloadCount = d.Downloads.Count
+                DownloadCount = d.Downloads.Count,
+                // Soft delete fields
+                IsDeleted = d.IsDeleted,
+                DeletedAt = d.DeletedAt,
+                DeletedBy = d.DeletedBy,
+                DeletedByName = d.DeletedBy.HasValue
+                    ? _context.Users
+                        .Where(u => u.Id == d.DeletedBy)
+                        .Select(u => u.FirstName + " " + u.LastName)
+                        .FirstOrDefault()
+                    : null
             })
             .ToListAsync();
 
@@ -321,12 +360,102 @@ public class DocumentService : IDocumentService
 
     public async Task DeleteDocumentAsync(Guid documentId, Guid userId)
     {
+        // Load document with all its versions
         var document = await _context.Documents
+            .IgnoreQueryFilters() // Include soft-deleted documents
+            .Include(d => d.Versions)
             .FirstOrDefaultAsync(d => d.Id == documentId);
 
         if (document == null)
         {
             throw new KeyNotFoundException($"Document with ID {documentId} not found");
+        }
+
+        // Check if already soft-deleted
+        if (document.IsDeleted)
+        {
+            throw new InvalidOperationException("Document is already deleted");
+        }
+
+        // CRITICAL: Prevent deletion of fully signed documents (legal protection)
+        if (document.SignatureStatus == SignatureStatus.FullySigned)
+        {
+            throw new InvalidOperationException(
+                "Cannot delete fully signed documents. This document has legal binding signatures and must be preserved.");
+        }
+
+        // Check authorization: user must be group admin OR document uploader
+        var isAdmin = await _context.GroupMembers
+            .AnyAsync(gm => gm.GroupId == document.GroupId &&
+                           gm.UserId == userId &&
+                           gm.RoleInGroup == GroupRole.Admin);
+
+        var isUploader = document.UploadedBy == userId;
+
+        if (!isAdmin && !isUploader)
+        {
+            throw new UnauthorizedAccessException("Only group admins or the document uploader can delete documents");
+        }
+
+        _logger.LogInformation("Soft deleting document {DocumentId} with {VersionCount} versions",
+            documentId, document.Versions.Count);
+
+        // Perform soft delete
+        document.IsDeleted = true;
+        document.DeletedAt = DateTime.UtcNow;
+        document.DeletedBy = userId;
+        document.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Document {DocumentId} soft-deleted by user {UserId}. Files remain in storage for recovery.",
+            documentId, userId);
+
+        // Send notification to group admins
+        try
+        {
+            var groupAdmins = await _context.GroupMembers
+                .Where(gm => gm.GroupId == document.GroupId &&
+                            gm.RoleInGroup == GroupRole.Admin)
+                .Include(gm => gm.User)
+                .Select(gm => gm.User)
+                .ToListAsync();
+
+            var deletingUser = await _context.Users.FindAsync(userId);
+
+            if (groupAdmins.Any() && deletingUser != null)
+            {
+                await _notificationService.SendDocumentDeletedNotificationAsync(
+                    groupAdmins, document, deletingUser);
+
+                _logger.LogInformation(
+                    "Delete notification sent to {AdminCount} group admins for document {DocumentId}",
+                    groupAdmins.Count, documentId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send delete notification for document {DocumentId}. Document was deleted successfully.", documentId);
+            // Don't throw - notification failure shouldn't prevent deletion
+        }
+    }
+
+    public async Task RestoreDocumentAsync(Guid documentId, Guid userId)
+    {
+        // Load document including soft-deleted ones
+        var document = await _context.Documents
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+
+        if (document == null)
+        {
+            throw new KeyNotFoundException($"Document with ID {documentId} not found");
+        }
+
+        if (!document.IsDeleted)
+        {
+            throw new InvalidOperationException("Document is not deleted");
         }
 
         var isAdmin = await _context.GroupMembers
@@ -336,14 +465,124 @@ public class DocumentService : IDocumentService
 
         if (!isAdmin)
         {
-            throw new UnauthorizedAccessException("Only group admins can delete documents");
+            throw new UnauthorizedAccessException("Only group admins can restore documents");
         }
 
-        await _fileStorage.DeleteFileAsync(document.StorageKey);
+        // Restore document
+        document.IsDeleted = false;
+        document.DeletedAt = null;
+        document.DeletedBy = null;
+        document.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Document {DocumentId} restored by user {UserId}", documentId, userId);
+
+        // Send notification to group admins
+        try
+        {
+            var groupAdmins = await _context.GroupMembers
+                .Where(gm => gm.GroupId == document.GroupId &&
+                            gm.RoleInGroup == GroupRole.Admin)
+                .Include(gm => gm.User)
+                .Select(gm => gm.User)
+                .ToListAsync();
+
+            var restoringUser = await _context.Users.FindAsync(userId);
+
+            if (groupAdmins.Any() && restoringUser != null)
+            {
+                await _notificationService.SendDocumentRestoredNotificationAsync(
+                    groupAdmins, document, restoringUser);
+
+                _logger.LogInformation(
+                    "Restore notification sent to {AdminCount} group admins for document {DocumentId}",
+                    groupAdmins.Count, documentId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send restore notification for document {DocumentId}. Document was restored successfully.", documentId);
+            // Don't throw - notification failure shouldn't prevent restoration
+        }
+    }
+
+    public async Task PermanentlyDeleteDocumentAsync(Guid documentId, Guid userId)
+    {
+        // Load document including soft-deleted ones
+        var document = await _context.Documents
+            .IgnoreQueryFilters()
+            .Include(d => d.Versions)
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+
+        if (document == null)
+        {
+            throw new KeyNotFoundException($"Document with ID {documentId} not found");
+        }
+
+        if (!document.IsDeleted)
+        {
+            throw new InvalidOperationException("Document must be soft-deleted before permanent deletion. Call DeleteDocument first.");
+        }
+
+        var isAdmin = await _context.GroupMembers
+            .AnyAsync(gm => gm.GroupId == document.GroupId &&
+                           gm.UserId == userId &&
+                           gm.RoleInGroup == GroupRole.Admin);
+
+        if (!isAdmin)
+        {
+            throw new UnauthorizedAccessException("Only group admins can permanently delete documents");
+        }
+
+        _logger.LogInformation("Permanently deleting document {DocumentId} with {VersionCount} versions",
+            documentId, document.Versions.Count);
+
+        // Delete all version files from storage
+        var deletedVersionFiles = 0;
+        var failedVersionFiles = new List<string>();
+
+        foreach (var version in document.Versions)
+        {
+            try
+            {
+                await _fileStorage.DeleteFileAsync(version.StorageKey);
+                deletedVersionFiles++;
+                _logger.LogDebug("Deleted version file: {StorageKey}", version.StorageKey);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete version file {StorageKey}. Continuing with deletion.",
+                    version.StorageKey);
+                failedVersionFiles.Add(version.StorageKey);
+            }
+        }
+
+        // Delete the main document file from storage
+        try
+        {
+            await _fileStorage.DeleteFileAsync(document.StorageKey);
+            _logger.LogDebug("Deleted main document file: {StorageKey}", document.StorageKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete main document file {StorageKey}. Continuing with deletion.",
+                document.StorageKey);
+        }
+
+        // Permanently remove document from database (cascade delete will handle versions, signatures, downloads, etc.)
         _context.Documents.Remove(document);
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Document {DocumentId} deleted by user {UserId}", documentId, userId);
+        _logger.LogInformation(
+            "Document {DocumentId} permanently deleted by user {UserId}. Deleted {DeletedCount}/{TotalCount} version files. Failed: {FailedCount}",
+            documentId, userId, deletedVersionFiles, document.Versions.Count, failedVersionFiles.Count);
+
+        if (failedVersionFiles.Any())
+        {
+            _logger.LogWarning("Failed to delete the following version files: {FailedFiles}",
+                string.Join(", ", failedVersionFiles));
+        }
     }
 
     public async Task<string> GetDocumentDownloadUrlAsync(Guid documentId, Guid userId)
@@ -1140,4 +1379,588 @@ public class DocumentService : IDocumentService
             VerificationUrl = $"/api/Document/verify-certificate/{certificateId}"
         };
     }
+
+    #region Version Control
+
+    public async Task<DocumentVersionResponse> UploadNewVersionAsync(Guid documentId, IFormFile file, string? changeDescription, Guid userId)
+    {
+        _logger.LogInformation("Uploading new version for document {DocumentId} by user {UserId}", documentId, userId);
+
+        // Validate file
+        var (isValid, errorMessage) = await ValidateFileAsync(file);
+        if (!isValid)
+        {
+            _logger.LogWarning("Invalid file for version upload: {Error}", errorMessage);
+            throw new ArgumentException(errorMessage);
+        }
+
+        // Get document and verify permissions
+        var document = await _context.Documents
+            .Include(d => d.Versions)
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+
+        if (document == null)
+        {
+            _logger.LogWarning("Document {DocumentId} not found", documentId);
+            throw new KeyNotFoundException($"Document with ID {documentId} not found");
+        }
+
+        // Check if user is group member separately to avoid Include issues
+        var groupMember = await _context.GroupMembers
+            .FirstOrDefaultAsync(gm => gm.GroupId == document.GroupId && gm.UserId == userId);
+
+        if (groupMember == null)
+        {
+            _logger.LogWarning("User {UserId} is not a member of group {GroupId}", userId, document.GroupId);
+            throw new UnauthorizedAccessException("You must be a group member to upload new versions");
+        }
+
+        if (groupMember.RoleInGroup != GroupRole.Admin && document.UploadedBy != userId)
+        {
+            _logger.LogWarning("User {UserId} lacks permission to upload new version for document {DocumentId}", userId, documentId);
+            throw new UnauthorizedAccessException("Only group admins or the original uploader can upload new versions");
+        }
+
+        // Calculate hash and upload file
+        string fileHash;
+        using var memoryStream = new MemoryStream();
+        await file.CopyToAsync(memoryStream);
+        memoryStream.Position = 0;
+
+        using (var hashStream = new MemoryStream(memoryStream.ToArray()))
+        {
+            using var sha256 = System.Security.Cryptography.SHA256.Create();
+            var hashBytes = await sha256.ComputeHashAsync(hashStream);
+            fileHash = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+        }
+
+        // Generate storage key
+        var fileExtension = Path.GetExtension(file.FileName);
+        var storageKey = $"documents/{document.GroupId}/versions/{documentId}_{Guid.NewGuid()}{fileExtension}";
+
+        // Upload to storage
+        memoryStream.Position = 0;
+        await _fileStorage.UploadFileAsync(memoryStream, storageKey, file.ContentType);
+
+        // If this is the first version being uploaded, create version 0 for the original document first
+        if (!document.Versions.Any())
+        {
+            _logger.LogInformation("Creating version 0 for original document {DocumentId}", documentId);
+
+            var version0 = new DocumentVersion
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = documentId,
+                VersionNumber = 0,
+                StorageKey = document.StorageKey,
+                FileName = document.FileName,
+                FileSize = document.FileSize,
+                ContentType = document.ContentType,
+                FileHash = document.FileHash,
+                UploadedBy = document.UploadedBy ?? userId,
+                UploadedAt = document.CreatedAt,
+                ChangeDescription = "Original document",
+                IsCurrent = false, // Will be false since we're uploading a new version
+                CreatedAt = document.CreatedAt,
+                UpdatedAt = document.CreatedAt
+            };
+
+            _context.DocumentVersions.Add(version0);
+        }
+
+        // Get next version number
+        var maxVersion = document.Versions.Any() ? document.Versions.Max(v => v.VersionNumber) : 0;
+        var newVersionNumber = maxVersion + 1;
+
+        // Mark all existing versions as not current
+        foreach (var version in document.Versions.Where(v => v.IsCurrent))
+        {
+            version.IsCurrent = false;
+        }
+
+        // Create new version
+        var newVersion = new DocumentVersion
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = documentId,
+            VersionNumber = newVersionNumber,
+            StorageKey = storageKey,
+            FileName = file.FileName,
+            FileSize = file.Length,
+            ContentType = file.ContentType,
+            FileHash = fileHash,
+            UploadedBy = userId,
+            UploadedAt = DateTime.UtcNow,
+            ChangeDescription = changeDescription,
+            IsCurrent = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.DocumentVersions.Add(newVersion);
+
+        // Update document with new version info
+        document.StorageKey = storageKey;
+        document.FileName = file.FileName;
+        document.FileSize = file.Length;
+        document.ContentType = file.ContentType;
+        document.FileHash = fileHash;
+        document.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "New version {VersionNumber} created for document {DocumentId}",
+            newVersionNumber, documentId);
+
+        // TODO: Publish DocumentVersionUpdatedEvent
+
+        // Get uploader name
+        var uploader = await _context.Users.FindAsync(userId);
+        var uploaderName = uploader != null ? $"{uploader.FirstName} {uploader.LastName}" : "Unknown";
+
+        return new DocumentVersionResponse
+        {
+            Id = newVersion.Id,
+            DocumentId = newVersion.DocumentId,
+            VersionNumber = newVersion.VersionNumber,
+            FileName = newVersion.FileName,
+            FileSize = newVersion.FileSize,
+            ContentType = newVersion.ContentType,
+            FileHash = newVersion.FileHash,
+            UploadedBy = newVersion.UploadedBy,
+            UploaderName = uploaderName,
+            UploadedAt = newVersion.UploadedAt,
+            ChangeDescription = newVersion.ChangeDescription,
+            IsCurrent = newVersion.IsCurrent
+        };
+    }
+
+    public async Task<DocumentVersionListResponse> GetDocumentVersionsAsync(Guid documentId, Guid userId)
+    {
+        _logger.LogInformation("Getting versions for document {DocumentId} by user {UserId}", documentId, userId);
+
+        // Get document and verify permissions
+        var document = await _context.Documents
+            .Include(d => d.Versions)
+                .ThenInclude(v => v.Uploader)
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+
+        if (document == null)
+        {
+            _logger.LogWarning("Document {DocumentId} not found", documentId);
+            throw new KeyNotFoundException($"Document with ID {documentId} not found");
+        }
+
+        // Check if user is group member separately to avoid Include issues
+        var isGroupMember = await _context.GroupMembers
+            .AnyAsync(gm => gm.GroupId == document.GroupId && gm.UserId == userId);
+
+        if (!isGroupMember)
+        {
+            _logger.LogWarning("User {UserId} is not a member of group {GroupId}", userId, document.GroupId);
+            throw new UnauthorizedAccessException("You must be a group member to view document versions");
+        }
+
+        var versions = document.Versions
+            .OrderByDescending(v => v.VersionNumber)
+            .Select(v => new DocumentVersionResponse
+            {
+                Id = v.Id,
+                DocumentId = v.DocumentId,
+                VersionNumber = v.VersionNumber,
+                FileName = v.FileName,
+                FileSize = v.FileSize,
+                ContentType = v.ContentType,
+                FileHash = v.FileHash,
+                UploadedBy = v.UploadedBy,
+                UploaderName = $"{v.Uploader.FirstName} {v.Uploader.LastName}",
+                UploadedAt = v.UploadedAt,
+                ChangeDescription = v.ChangeDescription,
+                IsCurrent = v.IsCurrent
+            })
+            .ToList();
+
+        // If version 0 doesn't exist but there are other versions, add the original document as version 0
+        // This handles backwards compatibility for documents uploaded before version tracking
+        if (!versions.Any(v => v.VersionNumber == 0) && versions.Any())
+        {
+            var uploader = await _context.Users.FindAsync(document.UploadedBy);
+            var uploaderName = uploader != null ? $"{uploader.FirstName} {uploader.LastName}" : "Unknown";
+
+            var version0 = new DocumentVersionResponse
+            {
+                Id = Guid.Empty, // Indicates this is a virtual version, not stored in DB
+                DocumentId = document.Id,
+                VersionNumber = 0,
+                FileName = document.FileName,
+                FileSize = document.FileSize,
+                ContentType = document.ContentType,
+                FileHash = document.FileHash,
+                UploadedBy = document.UploadedBy ?? Guid.Empty,
+                UploaderName = uploaderName,
+                UploadedAt = document.CreatedAt,
+                ChangeDescription = "Original document",
+                IsCurrent = false
+            };
+
+            versions.Add(version0);
+            versions = versions.OrderByDescending(v => v.VersionNumber).ToList();
+        }
+
+        return new DocumentVersionListResponse
+        {
+            DocumentId = document.Id,
+            DocumentName = document.FileName,
+            TotalVersions = versions.Count,
+            Versions = versions
+        };
+    }
+
+    public async Task<DocumentDownloadResponse> DownloadVersionAsync(Guid versionId, Guid userId)
+    {
+        _logger.LogInformation("Downloading version {VersionId} by user {UserId}", versionId, userId);
+
+        // Get version with document
+        var version = await _context.DocumentVersions
+            .Include(v => v.Document)
+            .FirstOrDefaultAsync(v => v.Id == versionId);
+
+        if (version == null)
+        {
+            _logger.LogWarning("Version {VersionId} not found", versionId);
+            throw new KeyNotFoundException($"Document version with ID {versionId} not found");
+        }
+
+        // Check if user is group member separately to avoid Include issues
+        var isGroupMember = await _context.GroupMembers
+            .AnyAsync(gm => gm.GroupId == version.Document.GroupId && gm.UserId == userId);
+
+        if (!isGroupMember)
+        {
+            _logger.LogWarning("User {UserId} is not a member of group {GroupId}", userId, version.Document.GroupId);
+            throw new UnauthorizedAccessException("You must be a group member to download document versions");
+        }
+
+        // Get file stream from storage service
+        var fileStream = await _fileStorage.DownloadFileAsync(version.StorageKey);
+        if (fileStream == null)
+        {
+            _logger.LogError("Failed to download file for version {VersionId}", versionId);
+            throw new InvalidOperationException("Failed to download file");
+        }
+
+        _logger.LogInformation("Version {VersionId} downloaded for user {UserId}", versionId, userId);
+
+        return new DocumentDownloadResponse
+        {
+            DocumentId = version.DocumentId,
+            FileName = version.FileName,
+            FileSize = version.FileSize,
+            ContentType = version.ContentType,
+            FileStream = fileStream
+        };
+    }
+
+    public async Task DeleteVersionAsync(Guid versionId, Guid userId)
+    {
+        _logger.LogInformation("Deleting version {VersionId} by user {UserId}", versionId, userId);
+
+        // Get version with document
+        var version = await _context.DocumentVersions
+            .Include(v => v.Document)
+            .FirstOrDefaultAsync(v => v.Id == versionId);
+
+        if (version == null)
+        {
+            _logger.LogWarning("Version {VersionId} not found", versionId);
+            throw new KeyNotFoundException($"Document version with ID {versionId} not found");
+        }
+
+        // Check if user is group admin or original uploader
+        var groupMember = await _context.GroupMembers
+            .FirstOrDefaultAsync(gm => gm.GroupId == version.Document.GroupId && gm.UserId == userId);
+
+        if (groupMember == null)
+        {
+            _logger.LogWarning("User {UserId} is not a member of group {GroupId}", userId, version.Document.GroupId);
+            throw new UnauthorizedAccessException("You must be a group member to delete document versions");
+        }
+
+        if (groupMember.RoleInGroup != GroupRole.Admin && version.Document.UploadedBy != userId)
+        {
+            _logger.LogWarning("User {UserId} lacks permission to delete version {VersionId}", userId, versionId);
+            throw new UnauthorizedAccessException("Only group admins or the original document uploader can delete versions");
+        }
+
+        // Prevent deletion of the current version (version being used by the document)
+        if (version.IsCurrent)
+        {
+            _logger.LogWarning("Attempt to delete current version {VersionId}", versionId);
+            throw new InvalidOperationException("Cannot delete the current version. Please upload a new version first or delete the entire document.");
+        }
+
+        // Prevent deletion if it's the only version (version 0)
+        var totalVersions = await _context.DocumentVersions
+            .CountAsync(v => v.DocumentId == version.DocumentId);
+
+        if (totalVersions == 1)
+        {
+            _logger.LogWarning("Attempt to delete the only version {VersionId}", versionId);
+            throw new InvalidOperationException("Cannot delete the only version. Delete the entire document instead.");
+        }
+
+        // Delete file from storage
+        try
+        {
+            await _fileStorage.DeleteFileAsync(version.StorageKey);
+            _logger.LogDebug("Deleted version file: {StorageKey}", version.StorageKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete version file {StorageKey}. Continuing with database deletion.",
+                version.StorageKey);
+        }
+
+        // Remove version from database
+        _context.DocumentVersions.Remove(version);
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Version {VersionId} (version number {VersionNumber}) deleted successfully by user {UserId}",
+            versionId, version.VersionNumber, userId);
+    }
+
+    #endregion
+
+    #region Notifications & Reminders
+
+    public async Task<SendReminderResponse> SendManualReminderAsync(
+        Guid documentId,
+        SendReminderRequest request,
+        Guid userId,
+        string baseUrl)
+    {
+        _logger.LogInformation("Sending manual reminder for document {DocumentId} by user {UserId}", documentId, userId);
+
+        // Get document with signatures
+        var document = await _context.Documents
+            .Include(d => d.Signatures)
+                .ThenInclude(s => s.Signer)
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+
+        if (document == null)
+        {
+            throw new KeyNotFoundException($"Document with ID {documentId} not found");
+        }
+
+        // Check if user is document owner or group admin
+        var isAdmin = await _context.GroupMembers
+            .AnyAsync(gm => gm.GroupId == document.GroupId &&
+                           gm.UserId == userId &&
+                           gm.RoleInGroup == GroupRole.Admin);
+
+        if (document.UploadedBy != userId && !isAdmin)
+        {
+            throw new UnauthorizedAccessException("Only document owner or group admins can send reminders");
+        }
+
+        // Get pending signatures
+        var pendingSignatures = document.Signatures
+            .Where(s => s.Status == SignatureStatus.SentForSigning)
+            .ToList();
+
+        if (!pendingSignatures.Any())
+        {
+            throw new InvalidOperationException("No pending signatures found for this document");
+        }
+
+        // Filter by specific signers if requested
+        if (request.SpecificSignerIds != null && request.SpecificSignerIds.Any())
+        {
+            pendingSignatures = pendingSignatures
+                .Where(s => request.SpecificSignerIds.Contains(s.SignerId))
+                .ToList();
+        }
+
+        var recipients = new List<ReminderRecipient>();
+        var remindersSent = 0;
+
+        foreach (var signature in pendingSignatures)
+        {
+            var signingUrl = $"{baseUrl}/api/document/{documentId}/sign?token={signature.SigningToken}";
+
+            // Send reminder using notification service
+            var success = await _notificationService.SendSignatureReminderAsync(
+                signature.Signer,
+                document,
+                signingUrl,
+                ReminderType.Manual,
+                request.CustomMessage);
+
+            // Record reminder in database
+            var reminder = new SignatureReminder
+            {
+                Id = Guid.NewGuid(),
+                DocumentSignatureId = signature.Id,
+                ReminderType = ReminderType.Manual,
+                SentAt = DateTime.UtcNow,
+                SentBy = userId,
+                IsManual = true,
+                Message = request.CustomMessage,
+                Status = success ? ReminderDeliveryStatus.Sent : ReminderDeliveryStatus.Failed,
+                DeliveredAt = success ? DateTime.UtcNow : null,
+                ErrorMessage = success ? null : "Failed to send email",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.SignatureReminders.Add(reminder);
+
+            recipients.Add(new ReminderRecipient
+            {
+                SignerId = signature.SignerId,
+                SignerName = $"{signature.Signer.FirstName} {signature.Signer.LastName}",
+                SignerEmail = signature.Signer.Email,
+                Sent = success,
+                ErrorMessage = success ? null : "Failed to send email"
+            });
+
+            if (success) remindersSent++;
+        }
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Manual reminders sent for document {DocumentId}. Sent: {Sent}/{Total}",
+            documentId, remindersSent, pendingSignatures.Count);
+
+        return new SendReminderResponse
+        {
+            DocumentId = documentId,
+            FileName = document.FileName,
+            RemindersSent = remindersSent,
+            Recipients = recipients,
+            SentAt = DateTime.UtcNow
+        };
+    }
+
+    public async Task<ReminderHistoryResponse> GetReminderHistoryAsync(Guid documentId, Guid userId)
+    {
+        _logger.LogInformation("Getting reminder history for document {DocumentId}", documentId);
+
+        // Get document
+        var document = await _context.Documents
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+
+        if (document == null)
+        {
+            throw new KeyNotFoundException($"Document with ID {documentId} not found");
+        }
+
+        // Check if user is group member
+        var isGroupMember = await _context.GroupMembers
+            .AnyAsync(gm => gm.GroupId == document.GroupId && gm.UserId == userId);
+
+        if (!isGroupMember)
+        {
+            throw new UnauthorizedAccessException("You must be a group member to view reminder history");
+        }
+
+        // Get all reminders for this document
+        var reminders = await _context.SignatureReminders
+            .Include(r => r.DocumentSignature)
+                .ThenInclude(s => s.Signer)
+            .Where(r => r.DocumentSignature.DocumentId == documentId)
+            .OrderByDescending(r => r.SentAt)
+            .ToListAsync();
+
+        var reminderItems = reminders.Select(r => new ReminderHistoryItem
+        {
+            Id = r.Id,
+            SignerId = r.DocumentSignature.SignerId,
+            SignerName = $"{r.DocumentSignature.Signer.FirstName} {r.DocumentSignature.Signer.LastName}",
+            ReminderType = r.ReminderType,
+            SentAt = r.SentAt,
+            IsManual = r.IsManual,
+            Status = r.Status,
+            Message = r.Message
+        }).ToList();
+
+        return new ReminderHistoryResponse
+        {
+            DocumentId = documentId,
+            FileName = document.FileName,
+            TotalReminders = reminderItems.Count,
+            Reminders = reminderItems
+        };
+    }
+
+    public async Task<bool> SendTestEmailAsync(string email, string subject, string message)
+    {
+        _logger.LogInformation("Sending test email to {Email}", email);
+
+        try
+        {
+            // Create a test email body
+            var htmlBody = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #2196F3; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
+        .content {{ background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h2>🧪 Test Email</h2>
+        </div>
+        <div class='content'>
+            <p><strong>Subject:</strong> {subject}</p>
+            <p><strong>Message:</strong></p>
+            <p>{message}</p>
+            <hr>
+            <p><em>This is a test email from the Co-Ownership Vehicle System.</em></p>
+            <p><em>If you received this email, your email configuration is working correctly!</em></p>
+            <p><strong>Sent at:</strong> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>
+        </div>
+    </div>
+</body>
+</html>";
+
+            // Use the notification service to send email
+            // Create a mock user and document for testing
+            var testUser = new User
+            {
+                Email = email,
+                FirstName = "Test",
+                LastName = "User"
+            };
+
+            var testDocument = new Document
+            {
+                FileName = "Test Document.pdf",
+                Id = Guid.NewGuid()
+            };
+
+            // For testing, we'll directly send through notification service
+            // In production, you might want to create a more generic SendEmail method
+            return await _notificationService.SendSignatureReminderAsync(
+                testUser,
+                testDocument,
+                "https://example.com/test",
+                ReminderType.Manual,
+                message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send test email to {Email}", email);
+            return false;
+        }
+    }
+
+    #endregion
 }
