@@ -22,64 +22,19 @@ public static class EnvironmentHelper
     {
         // 1. Try system environment variable (production)
         var value = Environment.GetEnvironmentVariable(key);
-        if (!string.IsNullOrEmpty(value)) 
+        if (!string.IsNullOrEmpty(value))
             return value;
-        
+
         // 2. Try configuration (appsettings.json)
         if (configuration != null)
         {
-            value = configuration[key];
-            if (!string.IsNullOrEmpty(value)) 
+            // IConfiguration sẽ tự động xử lý các khóa lồng nhau (ví dụ: QrCode:EncryptionKey)
+            value = configuration[key.Replace("__", ":")];
+            if (!string.IsNullOrEmpty(value))
                 return value;
         }
-        
-        // 3. Try .env file (development fallback)
-        try
-        {
-            // Look for .env file in project root (go up from current directory)
-            var currentDir = Directory.GetCurrentDirectory();
-            var envFile = Path.Combine(currentDir, ".env");
-            
-            // If not found in current directory, try going up to find project root
-            if (!File.Exists(envFile))
-            {
-                var dir = new DirectoryInfo(currentDir);
-                while (dir != null && !File.Exists(Path.Combine(dir.FullName, ".env")))
-                {
-                    dir = dir.Parent;
-                }
-                if (dir != null)
-                {
-                    envFile = Path.Combine(dir.FullName, ".env");
-                }
-            }
-            
-            if (File.Exists(envFile))
-            {
-                var lines = File.ReadAllLines(envFile);
-                foreach (var line in lines)
-                {
-                    var trimmedLine = line.Trim();
-                    if (trimmedLine.StartsWith($"{key}=") && !trimmedLine.StartsWith("#"))
-                    {
-                        var envValue = trimmedLine.Substring(key.Length + 1).Trim();
-                        // Remove quotes if present
-                        if ((envValue.StartsWith('"') && envValue.EndsWith('"')) ||
-                            (envValue.StartsWith('\'') && envValue.EndsWith('\'')))
-                        {
-                            envValue = envValue.Substring(1, envValue.Length - 2);
-                        }
-                        return envValue;
-                    }
-                }
-            }
-        }
-        catch
-        {
-            // Ignore .env file errors - continue with default value
-        }
-        
-        // 4. Return default value if provided
+
+        // 3. Return default value if provided
         return defaultValue;
     }
 
@@ -100,6 +55,29 @@ public static class EnvironmentHelper
                 "Checked: Environment variables, appsettings.json, and .env file");
         }
         return value;
+    }
+
+    /// <summary>
+    /// Finds the .env file by traversing up from the current directory.
+    /// </summary>
+    /// <returns>The full path to the .env file, or null if not found.</returns>
+    public static string? FindEnvFile()
+    {
+        try
+        {
+            var currentDir = new DirectoryInfo(Directory.GetCurrentDirectory());
+            while (currentDir != null && !File.Exists(Path.Combine(currentDir.FullName, ".env")))
+            {
+                currentDir = currentDir.Parent;
+            }
+
+            return currentDir != null ? Path.Combine(currentDir.FullName, ".env") : null;
+        }
+        catch
+        {
+            // Ignore any errors during file search
+            return null;
+        }
     }
 
     /// <summary>
@@ -153,12 +131,12 @@ public static class EnvironmentHelper
     {
         return new EmailConfigParams
         {
-            SmtpHost = GetEnvironmentVariable("SMTP_HOST", configuration),
+            SmtpHost = GetEnvironmentVariable("SMTP_HOST", configuration) ?? string.Empty,
             SmtpPort = int.Parse(GetEnvironmentVariable("SMTP_PORT", configuration) ?? "587"),
-            SmtpUsername = GetEnvironmentVariable("SMTP_USERNAME", configuration),
-            SmtpPassword = GetEnvironmentVariable("SMTP_PASSWORD", configuration),
+            SmtpUsername = GetEnvironmentVariable("SMTP_USERNAME", configuration) ?? string.Empty,
+            SmtpPassword = GetEnvironmentVariable("SMTP_PASSWORD", configuration) ?? string.Empty,
             UseSsl = bool.Parse(GetEnvironmentVariable("SMTP_USE_SSL", configuration) ?? "true"),
-            FromEmail = GetEnvironmentVariable("EMAIL_FROM", configuration),
+            FromEmail = GetEnvironmentVariable("EMAIL_FROM", configuration) ?? string.Empty,
             FromName = GetEnvironmentVariable("EMAIL_FROM_NAME", configuration) ?? "Co-Ownership Vehicle",
             FrontendUrl = GetEnvironmentVariable("FRONTEND_URL", configuration) ?? "https://localhost:3000"
         };
@@ -185,7 +163,7 @@ public static class EnvironmentHelper
     public static void LogEnvironmentStatus(string serviceName, IConfiguration? configuration = null)
     {
         Console.WriteLine($"[DEBUG] {serviceName} Environment Check:");
-        
+
         // Database configuration
         var dbParams = GetDatabaseConnectionParams(configuration);
         Console.WriteLine($"[DEBUG] DB_SERVER: {dbParams.Server}");
@@ -195,7 +173,7 @@ public static class EnvironmentHelper
         Console.WriteLine($"[DEBUG] DB_TRUST_CERT: {dbParams.TrustServerCertificate}");
         Console.WriteLine($"[DEBUG] DB_MULTIPLE_ACTIVE_RESULTS: {dbParams.MultipleActiveResultSets}");
         Console.WriteLine($"[DEBUG] ACTUAL_CONNECTION_STRING: {dbParams.GetConnectionString()}");
-        
+
         // Service-specific database names
         var dbAuth = GetEnvironmentVariable("DB_AUTH", configuration);
         var dbUser = GetEnvironmentVariable("DB_USER_SERVICE", configuration);
@@ -205,7 +183,7 @@ public static class EnvironmentHelper
         var dbBooking = GetEnvironmentVariable("DB_BOOKING", configuration);
         var dbNotification = GetEnvironmentVariable("DB_NOTIFICATION", configuration);
         var dbAnalytics = GetEnvironmentVariable("DB_ANALYTICS", configuration);
-        
+
         Console.WriteLine($"[DEBUG] DB_AUTH: {dbAuth ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] DB_USER_SERVICE: {dbUser ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] DB_GROUP: {dbGroup ?? "NOT SET"}");
@@ -214,24 +192,32 @@ public static class EnvironmentHelper
         Console.WriteLine($"[DEBUG] DB_BOOKING: {dbBooking ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] DB_NOTIFICATION: {dbNotification ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] DB_ANALYTICS: {dbAnalytics ?? "NOT SET"}");
-        
+
         // JWT configuration
         var jwtConfig = GetJwtConfigParams(configuration);
         Console.WriteLine($"[DEBUG] JWT_SECRET_KEY: {(string.IsNullOrEmpty(jwtConfig.SecretKey) ? "NOT SET" : "*****")}");
         Console.WriteLine($"[DEBUG] JWT_ISSUER: {jwtConfig.Issuer}");
         Console.WriteLine($"[DEBUG] JWT_AUDIENCE: {jwtConfig.Audience}");
         Console.WriteLine($"[DEBUG] JWT_EXPIRY_MINUTES: {jwtConfig.ExpiryMinutes}");
-        
+
         // RabbitMQ configuration
         var rabbitMq = GetEnvironmentVariable("RABBITMQ_CONNECTION", configuration);
         Console.WriteLine($"[DEBUG] RABBITMQ_CONNECTION: {(string.IsNullOrEmpty(rabbitMq) ? "NOT SET" : "SET")}");
-        
+
+        // QrCode configuration
+        var qrEncryptionKey = GetEnvironmentVariable("QrCode__EncryptionKey", configuration);
+        var qrSigningKey = GetEnvironmentVariable("QrCode__SigningKey", configuration);
+        var qrExpiry = GetEnvironmentVariable("QrCode__ExpirationMinutes", configuration);
+        Console.WriteLine($"[DEBUG] QrCode__EncryptionKey: {(string.IsNullOrEmpty(qrEncryptionKey) ? "NOT SET" : "SET")}");
+        Console.WriteLine($"[DEBUG] QrCode__SigningKey: {(string.IsNullOrEmpty(qrSigningKey) ? "NOT SET" : "SET")}");
+        Console.WriteLine($"[DEBUG] QrCode__ExpirationMinutes: {qrExpiry ?? "NOT SET"}");
+
         // Redis configuration
         var redisConfig = GetRedisConfigParams(configuration);
         Console.WriteLine($"[DEBUG] REDIS_CONNECTION_STRING: {(string.IsNullOrEmpty(redisConfig.ConnectionString) ? "NOT SET" : "SET")}");
         Console.WriteLine($"[DEBUG] REDIS_DATABASE: {redisConfig.Database}");
         Console.WriteLine($"[DEBUG] REDIS_KEY_PREFIX: {redisConfig.KeyPrefix}");
-        
+
         // Email configuration
         var emailConfig = GetEmailConfigParams(configuration);
         Console.WriteLine($"[DEBUG] SMTP_HOST: {emailConfig.SmtpHost ?? "NOT SET"}");
@@ -242,13 +228,13 @@ public static class EnvironmentHelper
         Console.WriteLine($"[DEBUG] EMAIL_FROM: {emailConfig.FromEmail ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] EMAIL_FROM_NAME: {emailConfig.FromName}");
         Console.WriteLine($"[DEBUG] FRONTEND_URL: {emailConfig.FrontendUrl}");
-        
+
         // VNPay configuration (for Payment service)
         var vnpayTmnCode = GetEnvironmentVariable("VNPAY_TMN_CODE", configuration);
         var vnpayHashSecret = GetEnvironmentVariable("VNPAY_HASH_SECRET", configuration);
         var vnpayPaymentUrl = GetEnvironmentVariable("VNPAY_PAYMENT_URL", configuration);
         var vnpayReturnUrl = GetEnvironmentVariable("VNPAY_RETURN_URL", configuration);
-        
+
         Console.WriteLine($"[DEBUG] VNPAY_TMN_CODE: {(string.IsNullOrEmpty(vnpayTmnCode) ? "NOT SET" : "SET")}");
         Console.WriteLine($"[DEBUG] VNPAY_HASH_SECRET: {(string.IsNullOrEmpty(vnpayHashSecret) ? "NOT SET" : "SET")}");
         Console.WriteLine($"[DEBUG] VNPAY_PAYMENT_URL: {vnpayPaymentUrl ?? "NOT SET"}");
@@ -264,10 +250,10 @@ public static class EnvironmentHelper
     public static void LogFinalConnectionDetails(string serviceName, string databaseName, IConfiguration? configuration = null)
     {
         Console.WriteLine($"[DEBUG] {serviceName} Final Connection Details:");
-        
+
         var dbParams = GetDatabaseConnectionParams(configuration);
         dbParams.Database = databaseName;
-        
+
         Console.WriteLine($"[DEBUG] FINAL_DATABASE_NAME: {dbParams.Database}");
         Console.WriteLine($"[DEBUG] FINAL_CONNECTION_STRING: {dbParams.GetConnectionString()}");
         Console.WriteLine();

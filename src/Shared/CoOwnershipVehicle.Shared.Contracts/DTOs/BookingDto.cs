@@ -22,6 +22,8 @@ public class BookingDto
     public string? Purpose { get; set; }
     public bool IsEmergency { get; set; }
     public BookingPriority Priority { get; set; }
+    public bool RequiresDamageReview { get; set; }
+    public Guid? RecurringBookingId { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
@@ -41,6 +43,14 @@ public class CreateBookingDto
     public string? Purpose { get; set; }
     
     public bool IsEmergency { get; set; } = false;
+
+    [StringLength(1000)] // Added validation for EmergencyReason
+    public string? EmergencyReason { get; set; } // Added EmergencyReason
+    
+    /// <summary>
+    /// For emergency bookings, determines whether conflicting bookings should be auto-cancelled.
+    /// </summary>
+    public bool EmergencyAutoCancelConflicts { get; set; }
     
     public BookingPriority Priority { get; set; } = BookingPriority.Normal;
     

@@ -141,6 +141,9 @@ public class VehicleDbContext : DbContext
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.PriorityScore).HasColumnType("decimal(10,4)");
             entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.PreCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.FinalCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.Property(e => e.MissedCheckoutReminderSentAt).HasColumnType("datetime2");
 
             entity.HasOne(e => e.Vehicle)
                   .WithMany(v => v.Bookings)
