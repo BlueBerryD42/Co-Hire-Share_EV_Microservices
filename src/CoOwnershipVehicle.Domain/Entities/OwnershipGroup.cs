@@ -24,6 +24,7 @@ public class OwnershipGroup : BaseEntity
     public virtual ICollection<Document> Documents { get; set; } = new List<Document>();
     public virtual ICollection<Proposal> Proposals { get; set; } = new List<Proposal>();
     public virtual ICollection<LedgerEntry> LedgerEntries { get; set; } = new List<LedgerEntry>();
+    public virtual ICollection<RecurringBooking> RecurringBookings { get; set; } = new List<RecurringBooking>();
 }
 
 public enum GroupStatus
