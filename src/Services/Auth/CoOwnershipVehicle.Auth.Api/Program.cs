@@ -89,19 +89,18 @@ builder.Services.AddMassTransit(x =>
 });
 
 // Add Redis
+// Add Redis
 var redisConfig = EnvironmentHelper.GetRedisConfigParams(builder.Configuration);
 
-// Try to create Redis connection
 StackExchange.Redis.IConnectionMultiplexer? redisConnection = null;
 try
 {
     var programLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
     programLogger.LogInformation("Redis Connection String: {ConnectionString}", redisConfig.ConnectionString);
     programLogger.LogInformation("Redis Database: {Database}", redisConfig.Database);
-    
-    // Parse the connection string and create configuration manually
+
     var configuration = new StackExchange.Redis.ConfigurationOptions();
-    
+
     // Handle redis:// format
     if (redisConfig.ConnectionString.StartsWith("redis://"))
     {
@@ -109,47 +108,45 @@ try
         configuration.EndPoints.Add(uri.Host, uri.Port);
         if (uri.UserInfo.Contains(':'))
         {
-            configuration.Password = uri.UserInfo.Split(':')[1]; // Get password after colon
+            configuration.Password = uri.UserInfo.Split(':')[1];
         }
-        programLogger.LogInformation("Redis Host: {Host}, Port: {Port}, Has Password: {HasPassword}", 
+        programLogger.LogInformation("Redis Host: {Host}, Port: {Port}, Has Password: {HasPassword}",
             uri.Host, uri.Port, !string.IsNullOrEmpty(configuration.Password));
     }
     else
     {
-        // Handle host:port format
         configuration = StackExchange.Redis.ConfigurationOptions.Parse(redisConfig.ConnectionString);
         programLogger.LogInformation("Redis parsed from simple format");
     }
-    
-    // Add retry and connection settings for better reliability
+
+    // ✅ Combine reliability settings from both branches
     configuration.AbortOnConnectFail = false;
-    configuration.ConnectRetry = 5; // Increased retry count
-    configuration.ConnectTimeout = 30000; // Increased timeout to 30 seconds
-    configuration.SyncTimeout = 10000; // Increased sync timeout to 10 seconds
-    configuration.AsyncTimeout = 10000; // Added async timeout
-    configuration.ResponseTimeout = 10000; // Added response timeout
-    configuration.KeepAlive = 60; // Keep connection alive
-    configuration.ClientName = "CoOwnershipVehicle-Auth"; // Set client name for identification
-    
-    programLogger.LogInformation("Attempting to connect to Redis with enhanced settings...");
-    
+    configuration.ConnectRetry = 5;
+    configuration.ConnectTimeout = 30000;
+    configuration.SyncTimeout = 10000;
+    configuration.AsyncTimeout = 10000;
+    configuration.ResponseTimeout = 10000;
+    configuration.KeepAlive = 60;
+    configuration.ClientName = "CoOwnershipVehicle-Auth";
+
+    programLogger.LogInformation("Attempting to connect to Redis...");
+
     redisConnection = StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
-    
-    // Test the connection
-    var database = redisConnection.GetDatabase(redisConfig.Database);
-    database.Ping(); // Test connection
-    
-    programLogger.LogInformation("Successfully connected to Redis");
+
+    // Quick ping test
+    var db = redisConnection.GetDatabase(redisConfig.Database);
+    db.Ping();
+
+    programLogger.LogInformation("✅ Successfully connected to Redis");
 }
 catch (Exception ex)
 {
     var programLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
-    programLogger.LogError(ex, "Failed to connect to Redis. Using in-memory fallback for refresh tokens.");
-    programLogger.LogWarning("Redis connection failed. The application will continue with in-memory token storage.");
+    programLogger.LogError(ex, "❌ Failed to connect to Redis. Falling back to in-memory mode.");
     redisConnection = null;
 }
 
-// Register Redis services only if connection was successful
+// ✅ Register Redis DI services safely
 if (redisConnection != null)
 {
     builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(redisConnection);
@@ -161,7 +158,7 @@ if (redisConnection != null)
 }
 else
 {
-    // Register null services to avoid DI issues
+    // Allow app to continue gracefully without Redis
     builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer?>(sp => null);
     builder.Services.AddScoped<StackExchange.Redis.IDatabase?>(sp => null);
 }

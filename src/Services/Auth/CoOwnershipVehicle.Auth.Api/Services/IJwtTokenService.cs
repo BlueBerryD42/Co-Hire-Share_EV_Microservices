@@ -150,14 +150,14 @@ public class JwtTokenService : IJwtTokenService
         var claims = new List<System.Security.Claims.Claim>
         {
             new(System.Security.Claims.ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(System.Security.Claims.ClaimTypes.Email, user.Email!),
-            new(System.Security.Claims.ClaimTypes.GivenName, user.FirstName),
-            new(System.Security.Claims.ClaimTypes.Surname, user.LastName),
+            new(System.Security.Claims.ClaimTypes.Email, user.Email ?? string.Empty),
+            new(System.Security.Claims.ClaimTypes.GivenName, user.FirstName ?? string.Empty),
+            new(System.Security.Claims.ClaimTypes.Surname, user.LastName ?? string.Empty),
             new("role", user.Role.ToString()),
             new("kyc_status", user.KycStatus.ToString()),
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat, 
-                new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(), 
+            new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat,
+                new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(),
                 System.Security.Claims.ClaimValueTypes.Integer64)
         };
 

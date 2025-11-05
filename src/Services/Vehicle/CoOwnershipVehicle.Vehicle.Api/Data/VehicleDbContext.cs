@@ -9,14 +9,22 @@ public class VehicleDbContext : DbContext
     {
     }
 
-    // Vehicle service entities - only what it actually needs
-    public DbSet<CoOwnershipVehicle.Domain.Entities.Vehicle> Vehicles { get; set; }
+    // Vehicle service core entities
+    public DbSet<Domain.Entities.Vehicle> Vehicles { get; set; }
+
+    // Maintenance-related entities
+    public DbSet<MaintenanceSchedule> MaintenanceSchedules { get; set; }
+    public DbSet<MaintenanceRecord> MaintenanceRecords { get; set; }
+
+    // Vehicle health tracking
+    public DbSet<VehicleHealthScore> VehicleHealthScores { get; set; }
+
+    // Related entities (read-only access for cross-service validation)
     public DbSet<OwnershipGroup> OwnershipGroups { get; set; } // For group access
     public DbSet<GroupMember> GroupMembers { get; set; } // For access control
     public DbSet<Booking> Bookings { get; set; } // For availability checks
-    public DbSet<User> Users { get; set; } // For booking details
-	public DbSet<MaintenanceRecord> MaintenanceRecords { get; set; }
-	public DbSet<Expense> Expenses { get; set; }
+    public DbSet<User> Users { get; set; } // For booking or ownership details
+    public DbSet<Expense> Expenses { get; set; } // For maintenance cost linking
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -91,118 +99,141 @@ public class VehicleDbContext : DbContext
         });
 
         // Vehicle entity configuration
-        builder.Entity<CoOwnershipVehicle.Domain.Entities.Vehicle>(entity =>
+        builder.Entity<Domain.Entities.Vehicle>(entity =>
         {
+            entity.ToTable("Vehicles"); // Explicitly name the table
+            entity.HasKey(e => e.Id);
+
             entity.Property(e => e.Vin).IsRequired().HasMaxLength(17);
             entity.Property(e => e.PlateNumber).IsRequired().HasMaxLength(20);
             entity.Property(e => e.Model).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Color).HasMaxLength(50);
             entity.Property(e => e.Status).HasConversion<int>();
 
-            entity.HasOne(e => e.Group)
-                  .WithMany(g => g.Vehicles)
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.SetNull);
+            // IMPORTANT: Do not create a database-level foreign key constraint to the Group table in another service.
+            // The relationship exists at the application level. We just store the ID.
+            entity.Ignore(e => e.Group); // Ignore the navigation property
 
+            entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.Vin).IsUnique();
             entity.HasIndex(e => e.PlateNumber).IsUnique();
         });
 
-		// MaintenanceRecord configuration
-		builder.Entity<MaintenanceRecord>(entity =>
-		{
-			entity.Property(e => e.Status).HasConversion<int>();
-			entity.Property(e => e.ServiceType).HasConversion<int>();
-			entity.Property(e => e.Priority).HasConversion<int>();
+// MaintenanceSchedule entity configuration
+builder.Entity<MaintenanceSchedule>(entity =>
+{
+    entity.ToTable("MaintenanceSchedules");
+    entity.HasKey(e => e.Id);
 
-			entity.HasOne(e => e.Vehicle)
-				.WithMany(v => v.MaintenanceRecords)
-				.HasForeignKey(e => e.VehicleId)
-				.OnDelete(DeleteBehavior.Cascade);
+    entity.Property(e => e.ServiceType).HasConversion<int>().IsRequired();
+    entity.Property(e => e.Status).HasConversion<int>().IsRequired();
+    entity.Property(e => e.Priority).HasConversion<int>().IsRequired();
+    entity.Property(e => e.EstimatedCost).HasColumnType("decimal(18,2)");
+    entity.Property(e => e.ServiceProvider).HasMaxLength(200);
+    entity.Property(e => e.Notes).HasMaxLength(1000);
 
-			entity.HasOne(e => e.Group)
-				.WithMany()
-				.HasForeignKey(e => e.GroupId)
-				.OnDelete(DeleteBehavior.SetNull);
+    entity.HasOne(e => e.Vehicle)
+        .WithMany()
+        .HasForeignKey(e => e.VehicleId)
+        .OnDelete(DeleteBehavior.Cascade);
 
-			entity.HasIndex(e => new { e.VehicleId, e.Status, e.ScheduledDate });
-		});
+    entity.HasIndex(e => e.VehicleId);
+    entity.HasIndex(e => e.ScheduledDate);
+    entity.HasIndex(e => e.Status);
+});
 
-		// Expense minimal configuration for linking (read-only in this service)
-		builder.Entity<Expense>(entity =>
-		{
-			entity.Property(e => e.ExpenseType).HasConversion<int>();
-			entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
-		});
+// ✅ Gộp cấu hình MaintenanceRecord từ cả hai bên
+builder.Entity<MaintenanceRecord>(entity =>
+{
+    entity.ToTable("MaintenanceRecords");
+    entity.HasKey(e => e.Id);
 
-        // Booking entity configuration (simplified for Vehicle service)
-        builder.Entity<CoOwnershipVehicle.Domain.Entities.Booking>(entity =>
+    entity.Property(e => e.Status).HasConversion<int>().IsRequired();
+    entity.Property(e => e.ServiceType).HasConversion<int>().IsRequired();
+    entity.Property(e => e.Priority).HasConversion<int>().IsRequired();
+    entity.Property(e => e.ActualCost).HasColumnType("decimal(18,2)").IsRequired();
+    entity.Property(e => e.ServiceProvider).IsRequired().HasMaxLength(200);
+    entity.Property(e => e.WorkPerformed).IsRequired().HasMaxLength(2000);
+    entity.Property(e => e.PartsReplaced).HasMaxLength(1000);
+
+    entity.HasOne(e => e.Vehicle)
+        .WithMany(v => v.MaintenanceRecords)
+        .HasForeignKey(e => e.VehicleId)
+        .OnDelete(DeleteBehavior.Cascade);
+
+    entity.HasOne(e => e.Group)
+        .WithMany()
+        .HasForeignKey(e => e.GroupId)
+        .OnDelete(DeleteBehavior.SetNull);
+
+    // Expense là optional (read-only)
+    entity.Ignore(e => e.Expense);
+
+    entity.HasIndex(e => new { e.VehicleId, e.Status, e.ScheduledDate });
+    entity.HasIndex(e => e.ServiceDate);
+    entity.HasIndex(e => e.OdometerReading);
+});
+
+// Expense minimal configuration (read-only in this service)
+builder.Entity<Expense>(entity =>
+{
+    entity.Property(e => e.ExpenseType).HasConversion<int>();
+    entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+});
+
+// Booking entity configuration (simplified for Vehicle service)
+builder.Entity<CoOwnershipVehicle.Domain.Entities.Booking>(entity =>
+{
+    entity.Property(e => e.Status).HasConversion<int>();
+    entity.Property(e => e.PriorityScore).HasColumnType("decimal(10,4)");
+    entity.Property(e => e.Notes).HasMaxLength(500);
+    entity.Property(e => e.PreCheckoutReminderSentAt).HasColumnType("datetime2");
+    entity.Property(e => e.FinalCheckoutReminderSentAt).HasColumnType("datetime2");
+    entity.Property(e => e.MissedCheckoutReminderSentAt).HasColumnType("datetime2");
+});
+
+
+        // VehicleHealthScore entity configuration
+        builder.Entity<VehicleHealthScore>(entity =>
         {
-            entity.Property(e => e.Status).HasConversion<int>();
-            entity.Property(e => e.PriorityScore).HasColumnType("decimal(10,4)");
-            entity.Property(e => e.Notes).HasMaxLength(500);
-            entity.Property(e => e.PreCheckoutReminderSentAt).HasColumnType("datetime2");
-            entity.Property(e => e.FinalCheckoutReminderSentAt).HasColumnType("datetime2");
-            entity.Property(e => e.MissedCheckoutReminderSentAt).HasColumnType("datetime2");
+            entity.ToTable("VehicleHealthScores");
+            entity.HasKey(e => e.Id);
 
+            entity.Property(e => e.OverallScore).HasColumnType("decimal(5,2)").IsRequired();
+            entity.Property(e => e.Category).HasConversion<int>().IsRequired();
+            entity.Property(e => e.MaintenanceScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.OdometerAgeScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.DamageScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.ServiceFrequencyScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.VehicleAgeScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.InspectionScore).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.Note).HasMaxLength(500);
+
+            // Foreign key to Vehicle
             entity.HasOne(e => e.Vehicle)
-                  .WithMany(v => v.Bookings)
-                  .HasForeignKey(e => e.VehicleId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany()
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.Group)
-                  .WithMany(g => g.Bookings)
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.User)
-                  .WithMany(u => u.Bookings)
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasIndex(e => new { e.VehicleId, e.StartAt, e.EndAt });
-            entity.HasIndex(e => e.StartAt);
+            entity.HasIndex(e => e.VehicleId);
+            entity.HasIndex(e => e.CalculatedAt);
+            entity.HasIndex(e => new { e.VehicleId, e.CalculatedAt });
         });
 
-        // Configure automatic timestamp updates
-        foreach (var entityType in builder.Model.GetEntityTypes())
-        {
-            if (typeof(BaseEntity).IsAssignableFrom(entityType.ClrType))
-            {
-                builder.Entity(entityType.ClrType)
-                    .Property<DateTime>("UpdatedAt")
-                    .HasDefaultValueSql("GETUTCDATE()");
-            }
-        }
-    }
-
-    public override int SaveChanges()
-    {
-        UpdateTimestamps();
-        return base.SaveChanges();
-    }
-
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        UpdateTimestamps();
-        return base.SaveChangesAsync(cancellationToken);
-    }
-
-    private void UpdateTimestamps()
-    {
-        var entries = ChangeTracker.Entries<BaseEntity>();
-
-        foreach (var entry in entries)
-        {
-            if (entry.State == EntityState.Added)
-            {
-                entry.Property(e => e.CreatedAt).CurrentValue = DateTime.UtcNow;
-                entry.Property(e => e.UpdatedAt).CurrentValue = DateTime.UtcNow;
-            }
-            else if (entry.State == EntityState.Modified)
-            {
-                entry.Property(e => e.UpdatedAt).CurrentValue = DateTime.UtcNow;
-            }
-        }
+        // Ignore all other entities that might be discovered transitively
+        builder.Ignore<OwnershipGroup>();
+        builder.Ignore<GroupMember>();
+        builder.Ignore<User>();
+        builder.Ignore<Booking>();
+        builder.Ignore<KycDocument>();
+        builder.Ignore<Expense>();
+        builder.Ignore<Invoice>();
+        builder.Ignore<Payment>();
+        builder.Ignore<Notification>();
+        builder.Ignore<AnalyticsSnapshot>();
+        builder.Ignore<Document>();
+        builder.Ignore<LedgerEntry>();
+        builder.Ignore<Proposal>();
+        builder.Ignore<AuditLog>();
     }
 }

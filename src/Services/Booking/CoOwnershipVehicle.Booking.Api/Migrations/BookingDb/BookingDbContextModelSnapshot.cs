@@ -511,84 +511,97 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.ToTable("GroupMembers");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.LateReturnFee", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.MaintenanceBlock", b =>
+{
+    b.Property<Guid>("Id")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("uniqueidentifier");
+    b.Property<DateTime>("CreatedAt")
+        .HasColumnType("datetime2");
+    b.Property<DateTime>("EndTime")
+        .HasColumnType("datetime2");
+    b.Property<Guid>("GroupId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<Guid>("MaintenanceScheduleId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<string>("Notes")
+        .HasMaxLength(1000)
+        .HasColumnType("nvarchar(1000)");
+    b.Property<int>("Priority")
+        .HasColumnType("int");
+    b.Property<int>("ServiceType")
+        .HasColumnType("int");
+    b.Property<DateTime>("StartTime")
+        .HasColumnType("datetime2");
+    b.Property<int>("Status")
+        .HasColumnType("int");
+    b.Property<DateTime>("UpdatedAt")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("datetime2")
+        .HasDefaultValueSql("GETUTCDATE()");
+    b.Property<Guid>("VehicleId")
+        .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("BookingId")
-                        .HasColumnType("uniqueidentifier");
+    b.HasKey("Id");
+    b.HasIndex("MaintenanceScheduleId").IsUnique();
+    b.HasIndex("Status");
+    b.HasIndex("VehicleId", "StartTime", "EndTime");
+    b.ToTable("MaintenanceBlocks");
+});
 
-                    b.Property<string>("CalculationMethod")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.LateReturnFee", b =>
+{
+    b.Property<Guid>("Id")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("uniqueidentifier");
+    b.Property<Guid>("BookingId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<string>("CalculationMethod")
+        .HasMaxLength(200)
+        .HasColumnType("nvarchar(200)");
+    b.Property<Guid>("CheckInId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<DateTime>("CreatedAt")
+        .HasColumnType("datetime2");
+    b.Property<Guid?>("ExpenseId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<decimal>("FeeAmount")
+        .HasColumnType("decimal(18,2)");
+    b.Property<Guid>("GroupId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<Guid?>("InvoiceId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<int>("LateDurationMinutes")
+        .HasColumnType("int");
+    b.Property<decimal?>("OriginalFeeAmount")
+        .HasColumnType("decimal(18,2)");
+    b.Property<int>("Status")
+        .HasColumnType("int");
+    b.Property<DateTime>("UpdatedAt")
+        .ValueGeneratedOnAdd()
+        .HasColumnType("datetime2")
+        .HasDefaultValueSql("GETUTCDATE()");
+    b.Property<Guid>("UserId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<Guid>("VehicleId")
+        .HasColumnType("uniqueidentifier");
+    b.Property<DateTime?>("WaivedAt")
+        .HasColumnType("datetime2");
+    b.Property<Guid?>("WaivedBy")
+        .HasColumnType("uniqueidentifier");
+    b.Property<string>("WaivedReason")
+        .HasMaxLength(500)
+        .HasColumnType("nvarchar(500)");
 
-                    b.Property<Guid>("CheckInId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("ExpenseId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("FeeAmount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<Guid>("GroupId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("InvoiceId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("LateDurationMinutes")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("OriginalFeeAmount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("VehicleId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("WaivedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("WaivedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("WaivedReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookingId");
-
-                    b.HasIndex("CheckInId")
-                        .IsUnique();
-
-                    b.HasIndex("GroupId");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("VehicleId");
-
-                    b.ToTable("LateReturnFee", (string)null);
-                });
+    b.HasKey("Id");
+    b.HasIndex("BookingId");
+    b.HasIndex("CheckInId").IsUnique();
+    b.HasIndex("GroupId");
+    b.HasIndex("Status");
+    b.HasIndex("UserId");
+    b.HasIndex("VehicleId");
+    b.ToTable("LateReturnFee");
+});
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
                 {

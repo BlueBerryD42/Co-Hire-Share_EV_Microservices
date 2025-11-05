@@ -7,6 +7,7 @@ using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using MassTransit; // Added for MassTransit
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,24 +45,24 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo 
-    { 
-        Title = "Co-Ownership Vehicle Group API", 
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Co-Ownership Vehicle Group API",
         Version = "v1",
         Description = "Group management service for the Co-Ownership Vehicle Management System"
     });
-    
+
     // Add JWT Authentication to Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. Enter your token below (without 'Bearer ' prefix).",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,  
-        Scheme = "bearer",            
-        BearerFormat = "JWT"             
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
-    
+
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -147,7 +148,7 @@ builder.Services.AddDbContext<GroupDbContext>(options =>
 // Add JWT Authentication
 var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
 
-// Configure JWT settings in configuration
+// Sync JWT settings to configuration
 builder.Configuration["JwtSettings:Issuer"] = jwtConfig.Issuer;
 builder.Configuration["JwtSettings:Audience"] = jwtConfig.Audience;
 builder.Configuration["JwtSettings:ExpiryMinutes"] = jwtConfig.ExpiryMinutes.ToString();
@@ -168,9 +169,24 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidAudience = jwtConfig.Audience,
         ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero
+        ClockSkew = TimeSpan.Zero,
+        RoleClaimType = "role" // Map "role" claim to User.IsInRole()
     };
+
+    Console.WriteLine($"[DIAGNOSTIC_LOG] RoleClaimType is set to: {options.TokenValidationParameters.RoleClaimType}");
 });
+
+// Add MassTransit
+builder.Services.AddMassTransit(x =>
+{
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        var rabbitMqConnectionString = EnvironmentHelper.GetRabbitMqConnection(builder.Configuration);
+        cfg.Host(rabbitMqConnectionString);
+    });
+});
+
+builder.Services.AddAuthorization();
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -185,10 +201,8 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Log the configured path for debugging
 app.Logger.LogInformation($"FileStorage:LocalStoragePath from configuration: {app.Configuration["FileStorage:LocalStoragePath"]}");
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -197,10 +211,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
-
-app.UseAuthentication();
+app.UseAuthentication(); // Ensure this is before UseAuthorization
 app.UseAuthorization();
 
 app.MapControllers();
-
 app.Run();

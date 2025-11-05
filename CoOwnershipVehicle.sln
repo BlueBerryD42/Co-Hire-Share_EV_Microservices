@@ -31,6 +31,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Payment.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.ApiGateway", "src\ApiGateway\CoOwnershipVehicle.ApiGateway\CoOwnershipVehicle.ApiGateway.csproj", "{B909B70B-76AA-487B-A74F-72625D862234}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoOwnershipVehicle.Vehicle.Api.Tests", "src\Services\Vehicle\CoOwnershipVehicle.Vehicle.Api.Tests\CoOwnershipVehicle.Vehicle.Api.Tests.csproj", "{9CF8491F-FBFF-1386-5716-2FDE99D03B82}"
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Analytics.Api", "src\Services\Analytics\CoOwnershipVehicle.Analytics.Api\CoOwnershipVehicle.Analytics.Api.csproj", "{C8D9E0F1-2345-6789-ABCD-EF0123456789}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Notification.Api", "src\Services\Notification\CoOwnershipVehicle.Notification.Api\CoOwnershipVehicle.Notification.Api.csproj", "{D9E0F1A2-3456-789A-BCDE-F01234567890}"
@@ -185,6 +186,10 @@ Global
 		{B909B70B-76AA-487B-A74F-72625D862234}.Debug|x86.Build.0 = Debug|Any CPU
 		{B909B70B-76AA-487B-A74F-72625D862234}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B909B70B-76AA-487B-A74F-72625D862234}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CF8491F-FBFF-1386-5716-2FDE99D03B82}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CF8491F-FBFF-1386-5716-2FDE99D03B82}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CF8491F-FBFF-1386-5716-2FDE99D03B82}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CF8491F-FBFF-1386-5716-2FDE99D03B82}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B909B70B-76AA-487B-A74F-72625D862234}.Release|x64.ActiveCfg = Release|Any CPU
 		{B909B70B-76AA-487B-A74F-72625D862234}.Release|x64.Build.0 = Release|Any CPU
 		{B909B70B-76AA-487B-A74F-72625D862234}.Release|x86.ActiveCfg = Release|Any CPU

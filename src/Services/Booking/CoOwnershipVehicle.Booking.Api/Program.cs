@@ -75,6 +75,11 @@ builder.Services.AddAuthentication(options =>
 // Add MassTransit for message bus
 builder.Services.AddMassTransit(x =>
 {
+    // Register consumers
+    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceScheduledConsumer>();
+    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceCancelledConsumer>();
+    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceCompletedConsumer>();
+
     x.UsingRabbitMq((context, cfg) =>
     {
         cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));

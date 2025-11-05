@@ -7,11 +7,14 @@
 # PowerShell scripts
 *.ps1
 
-# Batch files  
+# Batch files
 *.bat
 
 # Markdown documentation files
 *.md
+
+# Claude Code configuration
+.claude/
 
 # BUT ALLOW ESSENTIAL SETUP FILES
 !.env.template
@@ -47,6 +50,14 @@ setup-environment.ps1
 
 # EXCEPT template files
 !*template*
+
+# Postman environment files (may contain secrets)
+*_Environment.json
+*environment*.json
+
+# BUT ALLOW example/template files
+!*example*.json
+!*template*.json
 
 # =============================================================================
 # .NET AND VISUAL STUDIO
@@ -422,6 +433,10 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+Jsontest/CostAnalysis_TestCollection.json
+Jsontest/Vehicle_HealthScore_API_Tests.postman_collection.json
+Jsontest/Vehicle_MemberUsage_API_Tests.postman_collection.json
+Jsontest/VehicleStatistics_TestCollection.json
 
 # JetBrains IDEA
 
