@@ -41,7 +41,8 @@ public class CreateVehicleDto
     [Range(0, int.MaxValue)]
     public int Odometer { get; set; }
     
-    public Guid? GroupId { get; set; }
+    [Required]
+    public Guid GroupId { get; set; }
 }
 
 public class UpdateVehicleDto

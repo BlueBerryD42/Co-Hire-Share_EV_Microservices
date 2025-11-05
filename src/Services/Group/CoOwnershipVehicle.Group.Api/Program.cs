@@ -1,7 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Shared.Configuration;
+using MassTransit; // Added for MassTransit
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -56,6 +60,45 @@ builder.Services.AddDbContext<GroupDbContext>(options =>
     options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Group.Api")));
 
+// Add JWT Authentication
+var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig.SecretKey)),
+        ValidateIssuer = true,
+        ValidIssuer = jwtConfig.Issuer,
+        ValidateAudience = true,
+        ValidAudience = jwtConfig.Audience,
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero,
+        RoleClaimType = "role" // Map "role" claim to User.IsInRole()
+    };
+
+    // DIAGNOSTIC LOG: Print the configured RoleClaimType
+    Console.WriteLine($"[DIAGNOSTIC_LOG] RoleClaimType is set to: {options.TokenValidationParameters.RoleClaimType}");
+});
+
+// Add MassTransit
+builder.Services.AddMassTransit(x =>
+{
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        var rabbitMqConnectionString = EnvironmentHelper.GetRabbitMqConnection(builder.Configuration);
+        cfg.Host(rabbitMqConnectionString);
+    });
+});
+
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -66,6 +109,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication(); // Ensure this is before UseAuthorization
 app.UseAuthorization();
 app.MapControllers();
 

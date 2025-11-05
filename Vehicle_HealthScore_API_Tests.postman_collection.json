@@ -1,0 +1,795 @@
+{
+	"info": {
+		"_postman_id": "health-score-api-tests",
+		"name": "Vehicle Health Score API Tests",
+		"description": "Comprehensive test collection for Vehicle Health Score API endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Get Vehicle Health Score - Full Details",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has health score data\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('vehicleId');",
+							"    pm.expect(jsonData).to.have.property('overallScore');",
+							"    pm.expect(jsonData).to.have.property('category');",
+							"    pm.expect(jsonData).to.have.property('colorIndicator');",
+							"});",
+							"",
+							"pm.test(\"Overall score is valid (0-100)\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.overallScore).to.be.at.least(0);",
+							"    pm.expect(jsonData.overallScore).to.be.at.most(100);",
+							"});",
+							"",
+							"pm.test(\"Category matches score range\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    var score = jsonData.overallScore;",
+							"    var category = jsonData.category;",
+							"    ",
+							"    if (score >= 80) {",
+							"        pm.expect(category).to.equal('Excellent');",
+							"    } else if (score >= 60) {",
+							"        pm.expect(category).to.equal('Good');",
+							"    } else if (score >= 40) {",
+							"        pm.expect(category).to.equal('Fair');",
+							"    } else if (score >= 20) {",
+							"        pm.expect(category).to.equal('Poor');",
+							"    } else {",
+							"        pm.expect(category).to.equal('Critical');",
+							"    }",
+							"});",
+							"",
+							"pm.test(\"Color indicator is valid\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(['Green', 'Yellow', 'Orange', 'Red']).to.include(jsonData.colorIndicator);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "2. Verify Score Breakdown Components",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Breakdown has all required components\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    var breakdown = jsonData.breakdown;",
+							"    ",
+							"    pm.expect(breakdown).to.have.property('maintenanceAdherence');",
+							"    pm.expect(breakdown).to.have.property('odometerVsAge');",
+							"    pm.expect(breakdown).to.have.property('damageReports');",
+							"    pm.expect(breakdown).to.have.property('serviceFrequency');",
+							"    pm.expect(breakdown).to.have.property('vehicleAge');",
+							"    pm.expect(breakdown).to.have.property('inspectionResults');",
+							"});",
+							"",
+							"pm.test(\"Component scores have correct weights\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    var breakdown = jsonData.breakdown;",
+							"    ",
+							"    pm.expect(breakdown.maintenanceAdherence.weight).to.equal(30);",
+							"    pm.expect(breakdown.odometerVsAge.weight).to.equal(20);",
+							"    pm.expect(breakdown.damageReports.weight).to.equal(20);",
+							"    pm.expect(breakdown.serviceFrequency.weight).to.equal(15);",
+							"    pm.expect(breakdown.vehicleAge.weight).to.equal(10);",
+							"    pm.expect(breakdown.inspectionResults.weight).to.equal(5);",
+							"});",
+							"",
+							"pm.test(\"Component scores sum to overall score\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    var breakdown = jsonData.breakdown;",
+							"    ",
+							"    var sum = breakdown.maintenanceAdherence.points +",
+							"              breakdown.odometerVsAge.points +",
+							"              breakdown.damageReports.points +",
+							"              breakdown.serviceFrequency.points +",
+							"              breakdown.vehicleAge.points +",
+							"              breakdown.inspectionResults.points;",
+							"    ",
+							"    pm.expect(sum).to.be.closeTo(jsonData.overallScore, 0.1);",
+							"});",
+							"",
+							"pm.test(\"Each component has description and status\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    var components = Object.values(jsonData.breakdown);",
+							"    ",
+							"    components.forEach(function(component) {",
+							"        pm.expect(component).to.have.property('componentName');",
+							"        pm.expect(component).to.have.property('description');",
+							"        pm.expect(component).to.have.property('status');",
+							"        pm.expect(['Excellent', 'Good', 'Fair', 'Poor']).to.include(component.status);",
+							"    });",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "3. Verify Positive and Negative Factors",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Factors arrays are present\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('positiveFactors');",
+							"    pm.expect(jsonData).to.have.property('negativeFactors');",
+							"    pm.expect(jsonData.positiveFactors).to.be.an('array');",
+							"    pm.expect(jsonData.negativeFactors).to.be.an('array');",
+							"});",
+							"",
+							"pm.test(\"Factors have required fields\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    ",
+							"    jsonData.positiveFactors.forEach(function(factor) {",
+							"        pm.expect(factor).to.have.property('description');",
+							"        pm.expect(factor).to.have.property('impact');",
+							"        pm.expect(factor).to.have.property('category');",
+							"        pm.expect(factor.impact).to.be.above(0);",
+							"    });",
+							"    ",
+							"    jsonData.negativeFactors.forEach(function(factor) {",
+							"        pm.expect(factor).to.have.property('description');",
+							"        pm.expect(factor).to.have.property('impact');",
+							"        pm.expect(factor).to.have.property('category');",
+							"        pm.expect(factor.impact).to.be.below(0);",
+							"    });",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "4. Verify Recommendations",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Recommendations array is present\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('recommendations');",
+							"    pm.expect(jsonData.recommendations).to.be.an('array');",
+							"});",
+							"",
+							"pm.test(\"Recommendations have required fields\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    ",
+							"    if (jsonData.recommendations.length > 0) {",
+							"        jsonData.recommendations.forEach(function(rec) {",
+							"            pm.expect(rec).to.have.property('title');",
+							"            pm.expect(rec).to.have.property('description');",
+							"            pm.expect(rec).to.have.property('priority');",
+							"            pm.expect(rec).to.have.property('potentialScoreIncrease');",
+							"            pm.expect(rec).to.have.property('actionType');",
+							"            ",
+							"            pm.expect(['Low', 'Medium', 'High', 'Critical']).to.include(rec.priority);",
+							"            pm.expect(['maintenance', 'inspection', 'repair']).to.include(rec.actionType);",
+							"        });",
+							"    }",
+							"});",
+							"",
+							"pm.test(\"Recommendations are sorted by priority\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    var recs = jsonData.recommendations;",
+							"    ",
+							"    if (recs.length > 1) {",
+							"        var priorityOrder = {'Critical': 3, 'High': 2, 'Medium': 1, 'Low': 0};",
+							"        for (var i = 0; i < recs.length - 1; i++) {",
+							"            pm.expect(priorityOrder[recs[i].priority]).to.be.at.least(priorityOrder[recs[i+1].priority]);",
+							"        }",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "5. Verify Health Alerts",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Alerts array is present\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('alerts');",
+							"    pm.expect(jsonData.alerts).to.be.an('array');",
+							"});",
+							"",
+							"pm.test(\"Alerts have required fields\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    ",
+							"    if (jsonData.alerts.length > 0) {",
+							"        jsonData.alerts.forEach(function(alert) {",
+							"            pm.expect(alert).to.have.property('id');",
+							"            pm.expect(alert).to.have.property('title');",
+							"            pm.expect(alert).to.have.property('message');",
+							"            pm.expect(alert).to.have.property('severity');",
+							"            pm.expect(alert).to.have.property('alertType');",
+							"            pm.expect(alert).to.have.property('createdAt');",
+							"            ",
+							"            pm.expect(['Info', 'Warning', 'Error', 'Critical']).to.include(alert.severity);",
+							"            pm.expect(['score_drop', 'overdue_maintenance', 'damage']).to.include(alert.alertType);",
+							"        });",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "6. Get Health Score with Historical Data",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Historical trend is included\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('historicalTrend');",
+							"});",
+							"",
+							"pm.test(\"Historical data points have correct structure\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    ",
+							"    if (jsonData.historicalTrend && jsonData.historicalTrend.length > 0) {",
+							"        jsonData.historicalTrend.forEach(function(point) {",
+							"            pm.expect(point).to.have.property('date');",
+							"            pm.expect(point).to.have.property('score');",
+							"            pm.expect(point).to.have.property('category');",
+							"            pm.expect(point.score).to.be.at.least(0);",
+							"            pm.expect(point.score).to.be.at.most(100);",
+							"        });",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score?includeHistory=true&historyMonths=6",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					],
+					"query": [
+						{
+							"key": "includeHistory",
+							"value": "true"
+						},
+						{
+							"key": "historyMonths",
+							"value": "6"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "7. Get Health Score with Benchmark",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Benchmark data is included\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('benchmark');",
+							"});",
+							"",
+							"pm.test(\"Benchmark has required fields\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    var benchmark = jsonData.benchmark;",
+							"    ",
+							"    if (benchmark) {",
+							"        pm.expect(benchmark).to.have.property('averageScore');",
+							"        pm.expect(benchmark).to.have.property('percentile');",
+							"        pm.expect(benchmark).to.have.property('comparisonGroupSize');",
+							"        pm.expect(benchmark).to.have.property('summary');",
+							"        pm.expect(benchmark).to.have.property('topPerformerScore');",
+							"        pm.expect(benchmark).to.have.property('criteria');",
+							"        ",
+							"        pm.expect(benchmark.percentile).to.be.at.least(0);",
+							"        pm.expect(benchmark.percentile).to.be.at.most(100);",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score?includeBenchmark=true",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					],
+					"query": [
+						{
+							"key": "includeBenchmark",
+							"value": "true"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "8. Verify Future Predictions",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Prediction data is included\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('prediction');",
+							"});",
+							"",
+							"pm.test(\"Prediction has required fields\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    var prediction = jsonData.prediction;",
+							"    ",
+							"    if (prediction) {",
+							"        pm.expect(prediction).to.have.property('oneMonthPrediction');",
+							"        pm.expect(prediction).to.have.property('threeMonthPrediction');",
+							"        pm.expect(prediction).to.have.property('sixMonthPrediction');",
+							"        pm.expect(prediction).to.have.property('trend');",
+							"        pm.expect(prediction).to.have.property('confidence');",
+							"        pm.expect(prediction).to.have.property('keyFactors');",
+							"        ",
+							"        pm.expect(['improving', 'stable', 'declining']).to.include(prediction.trend);",
+							"        pm.expect(prediction.confidence).to.be.at.least(0);",
+							"        pm.expect(prediction.confidence).to.be.at.most(100);",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "9. Get Vehicles List with Health Scores",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response is an array of vehicles\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.be.an('array');",
+							"});",
+							"",
+							"pm.test(\"Vehicles include health score summary\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    ",
+							"    if (jsonData.length > 0) {",
+							"        jsonData.forEach(function(vehicle) {",
+							"            pm.expect(vehicle).to.have.property('id');",
+							"            pm.expect(vehicle).to.have.property('plateNumber');",
+							"            pm.expect(vehicle).to.have.property('model');",
+							"            ",
+							"            // Health score may be null for new vehicles",
+							"            if (vehicle.healthScore) {",
+							"                pm.expect(vehicle.healthScore).to.have.property('overallScore');",
+							"                pm.expect(vehicle.healthScore).to.have.property('category');",
+							"                pm.expect(vehicle.healthScore).to.have.property('colorIndicator');",
+							"                pm.expect(vehicle.healthScore).to.have.property('alertCount');",
+							"            }",
+							"        });",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "10. Get Health Score - Invalid Vehicle ID (404)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 404\", function () {",
+							"    pm.response.to.have.status(404);",
+							"});",
+							"",
+							"pm.test(\"Error message is returned\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('message');",
+							"    pm.expect(jsonData.message).to.include('not found');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/00000000-0000-0000-0000-000000000000/health-score",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"00000000-0000-0000-0000-000000000000",
+						"health-score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "11. Get Health Score - Unauthorized (401)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 401\", function () {",
+							"    pm.response.to.have.status(401);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "12. Get Health Score - Custom History Period",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Historical data respects custom period\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    ",
+							"    if (jsonData.historicalTrend && jsonData.historicalTrend.length > 0) {",
+							"        var monthsAgo = 12;",
+							"        var cutoffDate = new Date();",
+							"        cutoffDate.setMonth(cutoffDate.getMonth() - monthsAgo);",
+							"        ",
+							"        jsonData.historicalTrend.forEach(function(point) {",
+							"            var pointDate = new Date(point.date);",
+							"            pm.expect(pointDate.getTime()).to.be.at.least(cutoffDate.getTime());",
+							"        });",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/vehicle/{{vehicleId}}/health-score?includeHistory=true&historyMonths=12",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"vehicle",
+						"{{vehicleId}}",
+						"health-score"
+					],
+					"query": [
+						{
+							"key": "includeHistory",
+							"value": "true"
+						},
+						{
+							"key": "historyMonths",
+							"value": "12"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://localhost:61604",
+			"type": "string"
+		},
+		{
+			"key": "accessToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "vehicleId",
+			"value": "75134495-27C4-43A9-A549-5624CC91352D",
+			"type": "string"
+		}
+	]
+}

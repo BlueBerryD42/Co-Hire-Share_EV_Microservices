@@ -30,6 +30,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Payment.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.ApiGateway", "src\ApiGateway\CoOwnershipVehicle.ApiGateway\CoOwnershipVehicle.ApiGateway.csproj", "{B909B70B-76AA-487B-A74F-72625D862234}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoOwnershipVehicle.Vehicle.Api.Tests", "..\TT\Co-Hire-Share_EV_Microservices\src\Services\Vehicle\CoOwnershipVehicle.Vehicle.Api.Tests\CoOwnershipVehicle.Vehicle.Api.Tests.csproj", "{364AC859-93AB-4D5B-BC54-41387986113C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -80,6 +82,10 @@ Global
 		{B909B70B-76AA-487B-A74F-72625D862234}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B909B70B-76AA-487B-A74F-72625D862234}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B909B70B-76AA-487B-A74F-72625D862234}.Release|Any CPU.Build.0 = Release|Any CPU
+		{364AC859-93AB-4D5B-BC54-41387986113C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{364AC859-93AB-4D5B-BC54-41387986113C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{364AC859-93AB-4D5B-BC54-41387986113C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{364AC859-93AB-4D5B-BC54-41387986113C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

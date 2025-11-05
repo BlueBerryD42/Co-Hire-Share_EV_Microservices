@@ -15,6 +15,7 @@ public class BookingDbContext : DbContext
     public DbSet<User> Users { get; set; } // For user details
     public DbSet<OwnershipGroup> OwnershipGroups { get; set; } // For group access
     public DbSet<GroupMember> GroupMembers { get; set; } // For priority calculation
+    public DbSet<MaintenanceBlock> MaintenanceBlocks { get; set; } // For preventing bookings during maintenance
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -33,6 +34,8 @@ public class BookingDbContext : DbContext
         builder.Ignore<Proposal>();
         builder.Ignore<AuditLog>();
         builder.Ignore<Vote>();
+        builder.Ignore<MaintenanceSchedule>();
+        builder.Ignore<MaintenanceRecord>();
 
         // User entity configuration (simplified for Booking service)
         builder.Entity<User>(entity =>
@@ -131,6 +134,22 @@ public class BookingDbContext : DbContext
 
             entity.HasIndex(e => new { e.VehicleId, e.StartAt, e.EndAt });
             entity.HasIndex(e => e.StartAt);
+        });
+
+        // MaintenanceBlock entity configuration
+        builder.Entity<MaintenanceBlock>(entity =>
+        {
+            entity.Property(e => e.ServiceType).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Priority).HasConversion<int>();
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+
+            // Ignore navigation property - no FK constraint in microservices
+            entity.Ignore(e => e.Vehicle);
+
+            entity.HasIndex(e => e.MaintenanceScheduleId).IsUnique();
+            entity.HasIndex(e => new { e.VehicleId, e.StartTime, e.EndTime });
+            entity.HasIndex(e => e.Status);
         });
 
         // Configure automatic timestamp updates

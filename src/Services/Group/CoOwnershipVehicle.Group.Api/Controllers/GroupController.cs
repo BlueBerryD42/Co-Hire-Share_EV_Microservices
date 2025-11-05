@@ -37,6 +37,7 @@ public class GroupController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
+            _logger.LogInformation("GetUserGroups called for UserId: {UserId}", userId); // Added log
             
             var groups = await _context.OwnershipGroups
                 .Include(g => g.Members)
@@ -146,6 +147,68 @@ public class GroupController : ControllerBase
         {
             _logger.LogError(ex, "Error getting group {GroupId}", id);
             return StatusCode(500, new { message = "An error occurred while retrieving group" });
+        }
+    }
+
+    /// <summary>
+    /// Get group details with members (for inter-service communication)
+    /// </summary>
+    [HttpGet("{id:guid}/details")]
+    public async Task<IActionResult> GetGroupDetails(Guid id)
+    {
+        try
+        {
+            _logger.LogInformation("GetGroupDetails called for GroupId: {GroupId}", id);
+
+            var group = await _context.OwnershipGroups
+                .Include(g => g.Members)  // Only load Members, NOT User
+                .Where(g => g.Id == id)
+                .FirstOrDefaultAsync();
+
+            if (group == null)
+            {
+                _logger.LogWarning("Group {GroupId} not found", id);
+                return NotFound(new { message = "Group not found" });
+            }
+
+            _logger.LogInformation("Group {GroupId} found: {GroupName}. Members collection count: {MemberCount}",
+                id, group.Name, group.Members?.Count ?? 0);
+
+            // Check if Members is null or empty
+            if (group.Members == null)
+            {
+                _logger.LogWarning("Group {GroupId} Members collection is NULL", id);
+            }
+            else if (!group.Members.Any())
+            {
+                _logger.LogWarning("Group {GroupId} Members collection is EMPTY (Count = 0)", id);
+            }
+            else
+            {
+                _logger.LogInformation("Group {GroupId} has {Count} members. Member IDs: {MemberIds}",
+                    id, group.Members.Count, string.Join(", ", group.Members.Select(m => m.UserId)));
+            }
+
+            // For microservices: Return only UserId, let the caller get user details from Auth Service
+            var response = new
+            {
+                GroupId = group.Id,
+                GroupName = group.Name,
+                Members = group.Members.Select(m => new
+                {
+                    UserId = m.UserId,
+                    OwnershipPercentage = m.SharePercentage * 100, // Convert to percentage
+                    Role = m.RoleInGroup.ToString()
+                }).ToList()
+            };
+
+            _logger.LogInformation("Returning response with {Count} members", response.Members.Count);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting group details {GroupId}", id);
+            return StatusCode(500, new { message = "An error occurred while retrieving group details" });
         }
     }
 

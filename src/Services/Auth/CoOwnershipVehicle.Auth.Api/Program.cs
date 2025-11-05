@@ -95,10 +95,10 @@ builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
     var programLogger = sp.GetRequiredService<ILogger<Program>>();
     programLogger.LogInformation("Redis Connection String: {ConnectionString}", redisConfig.ConnectionString);
     programLogger.LogInformation("Redis Database: {Database}", redisConfig.Database);
-    
+
     // Parse the connection string and create configuration manually
     var configuration = new StackExchange.Redis.ConfigurationOptions();
-    
+
     // Handle redis:// format
     if (redisConfig.ConnectionString.StartsWith("redis://"))
     {
@@ -108,7 +108,7 @@ builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
         {
             configuration.Password = uri.UserInfo.Split(':')[1]; // Get password after colon
         }
-        programLogger.LogInformation("Redis Host: {Host}, Port: {Port}, Has Password: {HasPassword}", 
+        programLogger.LogInformation("Redis Host: {Host}, Port: {Port}, Has Password: {HasPassword}",
             uri.Host, uri.Port, !string.IsNullOrEmpty(configuration.Password));
     }
     else
@@ -117,29 +117,35 @@ builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
         configuration = StackExchange.Redis.ConfigurationOptions.Parse(redisConfig.ConnectionString);
         programLogger.LogInformation("Redis parsed from simple format");
     }
-    
+
     // Add retry and connection settings
     configuration.AbortOnConnectFail = false;
     configuration.ConnectRetry = 3;
     configuration.ConnectTimeout = 15000;
     configuration.SyncTimeout = 5000;
-    
+
     try
     {
-        return StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
+        var multiplexer = StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
+        programLogger.LogInformation("Successfully connected to Redis");
+        return multiplexer;
     }
     catch (Exception ex)
     {
         programLogger.LogError(ex, "Failed to connect to Redis. Using in-memory fallback for refresh tokens.");
-        
-        // Return a null multiplexer - we'll handle this in the JWT service
-        return null;
+
+        // Return null - this is allowed because we don't use GetRequiredService
+        return null!;
     }
 });
 builder.Services.AddScoped<StackExchange.Redis.IDatabase>(sp =>
 {
-    var redis = sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>();
-    return redis?.GetDatabase(redisConfig.Database);
+    var redis = sp.GetService<StackExchange.Redis.IConnectionMultiplexer>();
+    if (redis == null)
+    {
+        return null!;
+    }
+    return redis.GetDatabase(redisConfig.Database);
 });
 
 // Add application services
