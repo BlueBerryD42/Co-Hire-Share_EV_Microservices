@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using DotNetEnv;
 
 namespace CoOwnershipVehicle.Shared.Configuration;
 
@@ -11,6 +12,51 @@ namespace CoOwnershipVehicle.Shared.Configuration;
 /// </summary>
 public static class EnvironmentHelper
 {
+    private static bool _envFileLoaded = false;
+    private static readonly object _lock = new object();
+
+    /// <summary>
+    /// Ensures the .env file is loaded. This is called automatically by other methods.
+    /// </summary>
+    private static void EnsureEnvFileLoaded()
+    {
+        if (_envFileLoaded) return;
+
+        lock (_lock)
+        {
+            if (_envFileLoaded) return;
+
+            // Try multiple possible paths for the .env file
+            var possibleEnvPaths = new[]
+            {
+                Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", ".env"),
+                Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "..", ".env"),
+                Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), @"..\..\..\..\..\.env")),
+                @"D:\FPT\ki_8\PRN232\Co-Hire-Share_EV_Microservices\.env"
+            };
+
+            foreach (var envPath in possibleEnvPaths)
+            {
+                if (File.Exists(envPath))
+                {
+                    try
+                    {
+                        Env.Load(envPath);
+                        Console.WriteLine($"✓ [EnvironmentHelper] Successfully loaded .env file from: {envPath}");
+                        _envFileLoaded = true;
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠ [EnvironmentHelper] Failed to load .env from {envPath}: {ex.Message}");
+                    }
+                }
+            }
+
+            Console.WriteLine($"⚠ [EnvironmentHelper] Warning: .env file not found in any expected location");
+            _envFileLoaded = true; // Mark as attempted to avoid repeated searches
+        }
+    }
     /// <summary>
     /// Gets an environment variable with fallback support.
     /// </summary>
@@ -20,66 +66,23 @@ public static class EnvironmentHelper
     /// <returns>The environment variable value or null if not found</returns>
     public static string? GetEnvironmentVariable(string key, IConfiguration? configuration = null, string? defaultValue = null)
     {
+        // Load .env file if not already loaded
+        EnsureEnvFileLoaded();
+
         // 1. Try system environment variable (production)
         var value = Environment.GetEnvironmentVariable(key);
-        if (!string.IsNullOrEmpty(value)) 
+        if (!string.IsNullOrEmpty(value))
             return value;
         
         // 2. Try configuration (appsettings.json)
         if (configuration != null)
         {
             value = configuration[key];
-            if (!string.IsNullOrEmpty(value)) 
+            if (!string.IsNullOrEmpty(value))
                 return value;
         }
-        
-        // 3. Try .env file (development fallback)
-        try
-        {
-            // Look for .env file in project root (go up from current directory)
-            var currentDir = Directory.GetCurrentDirectory();
-            var envFile = Path.Combine(currentDir, ".env");
-            
-            // If not found in current directory, try going up to find project root
-            if (!File.Exists(envFile))
-            {
-                var dir = new DirectoryInfo(currentDir);
-                while (dir != null && !File.Exists(Path.Combine(dir.FullName, ".env")))
-                {
-                    dir = dir.Parent;
-                }
-                if (dir != null)
-                {
-                    envFile = Path.Combine(dir.FullName, ".env");
-                }
-            }
-            
-            if (File.Exists(envFile))
-            {
-                var lines = File.ReadAllLines(envFile);
-                foreach (var line in lines)
-                {
-                    var trimmedLine = line.Trim();
-                    if (trimmedLine.StartsWith($"{key}=") && !trimmedLine.StartsWith("#"))
-                    {
-                        var envValue = trimmedLine.Substring(key.Length + 1).Trim();
-                        // Remove quotes if present
-                        if ((envValue.StartsWith('"') && envValue.EndsWith('"')) ||
-                            (envValue.StartsWith('\'') && envValue.EndsWith('\'')))
-                        {
-                            envValue = envValue.Substring(1, envValue.Length - 2);
-                        }
-                        return envValue;
-                    }
-                }
-            }
-        }
-        catch
-        {
-            // Ignore .env file errors - continue with default value
-        }
-        
-        // 4. Return default value if provided
+
+        // 3. Return default value if provided
         return defaultValue;
     }
 

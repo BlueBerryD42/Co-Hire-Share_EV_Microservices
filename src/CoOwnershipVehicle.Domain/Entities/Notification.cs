@@ -20,9 +20,9 @@ public class Notification : BaseEntity
     public NotificationType Type { get; set; }
     
     public NotificationPriority Priority { get; set; } = NotificationPriority.Normal;
-    
+
     public NotificationStatus Status { get; set; } = NotificationStatus.Unread;
-    
+
     public DateTime? ReadAt { get; set; }
     
     public DateTime ScheduledFor { get; set; } = DateTime.UtcNow;

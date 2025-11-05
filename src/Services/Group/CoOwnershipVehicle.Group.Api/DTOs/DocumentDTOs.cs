@@ -85,6 +85,16 @@ public class DocumentQueryParameters
     public string? SearchTerm { get; set; }
     public string? SortBy { get; set; } = "CreatedAt";
     public bool SortDescending { get; set; } = true;
+
+    /// <summary>
+    /// Include soft-deleted documents (admin only)
+    /// </summary>
+    public bool IncludeDeleted { get; set; } = false;
+
+    /// <summary>
+    /// Show only deleted documents (admin only)
+    /// </summary>
+    public bool OnlyDeleted { get; set; } = false;
 }
 
 public class PaginatedDocumentResponse
@@ -113,6 +123,12 @@ public class DocumentListItemResponse
     public string UploaderName { get; set; } = string.Empty;
     public Guid UploaderId { get; set; }
     public int DownloadCount { get; set; }
+
+    // Soft delete fields
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public Guid? DeletedBy { get; set; }
+    public string? DeletedByName { get; set; }
 }
 
 public class DocumentDownloadResponse
@@ -281,7 +297,9 @@ public class SignatureMetadata
     public string UserAgent { get; set; } = string.Empty;
     public string? GpsCoordinates { get; set; }
     public DateTime SignedAt { get; set; }
-}public class CertificateVerificationResult
+}
+
+public class CertificateVerificationResult
 {
     public string CertificateId { get; set; } = string.Empty;
     public bool IsValid { get; set; }
@@ -297,4 +315,154 @@ public class SignatureMetadata
     public string? RevocationReason { get; set; }
     public List<CertificateSignerInfo> Signers { get; set; } = new();
     public string VerificationUrl { get; set; } = string.Empty;
+}
+
+// ==================== Document Version Control DTOs ====================
+
+public class UploadDocumentVersionRequest
+{
+    [Required]
+    public IFormFile File { get; set; } = null!;
+
+    [StringLength(1000)]
+    public string? ChangeDescription { get; set; }
+}
+
+public class DocumentVersionResponse
+{
+    public Guid Id { get; set; }
+    public Guid DocumentId { get; set; }
+    public int VersionNumber { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public long FileSize { get; set; }
+    public string ContentType { get; set; } = string.Empty;
+    public string? FileHash { get; set; }
+    public Guid UploadedBy { get; set; }
+    public string UploaderName { get; set; } = string.Empty;
+    public DateTime UploadedAt { get; set; }
+    public string? ChangeDescription { get; set; }
+    public bool IsCurrent { get; set; }
+}
+
+public class DocumentVersionListResponse
+{
+    public Guid DocumentId { get; set; }
+    public string DocumentName { get; set; } = string.Empty;
+    public int TotalVersions { get; set; }
+    public List<DocumentVersionResponse> Versions { get; set; } = new();
+}
+
+// ==================== Soft Delete DTOs ====================
+
+public class DeletedDocumentsQueryParameters
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public Guid? GroupId { get; set; }
+    public DateTime? DeletedAfter { get; set; }
+    public DateTime? DeletedBefore { get; set; }
+    public string? SearchTerm { get; set; }
+}
+
+public class DeletedDocumentResponse
+{
+    public Guid Id { get; set; }
+    public Guid GroupId { get; set; }
+    public DocumentType Type { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public long FileSize { get; set; }
+    public SignatureStatus SignatureStatus { get; set; }
+    public string? Description { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime DeletedAt { get; set; }
+    public Guid DeletedBy { get; set; }
+    public string DeletedByName { get; set; } = string.Empty;
+    public int DaysUntilPermanentDeletion { get; set; }
+}
+
+public class PaginatedDeletedDocumentResponse
+{
+    public List<DeletedDocumentResponse> Items { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+}
+
+public class RestoreDocumentResponse
+{
+    public Guid DocumentId { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public DateTime RestoredAt { get; set; }
+    public Guid RestoredBy { get; set; }
+}
+
+public class BulkDeleteRequest
+{
+    [Required]
+    [MinLength(1, ErrorMessage = "At least one document ID is required")]
+    public List<Guid> DocumentIds { get; set; } = new();
+}
+
+public class BulkDeleteResponse
+{
+    public int TotalRequested { get; set; }
+    public int SuccessfullyDeleted { get; set; }
+    public int Failed { get; set; }
+    public List<BulkDeleteResult> Results { get; set; } = new();
+}
+
+public class BulkDeleteResult
+{
+    public Guid DocumentId { get; set; }
+    public bool Success { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+// ==================== Signature Reminder DTOs ====================
+
+public class SendReminderRequest
+{
+    [StringLength(500)]
+    public string? CustomMessage { get; set; }
+
+    public List<Guid>? SpecificSignerIds { get; set; } // null = all pending signers
+}
+
+public class SendReminderResponse
+{
+    public Guid DocumentId { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public int RemindersSent { get; set; }
+    public List<ReminderRecipient> Recipients { get; set; } = new();
+    public DateTime SentAt { get; set; }
+}
+
+public class ReminderRecipient
+{
+    public Guid SignerId { get; set; }
+    public string SignerName { get; set; } = string.Empty;
+    public string SignerEmail { get; set; } = string.Empty;
+    public bool Sent { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+public class ReminderHistoryResponse
+{
+    public Guid DocumentId { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public int TotalReminders { get; set; }
+    public List<ReminderHistoryItem> Reminders { get; set; } = new();
+}
+
+public class ReminderHistoryItem
+{
+    public Guid Id { get; set; }
+    public Guid SignerId { get; set; }
+    public string SignerName { get; set; } = string.Empty;
+    public ReminderType ReminderType { get; set; }
+    public DateTime SentAt { get; set; }
+    public bool IsManual { get; set; }
+    public ReminderDeliveryStatus Status { get; set; }
+    public string? Message { get; set; }
 }
