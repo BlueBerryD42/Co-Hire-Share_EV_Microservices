@@ -245,6 +245,60 @@ namespace CoOwnershipVehicle.Booking.Api.Migrations.BookingDb
                     b.ToTable("GroupMembers");
                 });
 
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.MaintenanceBlock", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("EndTime")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MaintenanceScheduleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ServiceType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartTime")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaintenanceScheduleId")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("VehicleId", "StartTime", "EndTime");
+
+                    b.ToTable("MaintenanceBlocks");
+                });
+
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
                 {
                     b.Property<Guid>("Id")

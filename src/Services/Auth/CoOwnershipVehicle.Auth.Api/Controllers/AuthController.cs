@@ -159,7 +159,17 @@ public class AuthController : ControllerBase
                 return BadRequest(new { message = "Email not confirmed. Please check your email." });
             }
 
-            var loginResponse = await _tokenService.GenerateTokenAsync(user);
+            LoginResponseDto loginResponse;
+            try
+            {
+                loginResponse = await _tokenService.GenerateTokenAsync(user);
+            }
+            catch (Exception tokenEx)
+            {
+                _logger.LogError(tokenEx, "Error generating token for user {Email}. User details - Id: {UserId}, FirstName: {FirstName}, LastName: {LastName}",
+                    request.Email, user.Id, user.FirstName ?? "null", user.LastName ?? "null");
+                throw;
+            }
 
             _logger.LogInformation("User {Email} logged in successfully", user.Email);
 
@@ -320,6 +330,67 @@ public class AuthController : ControllerBase
         {
             _logger.LogError(ex, "Error confirming email for user {UserId}", request.UserId);
             return StatusCode(500, new { message = "An error occurred during email confirmation" });
+        }
+    }
+
+    /// <summary>
+    /// Debug endpoint to test user and token generation
+    /// </summary>
+    [HttpPost("debug-login")]
+    public async Task<IActionResult> DebugLogin([FromBody] LoginDto request)
+    {
+        try
+        {
+            _logger.LogInformation("DEBUG: Starting login for {Email}", request.Email);
+
+            var user = await _userManager.FindByEmailAsync(request.Email);
+            if (user == null)
+            {
+                _logger.LogWarning("DEBUG: User not found");
+                return NotFound(new { message = "User not found", email = request.Email });
+            }
+
+            _logger.LogInformation("DEBUG: User found - Id: {Id}, FirstName: {FirstName}, LastName: {LastName}, EmailConfirmed: {EmailConfirmed}",
+                user.Id, user.FirstName ?? "NULL", user.LastName ?? "NULL", user.EmailConfirmed);
+
+            var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, false);
+            _logger.LogInformation("DEBUG: Password check - Succeeded: {Succeeded}", result.Succeeded);
+
+            if (!result.Succeeded)
+            {
+                return Unauthorized(new { message = "Invalid password" });
+            }
+
+            _logger.LogInformation("DEBUG: About to generate token");
+
+            try
+            {
+                var loginResponse = await _tokenService.GenerateTokenAsync(user);
+                _logger.LogInformation("DEBUG: Token generated successfully");
+                return Ok(new { message = "Success", data = loginResponse });
+            }
+            catch (Exception tokenEx)
+            {
+                _logger.LogError(tokenEx, "DEBUG: Token generation failed - Message: {Message}, StackTrace: {StackTrace}",
+                    tokenEx.Message, tokenEx.StackTrace);
+                return StatusCode(500, new {
+                    message = "Token generation failed",
+                    error = tokenEx.Message,
+                    innerError = tokenEx.InnerException?.Message,
+                    type = tokenEx.GetType().Name
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DEBUG: General error - Message: {Message}, StackTrace: {StackTrace}",
+                ex.Message, ex.StackTrace);
+            return StatusCode(500, new {
+                message = "An error occurred",
+                error = ex.Message,
+                innerError = ex.InnerException?.Message,
+                type = ex.GetType().Name
+            });
         }
     }
 
