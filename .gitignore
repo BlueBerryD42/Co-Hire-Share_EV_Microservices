@@ -422,3 +422,11 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# JetBrains IDEA
+
+.idea/
+
+# User-specific files
+
+*.txt

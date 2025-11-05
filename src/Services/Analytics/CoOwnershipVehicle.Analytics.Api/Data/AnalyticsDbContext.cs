@@ -11,6 +11,9 @@ public class AnalyticsDbContext : DbContext
 
     // Analytics service entities - only what it actually needs
     public DbSet<CoOwnershipVehicle.Domain.Entities.AnalyticsSnapshot> AnalyticsSnapshots { get; set; }
+    public DbSet<CoOwnershipVehicle.Domain.Entities.UserAnalytics> UserAnalytics { get; set; }
+    public DbSet<CoOwnershipVehicle.Analytics.Api.Data.Entities.FairnessTrend> FairnessTrends { get; set; }
+    public DbSet<CoOwnershipVehicle.Analytics.Api.Data.Entities.BookingSuggestionFeedback> BookingSuggestionFeedback { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -54,6 +57,27 @@ public class AnalyticsDbContext : DbContext
             entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.VehicleId);
             entity.HasIndex(e => e.Period);
+        });
+
+        // Minimal configuration for UserAnalytics used by AI fairness computation
+        builder.Entity<CoOwnershipVehicle.Domain.Entities.UserAnalytics>(entity =>
+        {
+            entity.Property(e => e.Period).HasConversion<int>();
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.PeriodStart);
+        });
+
+        // FairnessTrend entity configuration
+        builder.Entity<CoOwnershipVehicle.Analytics.Api.Data.Entities.FairnessTrend>(entity =>
+        {
+            entity.HasIndex(e => new { e.GroupId, e.PeriodStart, e.PeriodEnd }).IsUnique();
+        });
+
+        // BookingSuggestionFeedback entity configuration
+        builder.Entity<CoOwnershipVehicle.Analytics.Api.Data.Entities.BookingSuggestionFeedback>(entity =>
+        {
+            entity.HasIndex(e => new { e.UserId, e.GroupId, e.SuggestedStart });
         });
 
         // Configure automatic timestamp updates

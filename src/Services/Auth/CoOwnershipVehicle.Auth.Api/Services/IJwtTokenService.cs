@@ -40,6 +40,10 @@ public class JwtTokenService : IJwtTokenService
         {
             _logger.LogWarning("Redis database is not available. Refresh tokens will use in-memory storage.");
         }
+        else
+        {
+            _logger.LogInformation("Redis database is available. Refresh tokens will be stored in Redis.");
+        }
     }
 
     public async Task<LoginResponseDto> GenerateTokenAsync(User user)
