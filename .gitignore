@@ -381,6 +381,10 @@ __pycache__/
 *.xsd.cs
 
 # OpenCover UI analysis results
+
+#Cursor AI
+.cursor/
+
 OpenCover/
 
 # Azure Stream Analytics local run output
