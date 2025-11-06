@@ -52,8 +52,8 @@ public class MaintenanceScheduledConsumer : IConsumer<MaintenanceScheduledEvent>
                 ServiceType = evt.ServiceType,
                 StartTime = evt.MaintenanceStartTime,
                 EndTime = evt.MaintenanceEndTime,
-                Status = MaintenanceStatus.Scheduled,
-                Priority = evt.Priority,
+                Status = Domain.Enums.MaintenanceStatus.Scheduled,
+                Priority = evt.Priority, // evt.Priority is already Domain.Enums.MaintenancePriority
                 Notes = $"Maintenance: {evt.ServiceType}",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -103,7 +103,7 @@ public class MaintenanceCancelledConsumer : IConsumer<MaintenanceCancelledEvent>
 
             if (block != null)
             {
-                block.Status = MaintenanceStatus.Cancelled;
+                block.Status = Domain.Enums.MaintenanceStatus.Cancelled;
                 block.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 

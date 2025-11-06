@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using CoOwnershipVehicle.Domain.Entities;
+using CoOwnershipVehicle.Domain.Enums;
 
 namespace CoOwnershipVehicle.Shared.Contracts.DTOs;
 

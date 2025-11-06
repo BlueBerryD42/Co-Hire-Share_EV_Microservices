@@ -73,7 +73,7 @@ public class GroupServiceClient : IGroupServiceClient
         }
     }
 
-    public async Task<GroupDetailsDto?> GetGroupDetailsAsync(Guid groupId, string accessToken)
+    public async Task<CoOwnershipVehicle.Shared.Contracts.DTOs.GroupDetailsDto?> GetGroupDetailsAsync(Guid groupId, string accessToken)
     {
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
@@ -96,7 +96,7 @@ public class GroupServiceClient : IGroupServiceClient
                 {
                     PropertyNameCaseInsensitive = true
                 };
-                var result = JsonSerializer.Deserialize<GroupDetailsDto>(content, options);
+                var result = JsonSerializer.Deserialize<CoOwnershipVehicle.Shared.Contracts.DTOs.GroupDetailsDto>(content, options);
 
                 if (result != null)
                 {
@@ -126,11 +126,11 @@ public class GroupServiceClient : IGroupServiceClient
             _logger.LogWarning(ex, "Group Service is not available at {BaseUrl}. Group ID: {GroupId}",
                 _httpClient.BaseAddress, groupId);
             // Graceful degradation - return default data
-            return new GroupDetailsDto
+            return new CoOwnershipVehicle.Shared.Contracts.DTOs.GroupDetailsDto
             {
-                GroupId = groupId,
-                GroupName = "Unknown Group",
-                Members = new List<GroupMemberWithOwnership>()
+                Id = groupId,
+                Name = "Unknown Group",
+                Members = new List<CoOwnershipVehicle.Shared.Contracts.DTOs.GroupMemberDetailsDto>()
             };
         }
         catch (Exception ex)

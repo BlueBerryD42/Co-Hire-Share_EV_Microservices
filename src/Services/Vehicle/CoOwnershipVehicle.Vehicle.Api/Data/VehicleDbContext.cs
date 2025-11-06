@@ -38,6 +38,17 @@ public class VehicleDbContext : DbContext
         builder.Ignore<NotificationTemplate>();
         builder.Ignore<AnalyticsSnapshot>();
         builder.Ignore<Document>();
+        builder.Ignore<DocumentTag>();
+        builder.Ignore<DocumentTagMapping>();
+        builder.Ignore<DocumentSignature>();
+        builder.Ignore<DocumentDownload>();
+        builder.Ignore<DocumentVersion>();
+        builder.Ignore<DocumentTemplate>();
+        builder.Ignore<DocumentShare>();
+        builder.Ignore<DocumentShareAccess>();
+        builder.Ignore<SigningCertificate>();
+        builder.Ignore<SignatureReminder>();
+        builder.Ignore<SavedDocumentSearch>();
         builder.Ignore<LedgerEntry>();
         builder.Ignore<Proposal>();
         builder.Ignore<AuditLog>();
@@ -170,7 +181,7 @@ builder.Entity<MaintenanceRecord>(entity =>
     entity.Ignore(e => e.Expense);
 
     entity.HasIndex(e => new { e.VehicleId, e.Status, e.ScheduledDate });
-    entity.HasIndex(e => e.ServiceDate);
+    entity.HasIndex(e => e.ScheduledDate);
     entity.HasIndex(e => e.OdometerReading);
 });
 
@@ -232,6 +243,17 @@ builder.Entity<CoOwnershipVehicle.Domain.Entities.Booking>(entity =>
         builder.Ignore<Notification>();
         builder.Ignore<AnalyticsSnapshot>();
         builder.Ignore<Document>();
+        builder.Ignore<DocumentTag>();
+        builder.Ignore<DocumentTagMapping>();
+        builder.Ignore<DocumentSignature>();
+        builder.Ignore<DocumentDownload>();
+        builder.Ignore<DocumentVersion>();
+        builder.Ignore<DocumentTemplate>();
+        builder.Ignore<DocumentShare>();
+        builder.Ignore<DocumentShareAccess>();
+        builder.Ignore<SigningCertificate>();
+        builder.Ignore<SignatureReminder>();
+        builder.Ignore<SavedDocumentSearch>();
         builder.Ignore<LedgerEntry>();
         builder.Ignore<Proposal>();
         builder.Ignore<AuditLog>();

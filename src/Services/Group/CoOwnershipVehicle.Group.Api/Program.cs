@@ -11,6 +11,18 @@ using MassTransit; // Added for MassTransit
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load .env file if it exists
+var envFilePath = EnvironmentHelper.FindEnvFile();
+if (!string.IsNullOrEmpty(envFilePath))
+{
+    ((IConfigurationBuilder)builder.Configuration).Add(new EnvFileConfigurationSource(envFilePath));
+    Console.WriteLine($"[INFO] Loaded configuration from .env file: {envFilePath}");
+}
+else
+{
+    Console.WriteLine("[WARN] .env file not found. Relying on system environment variables and appsettings.json.");
+}
+
 // Configure logging to exclude EventLog (prevents disposal issues on Windows)
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
@@ -206,7 +218,11 @@ app.Logger.LogInformation($"FileStorage:LocalStoragePath from configuration: {ap
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Co-Ownership Vehicle Group API");
+        c.RoutePrefix = string.Empty; // Makes Swagger available at root
+    });
 }
 
 app.UseHttpsRedirection();

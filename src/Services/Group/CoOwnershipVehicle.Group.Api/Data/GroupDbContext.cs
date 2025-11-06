@@ -159,11 +159,16 @@ public class GroupDbContext : DbContext
 
             // Add query filter for soft delete (global filter)
             entity.HasQueryFilter(e => !e.IsDeleted);
+            
+            // Explicit table name to match migration
+            entity.ToTable("Documents");
         });
 
         // DocumentSignature entity configuration
         builder.Entity<DocumentSignature>(entity =>
         {
+            entity.ToTable("DocumentSignatures"); // Match the migration table name (renamed from DocumentSignature to DocumentSignatures)
+            
             entity.Property(e => e.SignatureReference).HasMaxLength(500);
             entity.Property(e => e.SignatureMetadata).HasMaxLength(2000);
             entity.Property(e => e.Status).HasConversion<int>();

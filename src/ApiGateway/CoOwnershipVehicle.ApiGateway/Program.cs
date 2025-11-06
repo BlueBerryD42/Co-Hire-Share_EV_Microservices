@@ -15,6 +15,18 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load .env file if it exists
+var envFilePath = EnvironmentHelper.FindEnvFile();
+if (!string.IsNullOrEmpty(envFilePath))
+{
+    ((IConfigurationBuilder)builder.Configuration).Add(new EnvFileConfigurationSource(envFilePath));
+    Console.WriteLine($"[INFO] Loaded configuration from .env file: {envFilePath}");
+}
+else
+{
+    Console.WriteLine("[WARN] .env file not found. Relying on system environment variables and appsettings.json.");
+}
+
 // Add Serilog
 builder.Host.UseSerilog();
 
@@ -104,13 +116,17 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// ============================================================================
+// HTTP REQUEST PIPELINE CONFIGURATION
+// ============================================================================
+
+// Development exception page
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
 }
 
-// Security headers
+// Security headers middleware
 app.Use(async (context, next) =>
 {
     context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
@@ -118,20 +134,20 @@ app.Use(async (context, next) =>
     context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
     context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
     context.Response.Headers.Append("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
-
     await next();
 });
 
+// HTTPS redirection and CORS
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 
-// Rate limiting middleware
+// Rate limiting
 app.UseRateLimiter();
 
-// Authentication middleware
+// Authentication
 app.UseAuthentication();
 
-// Request logging
+// Request logging middleware
 app.Use(async (context, next) =>
 {
     var start = DateTime.UtcNow;
@@ -148,10 +164,16 @@ app.Use(async (context, next) =>
         duration.TotalMilliseconds);
 });
 
-// Health check endpoint
+// ============================================================================
+// ROUTING CONFIGURATION
+// ============================================================================
+
+// Enable routing - this must be called before registering route handlers
+app.UseRouting();
+
+// Register gateway endpoints (these will be processed by the routing system)
 app.MapHealthChecks("/health");
 
-// API Gateway status endpoint
 app.MapGet("/status", () => new
 {
     Status = "API Gateway is running",
@@ -159,16 +181,21 @@ app.MapGet("/status", () => new
     Timestamp = DateTime.UtcNow,
     Services = new
     {
-        AuthService = "https://localhost:5001",
-        UserService = "https://localhost:5002",
-        GroupService = "https://localhost:5003",
-        VehicleService = "https://localhost:5004",
-        PaymentService = "https://localhost:5005",
-        BookingService = "https://localhost:5006"
+        AuthService = "https://localhost:61601",
+        UserService = "https://localhost:61604",
+        GroupService = "https://localhost:61600",
+        VehicleService = "https://localhost:61603",
+        PaymentService = "https://localhost:61605",
+        BookingService = "https://localhost:7123",
+        AdminService = "https://localhost:61609",
+        AnalyticsService = "https://localhost:61606",
+        NotificationService = "https://localhost:59262"
     }
 });
 
-// Documentation endpoint
+// Favicon handler to prevent Ocelot from processing it
+app.MapGet("/favicon.ico", () => Results.NoContent());
+
 app.MapGet("/", () => Results.Content(
     """
     <!DOCTYPE html>
@@ -186,48 +213,66 @@ app.MapGet("/", () => Results.Content(
     </head>
     <body>
         <div class="container">
-            <h1>🚗 Co-Ownership Vehicle API Gateway</h1>
+            <h1> Co-Ownership Vehicle API Gateway</h1>
             <p>Welcome to the Co-Ownership Vehicle Management System API Gateway. This gateway provides unified access to all microservices.</p>
             
-            <h2>🔗 Available Services</h2>
+            <h2> Available Services</h2>
             
             <div class="service">
-                <h3>🔐 Auth Service (Port 5001)</h3>
+                <h3> Auth Service (Port 61601)</h3>
                 <p><span class="endpoint">/api/auth/*</span></p>
                 <p>User registration, login, JWT token management</p>
             </div>
             
             <div class="service">
-                <h3>👤 User Service (Port 5002)</h3>
+                <h3> User Service (Port 61604)</h3>
                 <p><span class="endpoint">/api/user/*</span></p>
                 <p>User profiles, KYC documents, profile management</p>
             </div>
             
             <div class="service">
-                <h3>👥 Group Service (Port 5003)</h3>
+                <h3> Group Service (Port 61600)</h3>
                 <p><span class="endpoint">/api/group/*</span></p>
                 <p>Ownership groups, member management, shares</p>
             </div>
             
             <div class="service">
-                <h3>🚗 Vehicle Service (Port 5004)</h3>
+                <h3> Vehicle Service (Port 61603)</h3>
                 <p><span class="endpoint">/api/vehicle/*</span></p>
                 <p>Vehicle management, availability checking</p>
             </div>
             
             <div class="service">
-                <h3>💰 Payment Service (Port 5005)</h3>
+                <h3> Payment Service (Port 61605)</h3>
                 <p><span class="endpoint">/api/payment/*</span></p>
                 <p>Expenses, invoices, VNPay integration</p>
             </div>
             
             <div class="service">
-                <h3>📅 Booking Service (Port 5006)</h3>
+                <h3> Booking Service (Port 7123)</h3>
                 <p><span class="endpoint">/api/booking/*</span></p>
                 <p>Vehicle bookings, priority algorithms, calendar</p>
             </div>
             
-            <h2>🔍 Monitoring</h2>
+            <div class="service">
+                <h3> Admin Service (Port 61609)</h3>
+                <p><span class="endpoint">/api/admin/*</span></p>
+                <p>Administrative functions and system management</p>
+            </div>
+            
+            <div class="service">
+                <h3> Analytics Service (Port 61606)</h3>
+                <p><span class="endpoint">/api/analytics/*</span></p>
+                <p>Analytics and reporting</p>
+            </div>
+            
+            <div class="service">
+                <h3> Notification Service (Port 59262)</h3>
+                <p><span class="endpoint">/api/notification/*</span></p>
+                <p>Notifications and alerts</p>
+            </div>
+            
+            <h2> Monitoring</h2>
             <ul>
                 <li><a href="/health">Health Checks</a></li>
                 <li><a href="/status">Gateway Status</a></li>
@@ -236,7 +281,7 @@ app.MapGet("/", () => Results.Content(
             <h2>🇻🇳 VNPay Integration</h2>
             <p>Full Vietnamese payment gateway integration with support for all local banks and e-wallets.</p>
             
-            <h2>🛡️ Security Features</h2>
+            <h2> Security Features</h2>
             <ul>
                 <li>JWT Authentication</li>
                 <li>Rate Limiting (100 req/min per endpoint)</li>
@@ -248,7 +293,18 @@ app.MapGet("/", () => Results.Content(
     </html>
     """, "text/html"));
 
-// Use Ocelot middleware
+// Execute route handlers - this ensures gateway endpoints are processed first
+// In .NET 6+ minimal APIs, MapGet/MapHealthChecks register endpoints, but we need
+// to ensure they're executed before Ocelot runs
+app.UseEndpoints(endpoints => { });
+
+// ============================================================================
+// OCELOT CONFIGURATION
+// ============================================================================
+
+// Apply Ocelot middleware AFTER route handlers
+// This ensures that gateway endpoints (/, /health, /status) are processed first,
+// and Ocelot only handles unmatched requests (specifically /api/* routes)
 await app.UseOcelot();
 
 app.Run();

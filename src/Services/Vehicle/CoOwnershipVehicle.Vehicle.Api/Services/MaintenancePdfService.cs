@@ -67,7 +67,7 @@ public class MaintenancePdfService : IMaintenancePdfService
                             c.Column(col =>
                             {
                                 col.Item().Text($"Service Type: {record.ServiceType}");
-                                col.Item().Text($"Service Date: {record.ServiceDate:yyyy-MM-dd HH:mm}");
+                                col.Item().Text($"Service Date: {record.ScheduledDate:yyyy-MM-dd HH:mm}");
                                 col.Item().Text($"Service Provider: {record.ServiceProvider}");
                                 col.Item().Text($"Completion: {record.CompletionPercentage}%");
                             });

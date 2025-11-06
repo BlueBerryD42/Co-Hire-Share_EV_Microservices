@@ -13,6 +13,18 @@ using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load .env file if it exists
+var envFilePath = EnvironmentHelper.FindEnvFile();
+if (!string.IsNullOrEmpty(envFilePath))
+{
+    ((IConfigurationBuilder)builder.Configuration).Add(new EnvFileConfigurationSource(envFilePath));
+    Console.WriteLine($"[INFO] Loaded configuration from .env file: {envFilePath}");
+}
+else
+{
+    Console.WriteLine("[WARN] .env file not found. Relying on system environment variables and appsettings.json.");
+}
+
 // Add services to the container.
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
 dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_AUTH", builder.Configuration) ?? "CoOwnershipVehicle_Auth";
@@ -131,11 +143,32 @@ try
 
     programLogger.LogInformation("Attempting to connect to Redis...");
 
-    redisConnection = StackExchange.Redis.ConnectionMultiplexer.Connect(configuration);
+    // Use ConnectAsync with timeout to prevent hanging
+    var connectTask = StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(configuration);
+    var timeoutTask = Task.Delay(TimeSpan.FromSeconds(10));
+    
+    var completedTask = await Task.WhenAny(connectTask, timeoutTask);
+    if (completedTask == timeoutTask)
+    {
+        programLogger.LogWarning("Redis connection timed out after 10 seconds. Continuing without Redis.");
+        throw new TimeoutException("Redis connection timed out after 10 seconds");
+    }
+    
+    redisConnection = await connectTask;
 
-    // Quick ping test
+    // Quick ping test with timeout
     var db = redisConnection.GetDatabase(redisConfig.Database);
-    db.Ping();
+    var pingTask = db.PingAsync();
+    var pingTimeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+    var pingCompleted = await Task.WhenAny(pingTask, pingTimeoutTask);
+    
+    if (pingCompleted == pingTimeoutTask)
+    {
+        programLogger.LogWarning("Redis ping timed out after 5 seconds. Continuing without Redis.");
+        throw new TimeoutException("Redis ping timed out after 5 seconds");
+    }
+    
+    await pingTask;
 
     programLogger.LogInformation("✅ Successfully connected to Redis");
 }

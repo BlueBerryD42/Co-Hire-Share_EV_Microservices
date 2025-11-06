@@ -53,7 +53,7 @@ public static class EnvironmentHelper
                 }
             }
 
-            Console.WriteLine($"⚠ [EnvironmentHelper] Warning: .env file not found in any expected location");
+            Console.WriteLine($"[EnvironmentHelper] Warning: .env file not found in any expected location");
             _envFileLoaded = true; // Mark as attempted to avoid repeated searches
         }
     }

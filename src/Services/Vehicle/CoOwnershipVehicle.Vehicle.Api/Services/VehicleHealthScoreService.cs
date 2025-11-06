@@ -318,7 +318,7 @@ public class VehicleHealthScoreService
         var cutoffDate = DateTime.UtcNow.AddMonths(-recentMonths);
 
         var serviceRecords = await _context.MaintenanceRecords
-            .Where(m => m.VehicleId == vehicle.Id && m.ServiceDate >= cutoffDate)
+            .Where(m => m.VehicleId == vehicle.Id && m.ScheduledDate >= cutoffDate)
             .CountAsync();
 
         // Expected: at least 2 services per year (oil change, inspection)
@@ -428,7 +428,7 @@ public class VehicleHealthScoreService
         var recentInspections = await _context.MaintenanceRecords
             .Where(m => m.VehicleId == vehicle.Id &&
                         m.ServiceProviderRating.HasValue)
-            .OrderByDescending(m => m.ServiceDate)
+            .OrderByDescending(m => m.ScheduledDate)
             .Take(3)
             .ToListAsync();
 

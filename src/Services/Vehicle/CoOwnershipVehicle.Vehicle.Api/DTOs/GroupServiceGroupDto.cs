@@ -23,12 +23,5 @@ public class GroupMemberWithOwnership
     public string? Email { get; set; }
 }
 
-/// <summary>
-/// Group details with members
-/// </summary>
-public class GroupDetailsDto
-{
-    public Guid GroupId { get; set; }
-    public string GroupName { get; set; } = string.Empty;
-    public List<GroupMemberWithOwnership> Members { get; set; } = new();
-}
+// Note: GroupDetailsDto is defined in CoOwnershipVehicle.Shared.Contracts.DTOs
+// This local DTO was removed to avoid ambiguity. Use the shared contract version instead.

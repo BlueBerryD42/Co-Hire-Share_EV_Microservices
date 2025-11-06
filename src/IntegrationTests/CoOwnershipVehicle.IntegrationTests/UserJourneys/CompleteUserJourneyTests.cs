@@ -1,4 +1,5 @@
 using CoOwnershipVehicle.Domain.Entities;
+using CoOwnershipVehicle.Domain.Enums;
 using CoOwnershipVehicle.IntegrationTests.TestFixtures;
 using FluentAssertions;
 

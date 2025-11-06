@@ -50,7 +50,7 @@ public class MaintenanceService : IMaintenanceService
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<MaintenanceSchedule>> GetSchedulesByStatusAsync(MaintenanceStatus status)
+    public async Task<IEnumerable<MaintenanceSchedule>> GetSchedulesByStatusAsync(CoOwnershipVehicle.Domain.Enums.MaintenanceStatus status)
     {
         return await _context.MaintenanceSchedules
             .Where(s => s.Status == status)
@@ -62,7 +62,7 @@ public class MaintenanceService : IMaintenanceService
     {
         var now = DateTime.UtcNow;
         return await _context.MaintenanceSchedules
-            .Where(s => s.ScheduledDate < now && s.Status == MaintenanceStatus.Scheduled)
+            .Where(s => s.ScheduledDate < now && s.Status == CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Scheduled)
             .OrderBy(s => s.ScheduledDate)
             .ToListAsync();
     }
@@ -88,7 +88,7 @@ public class MaintenanceService : IMaintenanceService
         if (existing == null)
             return null;
 
-        existing.ServiceType = schedule.ServiceType;
+        existing.ServiceType = schedule.ServiceType; // MaintenanceSchedule.ServiceType is already ServiceType from Domain.Enums
         existing.ScheduledDate = schedule.ScheduledDate;
         existing.Status = schedule.Status;
         existing.EstimatedCost = schedule.EstimatedCost;
@@ -119,7 +119,7 @@ public class MaintenanceService : IMaintenanceService
         return true;
     }
 
-    public async Task<bool> UpdateScheduleStatusAsync(Guid id, MaintenanceStatus status)
+    public async Task<bool> UpdateScheduleStatusAsync(Guid id, CoOwnershipVehicle.Domain.Enums.MaintenanceStatus status)
     {
         var schedule = await _context.MaintenanceSchedules.FindAsync(id);
         if (schedule == null)
@@ -150,23 +150,23 @@ public class MaintenanceService : IMaintenanceService
     {
         return await _context.MaintenanceRecords
             .Where(r => r.VehicleId == vehicleId)
-            .OrderByDescending(r => r.ServiceDate)
+            .OrderByDescending(r => r.ScheduledDate)
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<MaintenanceRecord>> GetRecordsByServiceTypeAsync(Guid vehicleId, ServiceType serviceType)
+    public async Task<IEnumerable<MaintenanceRecord>> GetRecordsByServiceTypeAsync(Guid vehicleId, CoOwnershipVehicle.Domain.Enums.ServiceType serviceType)
     {
         return await _context.MaintenanceRecords
-            .Where(r => r.VehicleId == vehicleId && r.ServiceType == serviceType)
-            .OrderByDescending(r => r.ServiceDate)
+            .Where(r => r.VehicleId == vehicleId && (int)r.ServiceType == (int)serviceType)
+            .OrderByDescending(r => r.ScheduledDate)
             .ToListAsync();
     }
 
-    public async Task<MaintenanceRecord?> GetLatestRecordByTypeAsync(Guid vehicleId, ServiceType serviceType)
+    public async Task<MaintenanceRecord?> GetLatestRecordByTypeAsync(Guid vehicleId, CoOwnershipVehicle.Domain.Enums.ServiceType serviceType)
     {
         return await _context.MaintenanceRecords
-            .Where(r => r.VehicleId == vehicleId && r.ServiceType == serviceType)
-            .OrderByDescending(r => r.ServiceDate)
+            .Where(r => r.VehicleId == vehicleId && (int)r.ServiceType == (int)serviceType)
+            .OrderByDescending(r => r.ScheduledDate)
             .FirstOrDefaultAsync();
     }
 
@@ -192,7 +192,7 @@ public class MaintenanceService : IMaintenanceService
             return null;
 
         existing.ServiceType = record.ServiceType;
-        existing.ServiceDate = record.ServiceDate;
+        existing.ScheduledDate = record.ScheduledDate;
         existing.OdometerReading = record.OdometerReading;
         existing.ActualCost = record.ActualCost;
         existing.ServiceProvider = record.ServiceProvider;
@@ -233,19 +233,19 @@ public class MaintenanceService : IMaintenanceService
         var query = _context.MaintenanceRecords.Where(r => r.VehicleId == vehicleId);
 
         if (startDate.HasValue)
-            query = query.Where(r => r.ServiceDate >= startDate.Value);
+            query = query.Where(r => r.ScheduledDate >= startDate.Value);
 
         if (endDate.HasValue)
-            query = query.Where(r => r.ServiceDate <= endDate.Value);
+            query = query.Where(r => r.ScheduledDate <= endDate.Value);
 
-        return await query.SumAsync(r => r.ActualCost);
+        return await query.SumAsync(r => r.ActualCost ?? 0);
     }
 
     public async Task<IEnumerable<MaintenanceRecord>> GetMaintenanceHistoryAsync(Guid vehicleId, int? limit = null)
     {
         var query = _context.MaintenanceRecords
             .Where(r => r.VehicleId == vehicleId)
-            .OrderByDescending(r => r.ServiceDate);
+            .OrderByDescending(r => r.ScheduledDate);
 
         if (limit.HasValue)
             query = (IOrderedQueryable<MaintenanceRecord>)query.Take(limit.Value);
@@ -330,7 +330,7 @@ public class MaintenanceService : IMaintenanceService
             VehicleId = request.VehicleId,
             ServiceType = request.ServiceType,
             ScheduledDate = request.ScheduledDate,
-            Status = MaintenanceStatus.Scheduled,
+            Status = CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Scheduled,
             EstimatedCost = request.EstimatedCost,
             EstimatedDuration = request.EstimatedDuration,
             ServiceProvider = request.ServiceProvider,
@@ -399,7 +399,7 @@ public class MaintenanceService : IMaintenanceService
             Title = "Vehicle Maintenance Scheduled",
             Message = $"Maintenance ({schedule.ServiceType}) scheduled for vehicle {vehicle.Model} ({vehicle.PlateNumber}) on {maintenanceStartTime:yyyy-MM-dd HH:mm}",
             Type = "MaintenanceScheduled",
-            Priority = schedule.Priority == MaintenancePriority.Urgent ? "High" : "Normal",
+            Priority = schedule.Priority == CoOwnershipVehicle.Domain.Enums.MaintenancePriority.Urgent ? "High" : "Normal",
             ActionUrl = $"/vehicles/{vehicle.Id}/maintenance/{schedule.Id}",
             ActionText = "View Details"
         });
@@ -432,8 +432,8 @@ public class MaintenanceService : IMaintenanceService
         // 2. Check for conflicting maintenance schedules
         var conflictingSchedules = await _context.MaintenanceSchedules
             .Where(s => s.VehicleId == vehicleId &&
-                       s.Status != MaintenanceStatus.Cancelled &&
-                       s.Status != MaintenanceStatus.Completed &&
+                       s.Status != CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Cancelled &&
+                       s.Status != CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Completed &&
                        (excludeScheduleId == null || s.Id != excludeScheduleId))
             .ToListAsync();
 
@@ -513,8 +513,8 @@ public class MaintenanceService : IMaintenanceService
         {
             // Default: show future and in-progress only
             schedulesQuery = schedulesQuery.Where(s =>
-                s.Status == MaintenanceStatus.Scheduled ||
-                s.Status == MaintenanceStatus.InProgress);
+                s.Status == CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Scheduled ||
+                s.Status == CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.InProgress);
         }
 
         // Get total count
@@ -581,18 +581,18 @@ public class MaintenanceService : IMaintenanceService
         // Filter by service type if provided
         if (query.ServiceType.HasValue)
         {
-            recordsQuery = recordsQuery.Where(r => r.ServiceType == query.ServiceType.Value);
+            recordsQuery = recordsQuery.Where(r => (int)r.ServiceType == (int)query.ServiceType.Value);
         }
 
         // Filter by date range if provided
         if (query.StartDate.HasValue)
         {
-            recordsQuery = recordsQuery.Where(r => r.ServiceDate >= query.StartDate.Value);
+            recordsQuery = recordsQuery.Where(r => r.ScheduledDate >= query.StartDate.Value);
         }
 
         if (query.EndDate.HasValue)
         {
-            recordsQuery = recordsQuery.Where(r => r.ServiceDate <= query.EndDate.Value);
+            recordsQuery = recordsQuery.Where(r => r.ScheduledDate <= query.EndDate.Value);
         }
 
         // Get total count
@@ -600,17 +600,17 @@ public class MaintenanceService : IMaintenanceService
 
         // 4. Sort by service date (most recent first) and paginate
         var records = await recordsQuery
-            .OrderByDescending(r => r.ServiceDate)
+            .OrderByDescending(r => r.ScheduledDate)
             .Skip((query.PageNumber - 1) * query.PageSize)
             .Take(query.PageSize)
             .Select(r => new MaintenanceHistoryDto
             {
                 Id = r.Id,
                 VehicleId = r.VehicleId,
-                ServiceType = r.ServiceType,
-                ServiceDate = r.ServiceDate,
-                OdometerReading = r.OdometerReading,
-                ActualCost = r.ActualCost,
+                ServiceType = (CoOwnershipVehicle.Domain.Enums.ServiceType)(int)r.ServiceType,
+                ServiceDate = r.ScheduledDate,
+                OdometerReading = r.OdometerReading ?? 0,
+                ActualCost = r.ActualCost ?? 0,
                 ServiceProvider = r.ServiceProvider,
                 WorkPerformed = r.WorkPerformed,
                 PartsReplaced = r.PartsReplaced,
@@ -651,36 +651,36 @@ public class MaintenanceService : IMaintenanceService
         // Apply date filters if provided
         if (startDate.HasValue)
         {
-            baseQuery = baseQuery.Where(r => r.ServiceDate >= startDate.Value);
+            baseQuery = baseQuery.Where(r => r.ScheduledDate >= startDate.Value);
         }
 
         if (endDate.HasValue)
         {
-            baseQuery = baseQuery.Where(r => r.ServiceDate <= endDate.Value);
+            baseQuery = baseQuery.Where(r => r.ScheduledDate <= endDate.Value);
         }
 
         var allRecords = await baseQuery.ToListAsync();
 
         // Calculate totals
-        var totalCostAllTime = allRecords.Sum(r => r.ActualCost);
+        var totalCostAllTime = allRecords.Sum(r => r.ActualCost ?? 0);
         var totalCostThisYear = allRecords
-            .Where(r => r.ServiceDate >= startOfYear)
-            .Sum(r => r.ActualCost);
+            .Where(r => r.ScheduledDate >= startOfYear)
+            .Sum(r => r.ActualCost ?? 0);
         var totalCostThisMonth = allRecords
-            .Where(r => r.ServiceDate >= startOfMonth)
-            .Sum(r => r.ActualCost);
+            .Where(r => r.ScheduledDate >= startOfMonth)
+            .Sum(r => r.ActualCost ?? 0);
 
-        var averageCost = allRecords.Any() ? allRecords.Average(r => r.ActualCost) : 0;
+        var averageCost = allRecords.Any() ? allRecords.Average(r => r.ActualCost ?? 0) : 0;
 
         // Cost by service type
         var costByServiceType = allRecords
             .GroupBy(r => r.ServiceType)
             .Select(g => new CostByServiceType
             {
-                ServiceType = g.Key,
+                ServiceType = (CoOwnershipVehicle.Domain.Enums.ServiceType)(int)g.Key,
                 Count = g.Count(),
-                TotalCost = g.Sum(r => r.ActualCost),
-                AverageCost = g.Average(r => r.ActualCost)
+                TotalCost = g.Sum(r => r.ActualCost ?? 0),
+                AverageCost = g.Average(r => r.ActualCost ?? 0)
             })
             .OrderByDescending(c => c.TotalCost)
             .ToList();
@@ -737,8 +737,8 @@ public class MaintenanceService : IMaintenanceService
         }
 
         // 3. Validate status is Scheduled or InProgress
-        if (schedule.Status != MaintenanceStatus.Scheduled &&
-            schedule.Status != MaintenanceStatus.InProgress)
+        if (schedule.Status != CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Scheduled &&
+            schedule.Status != CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.InProgress)
         {
             throw new InvalidOperationException(
                 $"Cannot complete maintenance with status {schedule.Status}. Only Scheduled or InProgress maintenance can be completed");
@@ -753,12 +753,12 @@ public class MaintenanceService : IMaintenanceService
         // Update schedule status based on completion percentage
         if (isFullyCompleted)
         {
-            schedule.Status = MaintenanceStatus.Completed;
+            schedule.Status = CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Completed;
         }
         else
         {
             // Keep as InProgress for partial completion
-            schedule.Status = MaintenanceStatus.InProgress;
+            schedule.Status = CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.InProgress;
         }
         schedule.UpdatedAt = DateTime.UtcNow;
 
@@ -767,8 +767,8 @@ public class MaintenanceService : IMaintenanceService
         {
             Id = Guid.NewGuid(),
             VehicleId = schedule.VehicleId,
-            ServiceType = schedule.ServiceType,
-            ServiceDate = DateTime.UtcNow,
+            ServiceType = (CoOwnershipVehicle.Domain.Entities.MaintenanceServiceType)(int)schedule.ServiceType,
+            ScheduledDate = DateTime.UtcNow,
             OdometerReading = request.OdometerReading,
             ActualCost = request.ActualCost,
             ServiceProvider = schedule.ServiceProvider ?? "Unknown",
@@ -823,7 +823,7 @@ public class MaintenanceService : IMaintenanceService
             VehicleId = schedule.VehicleId,
             GroupId = schedule.Vehicle.GroupId.Value,
             ServiceType = schedule.ServiceType,
-            ServiceDate = maintenanceRecord.ServiceDate,
+            ServiceDate = maintenanceRecord.ScheduledDate,
             ActualCost = request.ActualCost,
             OdometerReading = request.OdometerReading,
             WorkPerformed = request.WorkPerformed,
@@ -899,8 +899,8 @@ public class MaintenanceService : IMaintenanceService
                     EstimatedDuration = schedule.EstimatedDuration,
                     EstimatedCost = request.ActualCost, // Use actual cost as estimate
                     ServiceProvider = schedule.ServiceProvider,
-                    Priority = MaintenancePriority.Low,
-                    Status = MaintenanceStatus.Scheduled,
+                    Priority = CoOwnershipVehicle.Domain.Enums.MaintenancePriority.Low,
+                    Status = CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Scheduled,
                     Notes = $"Auto-scheduled recurring {schedule.ServiceType} maintenance",
                     CreatedBy = userId,
                     CreatedAt = DateTime.UtcNow,
@@ -958,7 +958,7 @@ public class MaintenanceService : IMaintenanceService
         // Get the latest maintenance record
         var latestRecord = await _context.MaintenanceRecords
             .Where(r => r.VehicleId == vehicleId)
-            .OrderByDescending(r => r.ServiceDate)
+            .OrderByDescending(r => r.ScheduledDate)
             .FirstOrDefaultAsync();
 
         if (latestRecord != null)
@@ -985,7 +985,7 @@ public class MaintenanceService : IMaintenanceService
 
     #region Query Upcoming and Overdue Maintenance
 
-    public async Task<UpcomingMaintenanceResponse> GetUpcomingMaintenanceAsync(int days = 30, MaintenancePriority? priority = null, ServiceType? serviceType = null)
+    public async Task<UpcomingMaintenanceResponse> GetUpcomingMaintenanceAsync(int days = 30, CoOwnershipVehicle.Domain.Enums.MaintenancePriority? priority = null, ServiceType? serviceType = null)
     {
         var now = DateTime.UtcNow;
         var futureDate = now.AddDays(days);
@@ -993,7 +993,7 @@ public class MaintenanceService : IMaintenanceService
         // Get all scheduled or in-progress maintenance within the date range
         var query = _context.MaintenanceSchedules
             .Include(s => s.Vehicle)
-            .Where(s => s.Status == MaintenanceStatus.Scheduled || s.Status == MaintenanceStatus.InProgress)
+            .Where(s => s.Status == CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Scheduled || s.Status == CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.InProgress)
             .Where(s => s.ScheduledDate <= futureDate)
             .AsQueryable();
 
@@ -1076,7 +1076,7 @@ public class MaintenanceService : IMaintenanceService
         // Get all scheduled or in-progress maintenance that are past due
         var overdueSchedules = await _context.MaintenanceSchedules
             .Include(s => s.Vehicle)
-            .Where(s => (s.Status == MaintenanceStatus.Scheduled || s.Status == MaintenanceStatus.InProgress)
+            .Where(s => (s.Status == CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Scheduled || s.Status == CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.InProgress)
                      && s.ScheduledDate < now)
             .OrderBy(s => s.Priority)
             .ThenBy(s => s.ScheduledDate) // Earliest scheduled date first (most overdue)
@@ -1092,7 +1092,7 @@ public class MaintenanceService : IMaintenanceService
         foreach (var schedule in overdueSchedules)
         {
             var daysOverdue = (int)(now - schedule.ScheduledDate).TotalDays;
-            var isCritical = schedule.Priority == MaintenancePriority.Urgent || daysOverdue > 30;
+            var isCritical = schedule.Priority == CoOwnershipVehicle.Domain.Enums.MaintenancePriority.Urgent || daysOverdue > 30;
 
             if (isCritical)
             {
@@ -1258,13 +1258,13 @@ public class MaintenanceService : IMaintenanceService
         }
 
         // 3. Cannot cancel already completed maintenance
-        if (schedule.Status == MaintenanceStatus.Completed)
+        if (schedule.Status == CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Completed)
         {
             throw new InvalidOperationException("Cannot cancel already completed maintenance");
         }
 
         // 4. Update schedule status to Cancelled
-        schedule.Status = MaintenanceStatus.Cancelled;
+        schedule.Status = CoOwnershipVehicle.Domain.Enums.MaintenanceStatus.Cancelled;
         schedule.CancellationReason = request.CancellationReason;
         schedule.CancelledBy = userId;
         schedule.UpdatedAt = DateTime.UtcNow;

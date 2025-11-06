@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Vehicle.Api.DTOs;
 using CoOwnershipVehicle.Vehicle.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using GroupDetailsDto = CoOwnershipVehicle.Shared.Contracts.DTOs.GroupDetailsDto;
 
 namespace CoOwnershipVehicle.Vehicle.Api.Services
 {
@@ -128,12 +130,12 @@ namespace CoOwnershipVehicle.Vehicle.Api.Services
             var emptyUsages = groupDetails.Members.Select(m => new MemberUsageBreakdown
             {
                 MemberId = m.UserId,
-                // Microservices: Use UserId as display name since user details are in Auth Service
-                MemberName = !string.IsNullOrEmpty(m.FirstName) && !string.IsNullOrEmpty(m.LastName)
-                    ? $"{m.FirstName} {m.LastName}"
+                // Microservices: Use UserName from GroupMemberDetailsDto
+                MemberName = !string.IsNullOrEmpty(m.UserName)
+                    ? m.UserName
                     : $"User-{m.UserId.ToString().Substring(0, 8)}",
                 MemberEmail = m.Email ?? string.Empty,
-                OwnershipPercentage = m.OwnershipPercentage,
+                OwnershipPercentage = m.SharePercentage,
                 NumberOfTrips = 0,
                 TotalDistanceDriven = 0,
                 TotalTimeUsed = 0,
@@ -141,7 +143,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Services
                 AverageTripLength = 0,
                 AverageTripDuration = 0,
                 UsageToOwnershipRatio = 0,
-                FairnessDelta = -m.OwnershipPercentage,
+                FairnessDelta = -m.SharePercentage,
                 UsageStatus = "Underutilizing",
                 PreferredDaysOfWeek = new List<string>(),
                 PreferredHoursOfDay = new List<int>()
@@ -170,7 +172,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Services
         }
 
         private List<MemberUsageBreakdown> CalculateMemberUsages(
-            List<GroupMemberWithOwnership> members,
+            List<CoOwnershipVehicle.Shared.Contracts.DTOs.GroupMemberDetailsDto> members,
             List<DTOs.CompletedBookingDto> bookings)
         {
             var totalTrips = bookings.Count;
@@ -187,8 +189,8 @@ namespace CoOwnershipVehicle.Vehicle.Api.Services
                 var hours = memberBookings.Sum(b => b.UsageHours);
 
                 var usagePercentage = totalTrips > 0 ? (trips / (decimal)totalTrips) * 100 : 0;
-                var usageToOwnershipRatio = member.OwnershipPercentage > 0 ? usagePercentage / member.OwnershipPercentage : 0;
-                var fairnessDelta = usagePercentage - member.OwnershipPercentage;
+                var usageToOwnershipRatio = member.SharePercentage > 0 ? usagePercentage / member.SharePercentage : 0;
+                var fairnessDelta = usagePercentage - member.SharePercentage;
 
                 string usageStatus;
                 if (Math.Abs(fairnessDelta) <= 10) usageStatus = "Fair";
@@ -213,12 +215,12 @@ namespace CoOwnershipVehicle.Vehicle.Api.Services
                 usages.Add(new MemberUsageBreakdown
                 {
                     MemberId = member.UserId,
-                    // Microservices: Use UserId as display name since user details are in Auth Service
-                    MemberName = !string.IsNullOrEmpty(member.FirstName) && !string.IsNullOrEmpty(member.LastName)
-                        ? $"{member.FirstName} {member.LastName}"
+                    // Microservices: Use UserName from GroupMemberDetailsDto
+                    MemberName = !string.IsNullOrEmpty(member.UserName)
+                        ? member.UserName
                         : $"User-{member.UserId.ToString().Substring(0, 8)}",
                     MemberEmail = member.Email ?? string.Empty,
-                    OwnershipPercentage = member.OwnershipPercentage,
+                    OwnershipPercentage = member.SharePercentage,
                     NumberOfTrips = trips,
                     TotalDistanceDriven = Math.Round(distance, 2),
                     TotalTimeUsed = Math.Round(hours, 2),

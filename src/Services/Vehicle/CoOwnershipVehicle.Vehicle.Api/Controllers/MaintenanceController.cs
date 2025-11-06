@@ -46,7 +46,7 @@ public class MaintenanceController : ControllerBase
     /// Get maintenance schedules by status
     /// </summary>
     [HttpGet("schedules/status/{status}")]
-    public async Task<IActionResult> GetSchedulesByStatus(MaintenanceStatus status)
+    public async Task<IActionResult> GetSchedulesByStatus(CoOwnershipVehicle.Domain.Enums.MaintenanceStatus status)
     {
         var schedules = await _maintenanceService.GetSchedulesByStatusAsync(status);
         return Ok(schedules);
@@ -82,7 +82,7 @@ public class MaintenanceController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetVehicleMaintenanceSchedule(
         Guid vehicleId,
-        [FromQuery] MaintenanceStatus? status = null,
+        [FromQuery] CoOwnershipVehicle.Domain.Enums.MaintenanceStatus? status = null,
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 20)
     {
@@ -429,7 +429,7 @@ public class MaintenanceController : ControllerBase
     [ProducesResponseType(typeof(UpcomingMaintenanceResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUpcomingMaintenance(
         [FromQuery] int days = 30,
-        [FromQuery] MaintenancePriority? priority = null,
+        [FromQuery] CoOwnershipVehicle.Domain.Enums.MaintenancePriority? priority = null,
         [FromQuery] ServiceType? serviceType = null)
     {
         try
@@ -810,5 +810,5 @@ public class MaintenanceController : ControllerBase
 /// </summary>
 public class UpdateStatusDto
 {
-    public MaintenanceStatus Status { get; set; }
+    public CoOwnershipVehicle.Domain.Enums.MaintenanceStatus Status { get; set; }
 }

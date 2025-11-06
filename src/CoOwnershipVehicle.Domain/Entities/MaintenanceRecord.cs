@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using CoOwnershipVehicle.Domain.Enums;
 
 namespace CoOwnershipVehicle.Domain.Entities
 {
@@ -107,21 +108,5 @@ namespace CoOwnershipVehicle.Domain.Entities
         Diagnostics = 8,
         Repair = 9,
         Other = 10
-    }
-
-    public enum MaintenanceStatus
-    {
-        Scheduled = 0,
-        InProgress = 1,
-        Completed = 2,
-        Cancelled = 3
-    }
-
-    public enum MaintenancePriority
-    {
-        Low = 0,
-        Medium = 1,
-        High = 2,
-        Critical = 3
     }
 }

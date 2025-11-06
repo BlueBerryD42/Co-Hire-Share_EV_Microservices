@@ -8,6 +8,18 @@ using CoOwnershipVehicle.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load .env file if it exists
+var envFilePath = EnvironmentHelper.FindEnvFile();
+if (!string.IsNullOrEmpty(envFilePath))
+{
+    ((IConfigurationBuilder)builder.Configuration).Add(new EnvFileConfigurationSource(envFilePath));
+    Console.WriteLine($"[INFO] Loaded configuration from .env file: {envFilePath}");
+}
+else
+{
+    Console.WriteLine("[WARN] .env file not found. Relying on system environment variables and appsettings.json.");
+}
+
 // Add services to the container.
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
 dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_MAIN", builder.Configuration) ?? "CoOwnershipVehicle_Main";
@@ -104,7 +116,11 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Co-Ownership Vehicle Main API");
+        c.RoutePrefix = string.Empty; // Makes Swagger available at root
+    });
 }
 
 app.UseHttpsRedirection();

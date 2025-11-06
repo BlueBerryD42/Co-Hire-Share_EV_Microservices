@@ -244,7 +244,7 @@ public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateV
                                 (b.StartAt < updateDto.To && b.EndAt >= updateDto.To) ||
                                 (b.StartAt >= updateDto.From && b.EndAt <= updateDto.To)
                             ))
-                .Select(b => new BookingDto
+                .Select(b => new CoOwnershipVehicle.Shared.Contracts.DTOs.BookingDto
                 {
                     Id = b.Id,
                     VehicleId = b.VehicleId,
@@ -253,7 +253,7 @@ public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateV
                     UserLastName = b.User.LastName,
                     StartAt = b.StartAt,
                     EndAt = b.EndAt,
-                    Status = (BookingStatus)b.Status,
+                    Status = (CoOwnershipVehicle.Domain.Entities.BookingStatus)b.Status,
                     Notes = b.Notes,
                     RequiresDamageReview = b.RequiresDamageReview
                 })

@@ -154,7 +154,7 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.HasOne(e => e.RecurringBooking)
                   .WithMany(rb => rb.GeneratedBookings)
                   .HasForeignKey(e => e.RecurringBookingId)
-                  .OnDelete(DeleteBehavior.SetNull);
+                  .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => new { e.VehicleId, e.StartAt, e.EndAt });
             entity.HasIndex(e => e.StartAt);
@@ -313,6 +313,29 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.HasIndex(e => new { e.DocumentId, e.SignatureOrder });
         });
 
+        // DocumentTagMapping entity configuration (composite key for many-to-many relationship)
+        builder.Entity<DocumentTagMapping>(entity =>
+        {
+            entity.HasKey(e => new { e.DocumentId, e.TagId });
+
+            entity.HasOne(e => e.Document)
+                  .WithMany(d => d.TagMappings)
+                  .HasForeignKey(e => e.DocumentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Tag)
+                  .WithMany(t => t.DocumentMappings)
+                  .HasForeignKey(e => e.TagId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.TaggerUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.TaggedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.Property(e => e.TaggedAt).HasDefaultValueSql("GETUTCDATE()");
+        });
+
         // CheckIn entity configuration
         builder.Entity<CheckIn>(entity =>
         {
@@ -343,6 +366,9 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
                   .HasForeignKey(e => e.CheckInId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // Ignore LateReturnFee - it's managed by BookingDbContext
+        builder.Ignore<LateReturnFee>();
 
         // Proposal entity configuration
         builder.Entity<Proposal>(entity =>
@@ -500,7 +526,7 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.HasOne(e => e.Resolver)
                 .WithMany()
                 .HasForeignKey(e => e.ResolvedBy)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.ReportedBy);

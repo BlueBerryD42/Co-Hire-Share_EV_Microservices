@@ -12,12 +12,12 @@ public interface IMaintenanceService
     // MaintenanceSchedule operations
     Task<MaintenanceSchedule?> GetScheduleByIdAsync(Guid id);
     Task<IEnumerable<MaintenanceSchedule>> GetSchedulesByVehicleIdAsync(Guid vehicleId);
-    Task<IEnumerable<MaintenanceSchedule>> GetSchedulesByStatusAsync(MaintenanceStatus status);
+    Task<IEnumerable<MaintenanceSchedule>> GetSchedulesByStatusAsync(CoOwnershipVehicle.Domain.Enums.MaintenanceStatus status);
     Task<IEnumerable<MaintenanceSchedule>> GetOverdueSchedulesAsync();
     Task<MaintenanceSchedule> CreateScheduleAsync(MaintenanceSchedule schedule);
     Task<MaintenanceSchedule?> UpdateScheduleAsync(Guid id, MaintenanceSchedule schedule);
     Task<bool> DeleteScheduleAsync(Guid id);
-    Task<bool> UpdateScheduleStatusAsync(Guid id, MaintenanceStatus status);
+    Task<bool> UpdateScheduleStatusAsync(Guid id, CoOwnershipVehicle.Domain.Enums.MaintenanceStatus status);
 
     // MaintenanceRecord operations
     Task<MaintenanceRecord?> GetRecordByIdAsync(Guid id);
@@ -45,7 +45,7 @@ public interface IMaintenanceService
     Task<CompleteMaintenanceResponse> CompleteMaintenanceAsync(Guid scheduleId, CompleteMaintenanceRequest request, Guid userId, string accessToken, bool isAdmin = false);
 
     // Query upcoming and overdue maintenance
-    Task<UpcomingMaintenanceResponse> GetUpcomingMaintenanceAsync(int days = 30, MaintenancePriority? priority = null, ServiceType? serviceType = null);
+    Task<UpcomingMaintenanceResponse> GetUpcomingMaintenanceAsync(int days = 30, CoOwnershipVehicle.Domain.Enums.MaintenancePriority? priority = null, ServiceType? serviceType = null);
     Task<OverdueMaintenanceResponse> GetOverdueMaintenanceAsync();
 
     // Reschedule and cancel
