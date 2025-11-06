@@ -16,9 +16,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\CoOwnershipVehicle.Data\CoOwnershipVehicle.Data.csproj" />
-    <ProjectReference Include="..\..\CoOwnershipVehicle.Domain\CoOwnershipVehicle.Domain.csproj" />
-    <ProjectReference Include="..\..\CoOwnershipVehicle.Shared\CoOwnershipVehicle.Shared.csproj" />
+    <ProjectReference Include="..\..\Core\CoOwnershipVehicle.Data\CoOwnershipVehicle.Data.csproj" />
+    <ProjectReference Include="..\..\Core\CoOwnershipVehicle.Domain\CoOwnershipVehicle.Domain.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\CoOwnershipVehicle.Shared\CoOwnershipVehicle.Shared.csproj" />
   </ItemGroup>
 
 </Project>

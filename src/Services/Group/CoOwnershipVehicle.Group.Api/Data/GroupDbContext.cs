@@ -29,6 +29,14 @@ public class GroupDbContext : DbContext
     public DbSet<DocumentTagMapping> DocumentTagMappings { get; set; } // For document-tag relationships
     public DbSet<SavedDocumentSearch> SavedDocumentSearches { get; set; } // For saved searches
 
+    // Voting system entities
+    public DbSet<Proposal> Proposals { get; set; }
+    public DbSet<Vote> Votes { get; set; }
+
+    // Fund management entities
+    public DbSet<GroupFund> GroupFunds { get; set; }
+    public DbSet<FundTransaction> FundTransactions { get; set; }
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -48,9 +56,7 @@ public class GroupDbContext : DbContext
         builder.Ignore<VehicleAnalytics>();
         builder.Ignore<GroupAnalytics>();
         builder.Ignore<LedgerEntry>();
-        builder.Ignore<Proposal>();
         builder.Ignore<AuditLog>();
-        builder.Ignore<Vote>();
 
         // User entity configuration (simplified for Group service)
         builder.Entity<User>(entity =>
@@ -70,8 +76,9 @@ public class GroupDbContext : DbContext
             entity.Ignore(e => e.Payments);
             entity.Ignore(e => e.Bookings);
             entity.Ignore(e => e.CheckIns);
-            entity.Ignore(e => e.Votes);
             entity.Ignore(e => e.AuditLogs);
+            entity.Ignore(e => e.InitiatedFundTransactions);
+            entity.Ignore(e => e.ApprovedFundTransactions);
         });
 
         // OwnershipGroup entity configuration
@@ -442,6 +449,107 @@ public class GroupDbContext : DbContext
                   .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasIndex(e => e.TemplateId);
+        });
+
+        // Proposal entity configuration
+        builder.Entity<Proposal>(entity =>
+        {
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.RequiredMajority).HasColumnType("decimal(5,4)");
+
+            entity.HasOne(e => e.Group)
+                  .WithMany(g => g.Proposals)
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Creator)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.CreatedBy);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.GroupId, e.Status });
+            entity.HasIndex(e => e.VotingEndDate);
+        });
+
+        // Vote entity configuration
+        builder.Entity<Vote>(entity =>
+        {
+            entity.Property(e => e.Weight).HasColumnType("decimal(5,4)");
+            entity.Property(e => e.Choice).HasConversion<int>();
+            entity.Property(e => e.Comment).HasMaxLength(500);
+            entity.Property(e => e.VotedAt).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Proposal)
+                  .WithMany(p => p.Votes)
+                  .HasForeignKey(e => e.ProposalId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Voter)
+                  .WithMany(u => u.Votes)
+                  .HasForeignKey(e => e.VoterId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.ProposalId);
+            entity.HasIndex(e => e.VoterId);
+            entity.HasIndex(e => new { e.ProposalId, e.VoterId }).IsUnique(); // One vote per member per proposal
+            entity.HasIndex(e => e.VotedAt);
+        });
+
+        // GroupFund entity configuration
+        builder.Entity<GroupFund>(entity =>
+        {
+            entity.Property(e => e.TotalBalance).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ReserveBalance).HasColumnType("decimal(18,2)");
+
+            entity.HasOne(e => e.Group)
+                  .WithOne(g => g.Fund)
+                  .HasForeignKey<GroupFund>(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.GroupId).IsUnique(); // One fund per group
+            entity.HasIndex(e => e.LastUpdated);
+        });
+
+        // FundTransaction entity configuration
+        builder.Entity<FundTransaction>(entity =>
+        {
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.BalanceBefore).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.BalanceAfter).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Reference).HasMaxLength(200);
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.TransactionDate).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Group)
+                  .WithMany(g => g.FundTransactions)
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Initiator)
+                  .WithMany(u => u.InitiatedFundTransactions)
+                  .HasForeignKey(e => e.InitiatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Approver)
+                  .WithMany(u => u.ApprovedFundTransactions)
+                  .HasForeignKey(e => e.ApprovedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.InitiatedBy);
+            entity.HasIndex(e => e.Type);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.TransactionDate);
+            entity.HasIndex(e => new { e.GroupId, e.Status });
         });
 
         // Configure automatic timestamp updates

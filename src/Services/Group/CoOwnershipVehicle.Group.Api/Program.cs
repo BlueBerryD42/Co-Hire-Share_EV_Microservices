@@ -129,8 +129,16 @@ builder.Services.AddScoped<ITemplateService, TemplateService>();
 builder.Services.AddScoped<IDocumentSearchService, DocumentSearchService>();
 builder.Services.AddScoped<IDocumentShareService, DocumentShareService>();
 
+// Register Proposal Service
+builder.Services.AddScoped<CoOwnershipVehicle.Group.Api.Contracts.IProposalService, CoOwnershipVehicle.Group.Api.Services.ProposalService>();
+builder.Services.AddScoped<CoOwnershipVehicle.Group.Api.Contracts.IVotingService, CoOwnershipVehicle.Group.Api.Services.VotingService>();
+
+// Register Fund Service
+builder.Services.AddScoped<CoOwnershipVehicle.Group.Api.Contracts.IFundService, CoOwnershipVehicle.Group.Api.Services.FundService>();
+
 // Register Background Services
 builder.Services.AddHostedService<CoOwnershipVehicle.Group.Api.BackgroundServices.SignatureReminderBackgroundService>();
+builder.Services.AddHostedService<CoOwnershipVehicle.Group.Api.BackgroundServices.ProposalExpirationBackgroundService>();
 
 // Configure request size limits for file uploads (50MB)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
