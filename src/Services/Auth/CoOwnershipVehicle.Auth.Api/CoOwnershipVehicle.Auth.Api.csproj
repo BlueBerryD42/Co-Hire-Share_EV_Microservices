@@ -20,10 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\Shared\CoOwnershipVehicle.Shared.Contracts\CoOwnershipVehicle.Shared.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\CoOwnershipVehicle.Domain\CoOwnershipVehicle.Domain.csproj" />
-    <ProjectReference Include="..\..\..\CoOwnershipVehicle.Data\CoOwnershipVehicle.Data.csproj" />
-    <ProjectReference Include="..\..\..\CoOwnershipVehicle.Shared\CoOwnershipVehicle.Shared.csproj" />
+    <ProjectReference Include="..\..\..\Infrastructure\CoOwnershipVehicle.Shared.Contracts\CoOwnershipVehicle.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Core\CoOwnershipVehicle.Domain\CoOwnershipVehicle.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Core\CoOwnershipVehicle.Data\CoOwnershipVehicle.Data.csproj" />
+    <ProjectReference Include="..\..\..\Infrastructure\CoOwnershipVehicle.Shared\CoOwnershipVehicle.Shared.csproj" />
   </ItemGroup>
 
 </Project>

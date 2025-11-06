@@ -4,6 +4,7 @@ using CoOwnershipVehicle.Group.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 {
     [DbContext(typeof(GroupDbContext))]
-    partial class GroupDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251106171444_AddProposalAndVoteTables")]
+    partial class AddProposalAndVoteTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -671,118 +674,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .IsUnique();
 
                     b.ToTable("DocumentVersions");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.FundTransaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<Guid?>("ApprovedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("BalanceAfter")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("BalanceBefore")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<Guid?>("GroupFundId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("GroupId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("InitiatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Reference")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("TransactionDate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApprovedBy");
-
-                    b.HasIndex("GroupFundId");
-
-                    b.HasIndex("GroupId");
-
-                    b.HasIndex("InitiatedBy");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("TransactionDate");
-
-                    b.HasIndex("Type");
-
-                    b.HasIndex("GroupId", "Status");
-
-                    b.ToTable("FundTransactions");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupFund", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("GroupId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("LastUpdated")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("ReserveBalance")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalBalance")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GroupId")
-                        .IsUnique();
-
-                    b.HasIndex("LastUpdated");
-
-                    b.ToTable("GroupFunds");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupMember", b =>
@@ -1762,47 +1653,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.Navigation("Uploader");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.FundTransaction", b =>
-                {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Approver")
-                        .WithMany("ApprovedFundTransactions")
-                        .HasForeignKey("ApprovedBy")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.GroupFund", null)
-                        .WithMany("Transactions")
-                        .HasForeignKey("GroupFundId");
-
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
-                        .WithMany("FundTransactions")
-                        .HasForeignKey("GroupId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Initiator")
-                        .WithMany("InitiatedFundTransactions")
-                        .HasForeignKey("InitiatedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Approver");
-
-                    b.Navigation("Group");
-
-                    b.Navigation("Initiator");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupFund", b =>
-                {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
-                        .WithOne("Fund")
-                        .HasForeignKey("CoOwnershipVehicle.Domain.Entities.GroupFund", "GroupId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Group");
-                });
-
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupMember", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
@@ -2012,18 +1862,9 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.Navigation("GeneratedDocuments");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupFund", b =>
-                {
-                    b.Navigation("Transactions");
-                });
-
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
                 {
                     b.Navigation("Documents");
-
-                    b.Navigation("Fund");
-
-                    b.Navigation("FundTransactions");
 
                     b.Navigation("Members");
 
@@ -2041,11 +1882,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.User", b =>
                 {
-                    b.Navigation("ApprovedFundTransactions");
-
                     b.Navigation("GroupMemberships");
-
-                    b.Navigation("InitiatedFundTransactions");
 
                     b.Navigation("RecurringBookings");
 

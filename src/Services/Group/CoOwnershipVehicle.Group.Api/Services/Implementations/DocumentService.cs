@@ -777,6 +777,12 @@ public class DocumentService : IDocumentService
                 $"Document must be in Draft status to send for signing. Current status: {document.SignatureStatus}");
         }
 
+        // Validate signer list is not empty
+        if (request.SignerIds == null || !request.SignerIds.Any())
+        {
+            throw new ArgumentException("At least one signer must be specified");
+        }
+
         // Validate all signers are group members
         var groupMemberIds = await _context.GroupMembers
             .Where(gm => gm.GroupId == document.GroupId)
