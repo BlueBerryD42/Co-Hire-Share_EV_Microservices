@@ -75,6 +75,11 @@ builder.Services.AddAuthentication(options =>
 // Add MassTransit for message bus
 builder.Services.AddMassTransit(x =>
 {
+    // Register consumers
+    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceScheduledConsumer>();
+    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceCancelledConsumer>();
+    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceCompletedConsumer>();
+
     x.UsingRabbitMq((context, cfg) =>
     {
         cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
@@ -176,13 +181,19 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created
-using (var scope = app.Services.CreateScope())
+// Ensure database is created (before starting the server)
+try
 {
-    var context = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
-
-    // Ensure database is created
-    await context.Database.EnsureCreatedAsync();
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
+        await context.Database.EnsureCreatedAsync();
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[ERROR] Failed to ensure database is created: {ex.Message}");
+    // Don't crash - let the app start and handle migrations later if needed
 }
 
 app.Run();

@@ -8,10 +8,39 @@ using CoOwnershipVehicle.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load .env file if it exists
+var envFilePath = EnvironmentHelper.FindEnvFile();
+if (!string.IsNullOrEmpty(envFilePath))
+{
+    ((IConfigurationBuilder)builder.Configuration).Add(new EnvFileConfigurationSource(envFilePath));
+    Console.WriteLine($"[INFO] Loaded configuration from .env file: {envFilePath}");
+}
+else
+{
+    Console.WriteLine("[WARN] .env file not found. Relying on system environment variables and appsettings.json.");
+}
+
 // Add services to the container.
 var dbParams = EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration);
 dbParams.Database = EnvironmentHelper.GetEnvironmentVariable("DB_MAIN", builder.Configuration) ?? "CoOwnershipVehicle_Main";
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? dbParams.GetConnectionString();
+
+// Try to get connection string from configuration, but handle empty/null values properly
+string? connectionString = null;
+try
+{
+    var configConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrWhiteSpace(configConnectionString))
+    {
+        connectionString = configConnectionString;
+    }
+}
+catch
+{
+    // If GetConnectionString fails, we'll use dbParams below
+}
+
+// Fall back to environment-based connection string
+connectionString ??= EnvironmentHelper.GetEnvironmentVariable("DB_CONNECTION_STRING", builder.Configuration) ?? dbParams.GetConnectionString();
 
 EnvironmentHelper.LogEnvironmentStatus("Main API Service", builder.Configuration);
 EnvironmentHelper.LogFinalConnectionDetails("Main API Service", dbParams.Database, builder.Configuration);
@@ -87,7 +116,11 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Co-Ownership Vehicle Main API");
+        c.RoutePrefix = string.Empty; // Makes Swagger available at root
+    });
 }
 
 app.UseHttpsRedirection();
@@ -105,6 +138,7 @@ using (var scope = app.Services.CreateScope())
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
     
     // Ensure database is created
+    
     context.Database.EnsureCreated();
     
     // Seed initial data

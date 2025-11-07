@@ -102,19 +102,20 @@ public class JwtTokenService : IJwtTokenService
                 var key = $"{_keyPrefix}refresh_token:{refreshToken}";
                 await _redisDatabase.KeyDeleteAsync(key);
                 _logger.LogInformation("Refresh token revoked from Redis");
+                // Also remove from in-memory cache if present
+                _inMemoryRefreshTokens.Remove(refreshToken);
+                return;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to revoke refresh token in Redis. Falling back to in-memory storage.");
-                _inMemoryRefreshTokens.Remove(refreshToken);
-                _logger.LogInformation("Refresh token revoked from memory (Redis error)");
+                _logger.LogWarning(ex, "Failed to revoke refresh token in Redis. Revoking from in-memory storage.");
+                // Fall through to in-memory removal
             }
         }
-        else
-        {
-            _inMemoryRefreshTokens.Remove(refreshToken);
-            _logger.LogInformation("Refresh token revoked from memory (Redis unavailable)");
-        }
+
+        // Remove from in-memory storage
+        _inMemoryRefreshTokens.Remove(refreshToken);
+        _logger.LogInformation("Refresh token revoked from memory (Redis unavailable)");
     }
 
     public async Task<bool> ValidateTokenAsync(string token)
@@ -149,14 +150,14 @@ public class JwtTokenService : IJwtTokenService
         var claims = new List<System.Security.Claims.Claim>
         {
             new(System.Security.Claims.ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(System.Security.Claims.ClaimTypes.Email, user.Email!),
-            new(System.Security.Claims.ClaimTypes.GivenName, user.FirstName),
-            new(System.Security.Claims.ClaimTypes.Surname, user.LastName),
+            new(System.Security.Claims.ClaimTypes.Email, user.Email ?? string.Empty),
+            new(System.Security.Claims.ClaimTypes.GivenName, user.FirstName ?? string.Empty),
+            new(System.Security.Claims.ClaimTypes.Surname, user.LastName ?? string.Empty),
             new("role", user.Role.ToString()),
             new("kyc_status", user.KycStatus.ToString()),
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat, 
-                new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(), 
+            new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat,
+                new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(),
                 System.Security.Claims.ClaimValueTypes.Integer64)
         };
 
@@ -202,22 +203,21 @@ public class JwtTokenService : IJwtTokenService
             {
                 var key = $"{_keyPrefix}refresh_token:{refreshToken}";
                 var expiry = TimeSpan.FromDays(7); // 7 days expiry
-                
+
                 await _redisDatabase.StringSetAsync(key, userId.ToString(), expiry);
                 _logger.LogInformation("Refresh token stored in Redis for user {UserId}", userId);
+                return; // Successfully stored in Redis
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to store refresh token in Redis for user {UserId}. Falling back to in-memory storage.", userId);
-                _inMemoryRefreshTokens[refreshToken] = userId;
-                _logger.LogInformation("Refresh token stored in memory for user {UserId} (Redis error)", userId);
+                _logger.LogWarning(ex, "Failed to store refresh token in Redis. Falling back to in-memory storage.");
+                // Fall through to in-memory storage
             }
         }
-        else
-        {
-            _inMemoryRefreshTokens[refreshToken] = userId;
-            _logger.LogInformation("Refresh token stored in memory for user {UserId} (Redis unavailable)", userId);
-        }
+
+        // Use in-memory storage as fallback
+        _inMemoryRefreshTokens[refreshToken] = userId;
+        _logger.LogInformation("Refresh token stored in memory for user {UserId} (Redis unavailable)", userId);
     }
 
     private async Task<Guid?> ValidateRefreshTokenAsync(string refreshToken)
@@ -228,7 +228,7 @@ public class JwtTokenService : IJwtTokenService
             {
                 var key = $"{_keyPrefix}refresh_token:{refreshToken}";
                 var userIdString = await _redisDatabase.StringGetAsync(key);
-                
+
                 if (userIdString.HasValue && Guid.TryParse(userIdString, out var userId))
                 {
                     return userId;
@@ -236,22 +236,17 @@ public class JwtTokenService : IJwtTokenService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to validate refresh token in Redis. Falling back to in-memory storage.");
-                // Fall back to in-memory storage
-                if (_inMemoryRefreshTokens.TryGetValue(refreshToken, out var userId))
-                {
-                    return userId;
-                }
+                _logger.LogWarning(ex, "Failed to validate refresh token in Redis. Checking in-memory storage.");
+                // Fall through to in-memory storage
             }
         }
-        else
+
+        // Check in-memory storage as fallback
+        if (_inMemoryRefreshTokens.TryGetValue(refreshToken, out var userIdFromMemory))
         {
-            if (_inMemoryRefreshTokens.TryGetValue(refreshToken, out var userId))
-            {
-                return userId;
-            }
+            return userIdFromMemory;
         }
-        
+
         return null; // Token not found or expired
     }
 

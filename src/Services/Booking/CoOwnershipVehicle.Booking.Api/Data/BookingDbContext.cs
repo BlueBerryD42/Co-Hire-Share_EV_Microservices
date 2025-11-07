@@ -16,6 +16,7 @@ public class BookingDbContext : DbContext
     public DbSet<User> Users { get; set; } // For user details
     public DbSet<OwnershipGroup> OwnershipGroups { get; set; } // For group access
     public DbSet<GroupMember> GroupMembers { get; set; } // For priority calculation
+    public DbSet<MaintenanceBlock> MaintenanceBlocks { get; set; } // For preventing bookings during maintenance
     public DbSet<CheckIn> CheckIns { get; set; } // Vehicle handover check-ins
     public DbSet<CheckInPhoto> CheckInPhotos { get; set; } // Supporting media for check-ins
     public DbSet<LateReturnFee> LateReturnFees { get; set; } // Late fee records
@@ -37,10 +38,23 @@ public class BookingDbContext : DbContext
         builder.Ignore<NotificationTemplate>();
         builder.Ignore<AnalyticsSnapshot>();
         builder.Ignore<Document>();
+        builder.Ignore<DocumentTag>();
+        builder.Ignore<DocumentTagMapping>();
+        builder.Ignore<DocumentSignature>();
+        builder.Ignore<DocumentDownload>();
+        builder.Ignore<DocumentVersion>();
+        builder.Ignore<DocumentTemplate>();
+        builder.Ignore<DocumentShare>();
+        builder.Ignore<DocumentShareAccess>();
+        builder.Ignore<SigningCertificate>();
+        builder.Ignore<SignatureReminder>();
+        builder.Ignore<SavedDocumentSearch>();
         builder.Ignore<LedgerEntry>();
         builder.Ignore<Proposal>();
         builder.Ignore<AuditLog>();
         builder.Ignore<Vote>();
+        builder.Ignore<MaintenanceSchedule>();
+        builder.Ignore<MaintenanceRecord>();
 
         // User entity configuration (simplified for Booking service)
         builder.Entity<User>(entity =>
@@ -156,197 +170,217 @@ public class BookingDbContext : DbContext
             entity.HasIndex(e => new { e.VehicleId, e.StartAt, e.EndAt });
             entity.HasIndex(e => e.StartAt);
         });
+// MaintenanceBlock entity configuration (from HEAD)
+builder.Entity<MaintenanceBlock>(entity =>
+{
+    entity.Property(e => e.ServiceType).HasConversion<int>();
+    entity.Property(e => e.Status).HasConversion<int>();
+    entity.Property(e => e.Priority).HasConversion<int>();
+    entity.Property(e => e.Notes).HasMaxLength(1000);
 
-        builder.Entity<RecurringBooking>(entity =>
-        {
-            entity.Property(e => e.Pattern).HasConversion<int>();
-            entity.Property(e => e.Status).HasConversion<int>();
-            entity.Property(e => e.Interval).HasDefaultValue(1);
-            entity.Property(e => e.DaysOfWeekMask);
-            entity.Property(e => e.StartTime).HasColumnType("time");
-            entity.Property(e => e.EndTime).HasColumnType("time");
-            entity.Property(e => e.RecurrenceStartDate).HasColumnType("date");
-            entity.Property(e => e.RecurrenceEndDate).HasColumnType("date");
-            entity.Property(e => e.Notes).HasMaxLength(500);
-            entity.Property(e => e.Purpose).HasMaxLength(200);
-            entity.Property(e => e.CancellationReason).HasMaxLength(200);
-            entity.Property(e => e.TimeZoneId).HasMaxLength(100);
+    // Ignore navigation property - no FK constraint in microservices
+    entity.Ignore(e => e.Vehicle);
 
-            entity.HasOne(e => e.Vehicle)
-                  .WithMany(v => v.RecurringBookings)
-                  .HasForeignKey(e => e.VehicleId)
-                  .OnDelete(DeleteBehavior.Cascade);
+    entity.HasIndex(e => e.MaintenanceScheduleId).IsUnique();
+    entity.HasIndex(e => new { e.VehicleId, e.StartTime, e.EndTime });
+    entity.HasIndex(e => e.Status);
+});
 
-            entity.HasOne(e => e.Group)
-                  .WithMany(g => g.RecurringBookings)
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.Cascade);
+// RecurringBooking entity configuration (from main)
+builder.Entity<RecurringBooking>(entity =>
+{
+    entity.Property(e => e.Pattern).HasConversion<int>();
+    entity.Property(e => e.Status).HasConversion<int>();
+    entity.Property(e => e.Interval).HasDefaultValue(1);
+    entity.Property(e => e.DaysOfWeekMask);
+    entity.Property(e => e.StartTime).HasColumnType("time");
+    entity.Property(e => e.EndTime).HasColumnType("time");
+    entity.Property(e => e.RecurrenceStartDate).HasColumnType("date");
+    entity.Property(e => e.RecurrenceEndDate).HasColumnType("date");
+    entity.Property(e => e.Notes).HasMaxLength(500);
+    entity.Property(e => e.Purpose).HasMaxLength(200);
+    entity.Property(e => e.CancellationReason).HasMaxLength(200);
+    entity.Property(e => e.TimeZoneId).HasMaxLength(100);
 
-            entity.HasOne(e => e.User)
-                  .WithMany(u => u.RecurringBookings)
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Restrict);
+    entity.HasOne(e => e.Vehicle)
+          .WithMany(v => v.RecurringBookings)
+          .HasForeignKey(e => e.VehicleId)
+          .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(e => e.Status);
-            entity.HasIndex(e => e.VehicleId);
-            entity.HasIndex(e => e.UserId);
-        });
+    entity.HasOne(e => e.Group)
+          .WithMany(g => g.RecurringBookings)
+          .HasForeignKey(e => e.GroupId)
+          .OnDelete(DeleteBehavior.Cascade);
 
-        // BookingTemplate entity configuration
-        builder.Entity<BookingTemplate>(entity =>
-        {
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Duration).HasColumnType("time");
-            entity.Property(e => e.PreferredStartTime).HasColumnType("time");
-            entity.Property(e => e.Purpose).HasMaxLength(500);
-            entity.Property(e => e.Notes).HasMaxLength(1000);
-            entity.Property(e => e.Priority).HasConversion<int>();
-            entity.Property(e => e.UsageCount).HasDefaultValue(0);
+    entity.HasOne(e => e.User)
+          .WithMany(u => u.RecurringBookings)
+          .HasForeignKey(e => e.UserId)
+          .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(e => e.User)
-                .WithMany() // Domain User may not expose BookingTemplates navigation in this service's model
-                .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+    entity.HasIndex(e => e.Status);
+    entity.HasIndex(e => e.VehicleId);
+    entity.HasIndex(e => e.UserId);
+});
 
-            entity.HasOne(e => e.Vehicle)
-                .WithMany() // Domain Vehicle may not expose BookingTemplates navigation in this service's model
-                .HasForeignKey(e => e.VehicleId)
-                .OnDelete(DeleteBehavior.SetNull);
+// BookingTemplate entity configuration
+builder.Entity<BookingTemplate>(entity =>
+{
+    entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+    entity.Property(e => e.Duration).HasColumnType("time");
+    entity.Property(e => e.PreferredStartTime).HasColumnType("time");
+    entity.Property(e => e.Purpose).HasMaxLength(500);
+    entity.Property(e => e.Notes).HasMaxLength(1000);
+    entity.Property(e => e.Priority).HasConversion<int>();
+    entity.Property(e => e.UsageCount).HasDefaultValue(0);
 
-            entity.HasIndex(e => e.UserId);
-            entity.HasIndex(e => e.VehicleId);
-        });
+    entity.HasOne(e => e.User)
+        .WithMany()
+        .HasForeignKey(e => e.UserId)
+        .OnDelete(DeleteBehavior.Cascade);
 
-        // Check-in entity configuration
-        builder.Entity<CheckIn>(entity =>
-        {
-            entity.ToTable("CheckIn");
+    entity.HasOne(e => e.Vehicle)
+        .WithMany()
+        .HasForeignKey(e => e.VehicleId)
+        .OnDelete(DeleteBehavior.SetNull);
 
-            entity.Property(e => e.Type).HasConversion<int>();
-            entity.Property(e => e.Odometer);
-            entity.Property(e => e.Notes).HasMaxLength(1000);
-            entity.Property(e => e.SignatureReference).HasMaxLength(500);
-            entity.Property(e => e.SignatureDevice).HasMaxLength(200);
-            entity.Property(e => e.SignatureDeviceId).HasMaxLength(100);
-            entity.Property(e => e.SignatureIpAddress).HasMaxLength(45);
-            entity.Property(e => e.SignatureCapturedAt).HasColumnType("datetime2");
-            entity.Property(e => e.SignatureHash).HasMaxLength(128);
-            entity.Property(e => e.SignatureCertificateUrl).HasMaxLength(500);
-            entity.Property(e => e.SignatureMetadataJson).HasMaxLength(2000);
-            entity.Property(e => e.CheckInTime).HasColumnType("datetime2");
-            entity.Property(e => e.IsLateReturn).HasDefaultValue(false);
-            entity.Property(e => e.LateReturnMinutes);
-            entity.Property(e => e.LateFeeAmount).HasColumnType("decimal(18,2)");
+    entity.HasIndex(e => e.UserId);
+    entity.HasIndex(e => e.VehicleId);
+});
 
-            entity.HasOne(e => e.Booking)
-                  .WithMany(b => b.CheckIns)
-                  .HasForeignKey(e => e.BookingId)
-                  .OnDelete(DeleteBehavior.Cascade);
+// Check-in entity configuration
+builder.Entity<CheckIn>(entity =>
+{
+    entity.ToTable("CheckIn");
 
-            entity.HasOne(e => e.User)
-                  .WithMany()
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+    entity.Property(e => e.Type).HasConversion<int>();
+    entity.Property(e => e.Odometer);
+    entity.Property(e => e.Notes).HasMaxLength(1000);
+    entity.Property(e => e.SignatureReference).HasMaxLength(500);
+    entity.Property(e => e.SignatureDevice).HasMaxLength(200);
+    entity.Property(e => e.SignatureDeviceId).HasMaxLength(100);
+    entity.Property(e => e.SignatureIpAddress).HasMaxLength(45);
+    entity.Property(e => e.SignatureCapturedAt).HasColumnType("datetime2");
+    entity.Property(e => e.SignatureHash).HasMaxLength(128);
+    entity.Property(e => e.SignatureCertificateUrl).HasMaxLength(500);
+    entity.Property(e => e.SignatureMetadataJson).HasMaxLength(2000);
+    entity.Property(e => e.CheckInTime).HasColumnType("datetime2");
+    entity.Property(e => e.IsLateReturn).HasDefaultValue(false);
+    entity.Property(e => e.LateReturnMinutes);
+    entity.Property(e => e.LateFeeAmount).HasColumnType("decimal(18,2)");
 
-            entity.HasOne(e => e.Vehicle)
-                  .WithMany(v => v.CheckIns)
-                  .HasForeignKey(e => e.VehicleId)
-                  .OnDelete(DeleteBehavior.NoAction);
+    entity.HasOne(e => e.Booking)
+          .WithMany(b => b.CheckIns)
+          .HasForeignKey(e => e.BookingId)
+          .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.LateReturnFee)
-                  .WithOne(l => l.CheckIn)
-                  .HasForeignKey<LateReturnFee>(l => l.CheckInId)
-                  .OnDelete(DeleteBehavior.Cascade);
-        });
+    entity.HasOne(e => e.User)
+          .WithMany()
+          .HasForeignKey(e => e.UserId)
+          .OnDelete(DeleteBehavior.Cascade);
 
-        builder.Entity<CheckInPhoto>(entity =>
-        {
-            entity.ToTable("CheckInPhoto");
+    entity.HasOne(e => e.Vehicle)
+          .WithMany(v => v.CheckIns)
+          .HasForeignKey(e => e.VehicleId)
+          .OnDelete(DeleteBehavior.NoAction);
 
-            entity.Property(e => e.PhotoUrl).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.ThumbnailUrl).HasMaxLength(500);
-            entity.Property(e => e.StoragePath).HasMaxLength(1000);
-            entity.Property(e => e.ThumbnailPath).HasMaxLength(1000);
-            entity.Property(e => e.ContentType).HasMaxLength(100);
-            entity.Property(e => e.Description).HasMaxLength(200);
-            entity.Property(e => e.Type).HasConversion<int>();
-            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+    entity.HasOne(e => e.LateReturnFee)
+          .WithOne(l => l.CheckIn)
+          .HasForeignKey<LateReturnFee>(l => l.CheckInId)
+          .OnDelete(DeleteBehavior.Cascade);
+});
 
-            entity.HasOne(e => e.CheckIn)
-                  .WithMany(c => c.Photos)
-                  .HasForeignKey(e => e.CheckInId)
-                  .OnDelete(DeleteBehavior.Cascade);
-        });
+// CheckInPhoto entity configuration
+builder.Entity<CheckInPhoto>(entity =>
+{
+    entity.ToTable("CheckInPhoto");
 
-        builder.Entity<LateReturnFee>(entity =>
-        {
-            entity.ToTable("LateReturnFee");
+    entity.Property(e => e.PhotoUrl).IsRequired().HasMaxLength(500);
+    entity.Property(e => e.ThumbnailUrl).HasMaxLength(500);
+    entity.Property(e => e.StoragePath).HasMaxLength(1000);
+    entity.Property(e => e.ThumbnailPath).HasMaxLength(1000);
+    entity.Property(e => e.ContentType).HasMaxLength(100);
+    entity.Property(e => e.Description).HasMaxLength(200);
+    entity.Property(e => e.Type).HasConversion<int>();
+    entity.Property(e => e.IsDeleted).HasDefaultValue(false);
 
-            entity.Property(e => e.FeeAmount).HasColumnType("decimal(18,2)");
-            entity.Property(e => e.OriginalFeeAmount).HasColumnType("decimal(18,2)");
-            entity.Property(e => e.CalculationMethod).HasMaxLength(200);
-            entity.Property(e => e.WaivedReason).HasMaxLength(500);
-            entity.Property(e => e.Status).HasConversion<int>();
+    entity.HasOne(e => e.CheckIn)
+          .WithMany(c => c.Photos)
+          .HasForeignKey(e => e.CheckInId)
+          .OnDelete(DeleteBehavior.Cascade);
+});
 
-            entity.HasOne(e => e.Booking)
-                  .WithMany(b => b.LateReturnFees)
-                  .HasForeignKey(e => e.BookingId)
-                  .OnDelete(DeleteBehavior.NoAction);
+// LateReturnFee entity configuration
+builder.Entity<LateReturnFee>(entity =>
+{
+    entity.ToTable("LateReturnFee");
 
-            entity.HasOne(e => e.User)
-                  .WithMany()
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Restrict);
+    entity.Property(e => e.FeeAmount).HasColumnType("decimal(18,2)");
+    entity.Property(e => e.OriginalFeeAmount).HasColumnType("decimal(18,2)");
+    entity.Property(e => e.CalculationMethod).HasMaxLength(200);
+    entity.Property(e => e.WaivedReason).HasMaxLength(500);
+    entity.Property(e => e.Status).HasConversion<int>();
 
-            entity.HasOne(e => e.Vehicle)
-                  .WithMany()
-                  .HasForeignKey(e => e.VehicleId)
-                  .OnDelete(DeleteBehavior.Restrict);
+    entity.HasOne(e => e.Booking)
+          .WithMany(b => b.LateReturnFees)
+          .HasForeignKey(e => e.BookingId)
+          .OnDelete(DeleteBehavior.NoAction);
 
-            entity.HasOne<OwnershipGroup>()
-                  .WithMany()
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.Restrict);
+    entity.HasOne(e => e.User)
+          .WithMany()
+          .HasForeignKey(e => e.UserId)
+          .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasIndex(e => e.BookingId);
-            entity.HasIndex(e => e.UserId);
-            entity.HasIndex(e => e.Status);
-        });
+    entity.HasOne(e => e.Vehicle)
+          .WithMany()
+          .HasForeignKey(e => e.VehicleId)
+          .OnDelete(DeleteBehavior.Restrict);
 
-        builder.Entity<DamageReport>(entity =>
-        {
-            entity.ToTable("DamageReport");
+    entity.HasOne<OwnershipGroup>()
+          .WithMany()
+          .HasForeignKey(e => e.GroupId)
+          .OnDelete(DeleteBehavior.Restrict);
 
-            entity.Property(e => e.Description).IsRequired().HasMaxLength(1000);
-            entity.Property(e => e.EstimatedCost).HasColumnType("decimal(18,2)");
-            entity.Property(e => e.Notes).HasMaxLength(1000);
-            entity.Property(e => e.PhotoIdsJson).HasMaxLength(2000);
-            entity.Property(e => e.Severity).HasConversion<int>();
-            entity.Property(e => e.Location).HasConversion<int>();
-            entity.Property(e => e.Status).HasConversion<int>();
+    entity.HasIndex(e => e.BookingId);
+    entity.HasIndex(e => e.UserId);
+    entity.HasIndex(e => e.Status);
+});
 
-            entity.HasOne(e => e.CheckIn)
-                .WithMany()
-                .HasForeignKey(e => e.CheckInId)
-                .OnDelete(DeleteBehavior.Cascade);
+// DamageReport entity configuration
+builder.Entity<DamageReport>(entity =>
+{
+    entity.ToTable("DamageReport");
 
-            entity.HasIndex(e => e.CheckInId);
-            entity.HasIndex(e => e.BookingId);
-            entity.HasIndex(e => e.VehicleId);
-        });
+    entity.Property(e => e.Description).IsRequired().HasMaxLength(1000);
+    entity.Property(e => e.EstimatedCost).HasColumnType("decimal(18,2)");
+    entity.Property(e => e.Notes).HasMaxLength(1000);
+    entity.Property(e => e.PhotoIdsJson).HasMaxLength(2000);
+    entity.Property(e => e.Severity).HasConversion<int>();
+    entity.Property(e => e.Location).HasConversion<int>();
+    entity.Property(e => e.Status).HasConversion<int>();
 
-        builder.Entity<BookingNotificationPreference>(entity =>
-        {
-            entity.ToTable("BookingNotificationPreference");
+    entity.HasOne(e => e.CheckIn)
+        .WithMany()
+        .HasForeignKey(e => e.CheckInId)
+        .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasKey(e => e.UserId);
-            entity.Property(e => e.EnableReminders).HasDefaultValue(true);
-            entity.Property(e => e.EnableEmail).HasDefaultValue(true);
-            entity.Property(e => e.EnableSms).HasDefaultValue(true);
-            entity.Property(e => e.PreferredTimeZoneId).HasMaxLength(100);
-            entity.Property(e => e.Notes).HasMaxLength(250);
-            entity.Property(e => e.UpdatedAt).HasColumnType("datetime2");
-        });
+    entity.HasIndex(e => e.CheckInId);
+    entity.HasIndex(e => e.BookingId);
+    entity.HasIndex(e => e.VehicleId);
+});
+
+// BookingNotificationPreference entity configuration
+builder.Entity<BookingNotificationPreference>(entity =>
+{
+    entity.ToTable("BookingNotificationPreference");
+
+    entity.HasKey(e => e.UserId);
+    entity.Property(e => e.EnableReminders).HasDefaultValue(true);
+    entity.Property(e => e.EnableEmail).HasDefaultValue(true);
+    entity.Property(e => e.EnableSms).HasDefaultValue(true);
+    entity.Property(e => e.PreferredTimeZoneId).HasMaxLength(100);
+    entity.Property(e => e.Notes).HasMaxLength(250);
+    entity.Property(e => e.UpdatedAt).HasColumnType("datetime2");
+});
 
         // Configure automatic timestamp updates
         foreach (var entityType in builder.Model.GetEntityTypes())

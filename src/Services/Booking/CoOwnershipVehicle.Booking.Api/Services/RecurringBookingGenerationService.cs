@@ -32,6 +32,9 @@ public class RecurringBookingGenerationService : BackgroundService
     {
         _logger.LogInformation("Recurring booking generation service starting. Interval {Interval}", ExecutionInterval);
 
+        // Wait for the application to fully start before processing
+        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
         await ProcessAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(ExecutionInterval);

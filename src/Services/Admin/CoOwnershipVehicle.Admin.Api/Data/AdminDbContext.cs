@@ -362,6 +362,31 @@ public class AdminDbContext : DbContext
             entity.HasIndex(e => e.CreatedBy);
         });
 
+        // Configure DocumentTagMapping entity (composite key for many-to-many relationship)
+        modelBuilder.Entity<DocumentTagMapping>(entity =>
+        {
+            entity.HasKey(e => new { e.DocumentId, e.TagId });
+
+            entity.HasOne(e => e.Document)
+                  .WithMany(d => d.TagMappings)
+                  .HasForeignKey(e => e.DocumentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Tag)
+                  .WithMany(t => t.DocumentMappings)
+                  .HasForeignKey(e => e.TagId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.TaggerUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.TaggedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.DocumentId);
+            entity.HasIndex(e => e.TagId);
+            entity.HasIndex(e => e.TaggedAt);
+        });
+
         // Configure automatic timestamp updates
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
