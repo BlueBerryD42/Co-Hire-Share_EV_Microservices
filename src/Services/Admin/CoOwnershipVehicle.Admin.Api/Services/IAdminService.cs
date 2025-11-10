@@ -17,6 +17,8 @@ public interface IAdminService
     Task<bool> UpdateUserStatusAsync(Guid userId, UpdateUserStatusDto request, Guid adminUserId);
     Task<bool> UpdateUserRoleAsync(Guid userId, UpdateUserRoleDto request, Guid adminUserId);
     Task<List<PendingKycUserDto>> GetPendingKycUsersAsync();
+    Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto request, Guid adminUserId);
+    Task<bool> UpdateUserKycStatusAsync(Guid userId, UpdateUserKycStatusDto request, Guid adminUserId);
     
     // Group Management Methods
     Task<GroupListResponseDto> GetGroupsAsync(GroupListRequestDto request);

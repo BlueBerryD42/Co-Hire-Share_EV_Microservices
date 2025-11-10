@@ -720,7 +720,8 @@ public class AdminServiceTests : IDisposable
     public async Task GetFinancialOverview_RevenueBySource_CalculatedCorrectly()
     {
         // Arrange
-        var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        var userId = Guid.NewGuid();
+        var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = userId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         _context.OwnershipGroups.Add(group);
         await _context.SaveChangesAsync();
 
@@ -745,7 +746,8 @@ public class AdminServiceTests : IDisposable
     public async Task GetFinancialByGroups_BalanceCalculation_MatchDatabase()
     {
         // Arrange
-        var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        var user = _context.Users.First();
+        var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = user.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         _context.OwnershipGroups.Add(group);
         await _context.SaveChangesAsync();
 
@@ -756,13 +758,6 @@ public class AdminServiceTests : IDisposable
         };
         _context.LedgerEntries.AddRange(ledgerEntries);
         
-        var expenses = new List<Expense>
-        {
-            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Fuel, Amount = 1000, Description = "Fuel", CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow }
-        };
-        _context.Expenses.AddRange(expenses);
-        await _context.SaveChangesAsync();
-
         // Act
         var result = await _adminService.GetFinancialByGroupsAsync();
 
@@ -808,12 +803,18 @@ public class AdminServiceTests : IDisposable
         _context.OwnershipGroups.Add(group);
         await _context.SaveChangesAsync();
 
+        var existingExpenses = _context.Expenses.ToList();
+        _context.Expenses.RemoveRange(existingExpenses);
+        await _context.SaveChangesAsync();
+
+        var creatorId = _context.Users.First().Id;
+
         var expenses = new List<Expense>
         {
-            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Fuel, Amount = 500, Description = "Fuel 1", CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow },
-            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Fuel, Amount = 300, Description = "Fuel 2", CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow },
-            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Maintenance, Amount = 1000, Description = "Maintenance", CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow },
-            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Insurance, Amount = 200, Description = "Insurance", CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow }
+            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Fuel, Amount = 500, Description = "Fuel 1", CreatedBy = creatorId, CreatedAt = DateTime.UtcNow },
+            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Fuel, Amount = 300, Description = "Fuel 2", CreatedBy = creatorId, CreatedAt = DateTime.UtcNow },
+            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Maintenance, Amount = 1000, Description = "Maintenance", CreatedBy = creatorId, CreatedAt = DateTime.UtcNow },
+            new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Insurance, Amount = 200, Description = "Insurance", CreatedBy = creatorId, CreatedAt = DateTime.UtcNow }
         };
         _context.Expenses.AddRange(expenses);
         await _context.SaveChangesAsync();
@@ -827,6 +828,12 @@ public class AdminServiceTests : IDisposable
         result.TotalByType[ExpenseType.Fuel].Should().Be(800);
         result.TotalByType[ExpenseType.Maintenance].Should().Be(1000);
         result.TotalByType[ExpenseType.Insurance].Should().Be(200);
+
+        if (existingExpenses.Any())
+        {
+            _context.Expenses.AddRange(existingExpenses);
+            await _context.SaveChangesAsync();
+        }
     }
 
     #endregion
@@ -898,16 +905,24 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task RevenueMetrics_WithZeroUsers_GracefullyHandlesDivision()
     {
-        // Arrange - Create payments but no users
+        // Arrange - Isolated context with no users
+        var isolatedOptions = new DbContextOptionsBuilder<AdminDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        await using var isolatedContext = new AdminDbContext(isolatedOptions);
+        using var isolatedCache = new MemoryCache(new MemoryCacheOptions());
+        var isolatedService = new AdminService(isolatedContext, isolatedCache, _loggerMock.Object);
+
         var payments = new List<Payment>
         {
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 1000, Status = PaymentStatus.Completed, Method = PaymentMethod.CreditCard, CreatedAt = DateTime.UtcNow, PaidAt = DateTime.UtcNow }
         };
-        _context.Payments.AddRange(payments);
-        await _context.SaveChangesAsync();
+        isolatedContext.Payments.AddRange(payments);
+        await isolatedContext.SaveChangesAsync();
 
         // Act
-        var result = await _adminService.GetDashboardMetricsAsync(new DashboardRequestDto { Period = TimePeriod.Monthly });
+        var result = await isolatedService.GetDashboardMetricsAsync(new DashboardRequestDto { Period = TimePeriod.Monthly });
 
         // Assert
         result.Revenue.AverageRevenuePerUser.Should().Be(0); // Should not throw division by zero

@@ -402,7 +402,20 @@ public class AIService : IAIService
 
 		if (!userHistory.Any() && !snapHistory.Any())
 		{
-			return null; // group not found or no data
+			var group = await _mainContext.OwnershipGroups.AsNoTracking().FirstOrDefaultAsync(g => g.Id == groupId);
+			if (group == null)
+			{
+				return null; // unknown group
+			}
+
+			return new UsagePredictionResponse
+			{
+				GroupId = groupId,
+				GeneratedAt = DateTime.UtcNow,
+				HistoryStart = DateTime.UtcNow,
+				HistoryEnd = DateTime.UtcNow,
+				InsufficientHistory = true
+			};
 		}
 
 		var historyStart = userHistory.Any() ? userHistory.Min(x => x.PeriodStart) : snapHistory.Min(x => x.SnapshotDate);
@@ -627,7 +640,20 @@ public class AIService : IAIService
 			.Where(b => b.GroupId == groupId && b.StartAt >= periodStart && b.EndAt <= periodEnd && b.Status == BookingStatus.Completed)
 			.ToListAsync();
 
-		if (!expenses.Any() && !bookings.Any())
+		if (!expenses.Any())
+		{
+			return new CostOptimizationResponse
+			{
+				GroupId = groupId,
+				GroupName = group.Name,
+				PeriodStart = periodStart,
+				PeriodEnd = periodEnd,
+				GeneratedAt = DateTime.UtcNow,
+				InsufficientData = true
+			};
+		}
+
+		if (!bookings.Any())
 		{
 			return new CostOptimizationResponse
 			{
@@ -893,23 +919,30 @@ public class AIService : IAIService
 		var recommendations = new List<CostRecommendation>();
 
 		// Provider-specific recommendations
-		var expensiveProviders = highCostAreas
+        var expensiveProviders = highCostAreas
 			.Where(h => h.Category == "Maintenance Provider" && h.TotalAmount > 200)
 			.OrderByDescending(h => h.TotalAmount)
 			.ToList();
 
 		foreach (var provider in expensiveProviders.Take(3))
 		{
-			var avgMaintenanceCost = expenses
-				.Where(e => e.ExpenseType == ExpenseType.Maintenance)
-				.Average(e => e.Amount);
-			
-			var potentialSavings = provider.AverageAmount * 0.15m; // Assume 15% savings with alternative provider
+            var maintenanceAmounts = expenses
+                .Where(e => e.ExpenseType == ExpenseType.Maintenance)
+                .Select(e => e.Amount)
+                .ToList();
+
+            var avgMaintenanceCost = maintenanceAmounts.Any() ? maintenanceAmounts.Average() : 0m;
+            var providerAverage = provider.Count > 0 ? provider.AverageAmount : avgMaintenanceCost;
+            var potentialSavings = providerAverage * 0.15m; // Assume 15% savings with alternative provider
+            if (provider.Count == 0 || providerAverage == 0)
+            {
+                continue;
+            }
 			
 			recommendations.Add(new CostRecommendation
 			{
 				Title = $"Switch Maintenance Provider",
-				Description = $"Consider switching from {provider.ProviderName} (avg ${provider.AverageAmount:F2}/service). Alternative providers may offer similar quality at lower cost.",
+                Description = $"Consider switching from {provider.ProviderName} (avg ${providerAverage:F2}/service). Alternative providers may offer similar quality at lower cost.",
 				EstimatedSavings = potentialSavings * provider.Count,
 				EstimatedSavingsPercentage = 15,
 				Category = "Provider Optimization",
@@ -942,7 +975,7 @@ public class AIService : IAIService
 		if (insuranceExpenses.Any())
 		{
 			var annualInsurance = insuranceExpenses.Sum(e => e.Amount);
-			var avgInsurance = insuranceExpenses.Average(e => e.Amount);
+			var avgInsurance = insuranceExpenses.Any() ? insuranceExpenses.Average(e => e.Amount) : 0m;
 			
 			recommendations.Add(new CostRecommendation
 			{
@@ -961,7 +994,7 @@ public class AIService : IAIService
 		if (cleaningExpenses.Any())
 		{
 			var cleaningTotal = cleaningExpenses.Sum(e => e.Amount);
-			var avgCleaningCost = cleaningExpenses.Average(e => e.Amount);
+			var avgCleaningCost = cleaningExpenses.Any() ? cleaningExpenses.Average(e => e.Amount) : 0m;
 			
 			if (avgCleaningCost > 50)
 			{
