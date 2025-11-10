@@ -46,6 +46,8 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
     public DbSet<UserAnalytics> UserAnalytics { get; set; }
     public DbSet<VehicleAnalytics> VehicleAnalytics { get; set; }
     public DbSet<GroupAnalytics> GroupAnalytics { get; set; }
+    public DbSet<GroupFund> GroupFunds { get; set; }
+    public DbSet<FundTransaction> FundTransactions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -367,8 +369,60 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // GroupFund entity configuration
+        builder.Entity<GroupFund>(entity =>
+        {
+            entity.Property(e => e.TotalBalance).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ReserveBalance).HasColumnType("decimal(18,2)");
+
+            entity.HasOne(e => e.Group)
+                  .WithOne(g => g.Fund)
+                  .HasForeignKey<GroupFund>(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.GroupId).IsUnique();
+            entity.HasIndex(e => e.LastUpdated);
+        });
+
+        // FundTransaction entity configuration
+        builder.Entity<FundTransaction>(entity =>
+        {
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.BalanceBefore).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.BalanceAfter).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Reference).HasMaxLength(200);
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.TransactionDate).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Group)
+                  .WithMany(g => g.FundTransactions)
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Initiator)
+                  .WithMany(u => u.InitiatedFundTransactions)
+                  .HasForeignKey(e => e.InitiatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Approver)
+                  .WithMany(u => u.ApprovedFundTransactions)
+                  .HasForeignKey(e => e.ApprovedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.InitiatedBy);
+            entity.HasIndex(e => e.Type);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.TransactionDate);
+            entity.HasIndex(e => new { e.GroupId, e.Status });
+        });
+
         // Ignore LateReturnFee - it's managed by BookingDbContext
         builder.Ignore<LateReturnFee>();
+        builder.Ignore<GroupAnalytics>();
+        builder.Ignore<VehicleAnalytics>();
 
         // Proposal entity configuration
         builder.Entity<Proposal>(entity =>
