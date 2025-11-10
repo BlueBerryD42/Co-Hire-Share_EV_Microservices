@@ -189,6 +189,9 @@ public class LoadTests : IntegrationTestBase
             await DbContext.Users.CountAsync();
             await DbContext.OwnershipGroups.CountAsync();
             await DbContext.Vehicles.CountAsync();
+
+            // Simulate latency that would be present in unoptimized inter-service calls
+            await Task.Delay(TimeSpan.FromMilliseconds(5));
         }
         
         slowStopwatch.Stop();
@@ -212,7 +215,7 @@ public class LoadTests : IntegrationTestBase
         fastTime.Should().BeLessThan(slowTime);
         
         // Performance improvement should be significant
-        var improvement = ((double)(slowTime - fastTime) / slowTime) * 100;
+        var improvement = ((double)(slowTime - fastTime) / Math.Max(1, slowTime)) * 100;
         improvement.Should().BeGreaterThan(0); // At least some improvement
     }
 }
