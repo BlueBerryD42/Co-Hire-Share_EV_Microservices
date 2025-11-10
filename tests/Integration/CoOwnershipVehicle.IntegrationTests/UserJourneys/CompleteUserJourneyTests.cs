@@ -89,32 +89,18 @@ public class CompleteUserJourneyTests : IntegrationTestBase
         expense.Amount.Should().Be(150.00m);
 
         // 8. Create Invoice for expense split (one invoice per member)
-        var invoices = new List<Invoice>();
-        decimal allocated = 0m;
-        for (int index = 0; index < groupMembers.Count; index++)
+        var invoices = groupMembers.Select(m => new Invoice
         {
-            var member = groupMembers[index];
-            var isLast = index == groupMembers.Count - 1;
-            var shareAmount = decimal.Round(expense.Amount * member.SharePercentage, 2, MidpointRounding.AwayFromZero);
-            if (isLast)
-            {
-                shareAmount = expense.Amount - allocated;
-            }
-            allocated += shareAmount;
-
-            invoices.Add(new Invoice
-            {
-                Id = Guid.NewGuid(),
-                ExpenseId = expense.Id,
-                PayerId = member.UserId,
-                Amount = shareAmount,
-                InvoiceNumber = $"INV-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                Status = InvoiceStatus.Pending,
-                DueDate = DateTime.UtcNow.AddDays(30),
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
-        }
+            Id = Guid.NewGuid(),
+            ExpenseId = expense.Id,
+            PayerId = m.UserId,
+            Amount = expense.Amount * m.SharePercentage,
+            InvoiceNumber = $"INV-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
+            Status = InvoiceStatus.Pending,
+            DueDate = DateTime.UtcNow.AddDays(30),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        }).ToList();
 
         DbContext.Invoices.AddRange(invoices);
         await DbContext.SaveChangesAsync();
@@ -218,32 +204,18 @@ public class CompleteUserJourneyTests : IntegrationTestBase
             .Where(m => m.GroupId == group.Id)
             .ToListAsync();
 
-        var invoices = new List<Invoice>();
-        decimal allocated = 0m;
-        for (var index = 0; index < groupMembers.Count; index++)
+        var invoices = groupMembers.Select(m => new Invoice
         {
-            var member = groupMembers[index];
-            var isLast = index == groupMembers.Count - 1;
-            var shareAmount = decimal.Round(expense.Amount * member.SharePercentage, 2, MidpointRounding.AwayFromZero);
-            if (isLast)
-            {
-                shareAmount = expense.Amount - allocated;
-            }
-            allocated += shareAmount;
-
-            invoices.Add(new Invoice
-            {
-                Id = Guid.NewGuid(),
-                ExpenseId = expense.Id,
-                PayerId = member.UserId,
-                Amount = shareAmount,
-                InvoiceNumber = $"INV-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                Status = InvoiceStatus.Pending,
-                DueDate = DateTime.UtcNow.AddDays(30),
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
-        }
+            Id = Guid.NewGuid(),
+            ExpenseId = expense.Id,
+            PayerId = m.UserId,
+            Amount = expense.Amount * m.SharePercentage,
+            InvoiceNumber = $"INV-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
+            Status = InvoiceStatus.Pending,
+            DueDate = DateTime.UtcNow.AddDays(30),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        }).ToList();
 
         DbContext.Invoices.AddRange(invoices);
         await DbContext.SaveChangesAsync();
@@ -326,10 +298,6 @@ public class CompleteUserJourneyTests : IntegrationTestBase
             );
             votes.Add(vote);
         }
-
-        // Ensure slight majority by giving one yes voter a minimal extra weight
-        var marginVoter = votes.First(v => v.VoterId == creator.Id);
-        marginVoter.Weight += 0.01m;
 
         DbContext.Votes.AddRange(votes);
         await DbContext.SaveChangesAsync();

@@ -256,8 +256,6 @@ public class AIServiceEdgeCaseTests : IDisposable
         _mainContext.OwnershipGroups.Add(group);
         await _mainContext.SaveChangesAsync();
 
-        await AddUserAnalyticsAsync(userId, groupId, 1.0m, 0m, 0, 0);
-
         return groupId;
     }
 
@@ -299,8 +297,6 @@ public class AIServiceEdgeCaseTests : IDisposable
         _mainContext.Users.Add(user);
         _mainContext.OwnershipGroups.Add(group);
         await _mainContext.SaveChangesAsync();
-
-        await AddUserAnalyticsAsync(userId, groupId, 1.0m, 0m, 0, 0);
 
         return groupId;
     }
@@ -364,9 +360,6 @@ public class AIServiceEdgeCaseTests : IDisposable
         _mainContext.Users.AddRange(users);
         _mainContext.OwnershipGroups.Add(group);
         await _mainContext.SaveChangesAsync();
-
-        await AddUserAnalyticsAsync(userId1, groupId, 0.5m, 0m, 0, 0);
-        await AddUserAnalyticsAsync(userId2, groupId, 0.5m, 0m, 0, 0);
 
         return groupId;
     }
@@ -439,13 +432,28 @@ public class AIServiceEdgeCaseTests : IDisposable
             }
         };
 
+        // Create user analytics showing extreme imbalance
+        var userAnalytics = new CoOwnershipVehicle.Domain.Entities.UserAnalytics
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId1,
+            GroupId = groupId,
+            PeriodStart = DateTime.UtcNow.AddDays(-90),
+            PeriodEnd = DateTime.UtcNow,
+            Period = AnalyticsPeriod.Monthly,
+            OwnershipShare = 0.5m,
+            UsageShare = 0.95m, // Dominates usage
+            TotalUsageHours = 950,
+            TotalBookings = 95
+        };
+
         _mainContext.Users.AddRange(users);
         _mainContext.OwnershipGroups.Add(group);
         _mainContext.Vehicles.Add(vehicle);
         await _mainContext.SaveChangesAsync();
 
-        await AddUserAnalyticsAsync(userId1, groupId, 0.5m, 0.95m, 950, 95);
-        await AddUserAnalyticsAsync(userId2, groupId, 0.5m, 0.05m, 50, 5);
+        _analyticsContext.UserAnalytics.Add(userAnalytics);
+        await _analyticsContext.SaveChangesAsync();
 
         return groupId;
     }
@@ -471,7 +479,7 @@ public class AIServiceEdgeCaseTests : IDisposable
 
     private async Task<Guid> CreateGroupWithMinimalHistory()
     {
-        var userId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+        var userId = Guid.Parse("gggggggg-gggg-gggg-gggg-gggggggggggg");
         var groupId = Guid.NewGuid();
 
         var user = new User
@@ -505,18 +513,33 @@ public class AIServiceEdgeCaseTests : IDisposable
         };
 
         // Add analytics with less than 30 days
+        var userAnalytics = new CoOwnershipVehicle.Domain.Entities.UserAnalytics
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            GroupId = groupId,
+            PeriodStart = DateTime.UtcNow.AddDays(-15),
+            PeriodEnd = DateTime.UtcNow,
+            Period = AnalyticsPeriod.Daily,
+            OwnershipShare = 1.0m,
+            UsageShare = 1.0m,
+            TotalUsageHours = 100,
+            TotalBookings = 5
+        };
+
         _mainContext.Users.Add(user);
         _mainContext.OwnershipGroups.Add(group);
         await _mainContext.SaveChangesAsync();
 
-        await AddUserAnalyticsAsync(userId, groupId, 1.0m, 1.0m, 100, 5, AnalyticsPeriod.Daily, DateTime.UtcNow.AddDays(-15), DateTime.UtcNow);
+        _analyticsContext.UserAnalytics.Add(userAnalytics);
+        await _analyticsContext.SaveChangesAsync();
 
         return groupId;
     }
 
     private async Task<Guid> CreateGroupWithBookingsButNoExpenses()
     {
-        var userId = Guid.Parse("88888888-8888-8888-8888-888888888888");
+        var userId = Guid.Parse("hhhhhhhh-hhhh-hhhh-hhhh-hhhhhhhhhhhh");
         var groupId = Guid.NewGuid();
 
         var user = new User
@@ -626,23 +649,6 @@ public class AIServiceEdgeCaseTests : IDisposable
         _mainContext.OwnershipGroups.Add(group);
         await _mainContext.SaveChangesAsync();
 
-        var analyticsEntries = users.Select(u => new UserAnalytics
-        {
-            Id = Guid.NewGuid(),
-            UserId = u.Id,
-            GroupId = groupId,
-            PeriodStart = DateTime.UtcNow.AddDays(-90),
-            PeriodEnd = DateTime.UtcNow,
-            Period = AnalyticsPeriod.Monthly,
-            OwnershipShare = 1.0m / memberCount,
-            UsageShare = 1.0m / memberCount,
-            TotalUsageHours = 100,
-            TotalBookings = 5
-        }).ToList();
-
-        _analyticsContext.UserAnalytics.AddRange(analyticsEntries);
-        await _analyticsContext.SaveChangesAsync();
-
         return groupId;
     }
 
@@ -681,45 +687,33 @@ public class AIServiceEdgeCaseTests : IDisposable
             }
         };
 
-        _mainContext.Users.Add(user);
-        _mainContext.OwnershipGroups.Add(group);
-        await _mainContext.SaveChangesAsync();
-
-        await AddUserAnalyticsAsync(userId, groupId, 1.0m, 1.0m, 1000, 50, AnalyticsPeriod.Daily, DateTime.UtcNow.AddDays(-120), DateTime.UtcNow);
-
-        return groupId;
-    }
-
-    private async Task AddUserAnalyticsAsync(
-        Guid userId,
-        Guid groupId,
-        decimal ownershipShare,
-        decimal usageShare,
-        int totalUsageHours,
-        int totalBookings,
-        AnalyticsPeriod period = AnalyticsPeriod.Monthly,
-        DateTime? periodStart = null,
-        DateTime? periodEnd = null)
-    {
-        _analyticsContext.UserAnalytics.Add(new UserAnalytics
+        var userAnalytics = new CoOwnershipVehicle.Domain.Entities.UserAnalytics
         {
             Id = Guid.NewGuid(),
             UserId = userId,
             GroupId = groupId,
-            PeriodStart = periodStart ?? DateTime.UtcNow.AddDays(-90),
-            PeriodEnd = periodEnd ?? DateTime.UtcNow,
-            Period = period,
-            OwnershipShare = ownershipShare,
-            UsageShare = usageShare,
-            TotalUsageHours = totalUsageHours,
-            TotalBookings = totalBookings
-        });
+            PeriodStart = DateTime.UtcNow.AddDays(-120),
+            PeriodEnd = DateTime.UtcNow,
+            Period = AnalyticsPeriod.Daily,
+            OwnershipShare = 1.0m,
+            UsageShare = 1.0m,
+            TotalUsageHours = 1000,
+            TotalBookings = 50
+        };
+
+        _mainContext.Users.Add(user);
+        _mainContext.OwnershipGroups.Add(group);
+        await _mainContext.SaveChangesAsync();
+
+        _analyticsContext.UserAnalytics.Add(userAnalytics);
         await _analyticsContext.SaveChangesAsync();
+
+        return groupId;
     }
 
     private async Task<Guid> CreateGroupWithDataSpike()
     {
-        var userId = Guid.Parse("99999999-9999-9999-9999-999999999999");
+        var userId = Guid.Parse("iiiiiiii-iiii-iiii-iiii-iiiiiiiiiiii");
         var groupId = Guid.NewGuid();
 
         var user = new User

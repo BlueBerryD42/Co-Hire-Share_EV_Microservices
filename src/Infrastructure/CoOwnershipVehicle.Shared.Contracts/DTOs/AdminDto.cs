@@ -227,12 +227,6 @@ public class UpdateUserRoleDto
     public string? Reason { get; set; }
 }
 
-public class UpdateUserKycStatusDto
-{
-    public KycStatus Status { get; set; }
-    public string? Reason { get; set; }
-}
-
 public class PendingKycUserDto
 {
     public Guid Id { get; set; }

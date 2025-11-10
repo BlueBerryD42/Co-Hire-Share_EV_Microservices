@@ -18,21 +18,13 @@ public class CrossServiceQueryTests : IntegrationTestBase
         }
 
         var groups = new List<OwnershipGroup>();
-        var groupCountTarget = 3;
-        for (int i = 0; i < groupCountTarget; i++)
+        for (int i = 0; i < 3; i++)
         {
             var memberIds = users.Skip(i * 2).Take(2).Select(u => u.Id).ToList();
             if (memberIds.Count == 2)
             {
                 groups.Add(await CreateAndSaveGroupAsync(memberIds[0], memberIds));
             }
-        }
-
-        while (groups.Count < groupCountTarget)
-        {
-            var extraMemberA = await CreateAndSaveUserAsync();
-            var extraMemberB = await CreateAndSaveUserAsync();
-            groups.Add(await CreateAndSaveGroupAsync(extraMemberA.Id, new List<Guid> { extraMemberA.Id, extraMemberB.Id }));
         }
 
         var vehicles = new List<Vehicle>();

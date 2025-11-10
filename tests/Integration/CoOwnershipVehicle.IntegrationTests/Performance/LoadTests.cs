@@ -1,8 +1,6 @@
-using CoOwnershipVehicle.Data;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.IntegrationTests.TestFixtures;
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace CoOwnershipVehicle.IntegrationTests.Performance;
 
@@ -16,68 +14,58 @@ public class LoadTests : IntegrationTestBase
         const int concurrentUsers = 200;
         var successCount = 0;
         var failureCount = 0;
+        var tasks = new List<Task>();
+
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        var preCreatedUsers = new List<User>();
-        for (int i = 0; i < concurrentUsers * 2; i++)
+        for (int i = 0; i < concurrentUsers; i++)
         {
-            preCreatedUsers.Add(await CreateAndSaveUserAsync());
+            var userIndex = i;
+            tasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    // Simulate user operations
+                    var user = await CreateAndSaveUserAsync();
+                    
+                    // Simulate multiple operations per user
+                    var group = await CreateAndSaveGroupAsync(
+                        user.Id,
+                        new List<Guid> { user.Id, (await CreateAndSaveUserAsync()).Id }
+                    );
+                    
+                    var vehicle = await CreateAndSaveVehicleAsync(group.Id);
+                    
+                    var booking = TestDataBuilder.CreateTestBooking(
+                        vehicle.Id,
+                        group.Id,
+                        user.Id
+                    );
+                    DbContext.Bookings.Add(booking);
+                    await DbContext.SaveChangesAsync();
+
+                    Interlocked.Increment(ref successCount);
+                }
+                catch
+                {
+                    Interlocked.Increment(ref failureCount);
+                }
+            }));
         }
 
-        var userPairs = preCreatedUsers
-            .Chunk(2)
-            .Where(chunk => chunk.Length == 2)
-            .Select(chunk => new { Owner = chunk[0], Member = chunk[1] })
-            .Take(concurrentUsers)
-            .ToList();
-
-        if (userPairs.Count < concurrentUsers)
-        {
-            throw new InvalidOperationException("Insufficient user pairs created for load test.");
-        }
-
-        await Parallel.ForEachAsync(userPairs, new ParallelOptions { MaxDegreeOfParallelism = 20 }, async (pair, cancellationToken) =>
-        {
-            try
-            {
-                using var scope = ServiceProvider.CreateScope();
-                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-                var group = TestDataBuilder.CreateTestGroup(pair.Owner.Id);
-                context.OwnershipGroups.Add(group);
-                await context.SaveChangesAsync(cancellationToken);
-
-                var share = 0.5m;
-                context.GroupMembers.Add(TestDataBuilder.CreateGroupMember(group.Id, pair.Owner.Id, share, GroupRole.Admin));
-                context.GroupMembers.Add(TestDataBuilder.CreateGroupMember(group.Id, pair.Member.Id, share, GroupRole.Member));
-                await context.SaveChangesAsync(cancellationToken);
-
-                var vehicle = TestDataBuilder.CreateTestVehicle(group.Id);
-                context.Vehicles.Add(vehicle);
-                await context.SaveChangesAsync(cancellationToken);
-
-                var booking = TestDataBuilder.CreateTestBooking(vehicle.Id, group.Id, pair.Owner.Id, BookingStatus.Completed);
-                context.Bookings.Add(booking);
-                await context.SaveChangesAsync(cancellationToken);
-
-                Interlocked.Increment(ref successCount);
-            }
-            catch
-            {
-                Interlocked.Increment(ref failureCount);
-            }
-        });
-
+        await Task.WhenAll(tasks);
         stopwatch.Stop();
 
-        var totalOperations = Math.Max(1, successCount + failureCount);
+        var totalOperations = successCount + failureCount;
         var successRate = (double)successCount / totalOperations * 100;
 
+        // At least 90% should succeed under load
         successRate.Should().BeGreaterThan(90);
         successCount.Should().BeGreaterThan((int)(concurrentUsers * 0.9));
-
+        
+        // Performance should be reasonable (operations complete within reasonable time)
         var avgTimePerOperation = stopwatch.ElapsedMilliseconds / (double)totalOperations;
-        avgTimePerOperation.Should().BeLessThan(1000);
+        avgTimePerOperation.Should().BeLessThan(1000); // Less than 1 second per operation
     }
 
     [Fact]
@@ -85,61 +73,51 @@ public class LoadTests : IntegrationTestBase
     public async Task MultipleOperationsSimultaneously_ShouldSucceed()
     {
         const int operationCount = 50;
+        var tasks = new List<Task>();
 
-        using var scope = ServiceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        // Create users
+        var userTasks = Enumerable.Range(0, operationCount)
+            .Select(i => Task.Run(async () => await CreateAndSaveUserAsync()))
+            .ToList();
+        var users = await Task.WhenAll(userTasks);
 
-        var users = new List<User>();
-        for (int i = 0; i < operationCount; i++)
-        {
-            users.Add(TestDataBuilder.CreateTestUser());
-        }
-        context.Users.AddRange(users);
-        await context.SaveChangesAsync();
+        // Create groups
+        var groupTasks = users
+            .Chunk(2)
+            .Where(chunk => chunk.Length == 2)
+            .Select(chunk => Task.Run(async () => 
+                await CreateAndSaveGroupAsync(chunk[0].Id, chunk.Select(u => u.Id).ToList())))
+            .ToList();
+        var groups = await Task.WhenAll(groupTasks);
 
-        var groups = new List<OwnershipGroup>();
-        for (int i = 0; i < users.Count; i += 2)
-        {
-            if (i + 1 >= users.Count) break;
-            var owner = users[i];
-            var member = users[i + 1];
-            var group = TestDataBuilder.CreateTestGroup(owner.Id);
-            context.OwnershipGroups.Add(group);
-            await context.SaveChangesAsync();
+        // Create vehicles
+        var vehicleTasks = groups
+            .Select(g => Task.Run(async () => await CreateAndSaveVehicleAsync(g.Id)))
+            .ToList();
+        var vehicles = await Task.WhenAll(vehicleTasks);
 
-            context.GroupMembers.Add(TestDataBuilder.CreateGroupMember(group.Id, owner.Id, 0.5m, GroupRole.Admin));
-            context.GroupMembers.Add(TestDataBuilder.CreateGroupMember(group.Id, member.Id, 0.5m, GroupRole.Member));
-            await context.SaveChangesAsync();
+        // Create bookings
+        var bookingTasks = vehicles
+            .Where(v => v.GroupId != null)
+            .Select(v => Task.Run(async () =>
+            {
+                var booking = TestDataBuilder.CreateTestBooking(
+                    v.Id,
+                    v.GroupId!.Value,
+                    users.First().Id
+                );
+                DbContext.Bookings.Add(booking);
+                await DbContext.SaveChangesAsync();
+                return booking;
+            }))
+            .ToList();
+        var bookings = await Task.WhenAll(bookingTasks);
 
-            groups.Add(group);
-        }
-
-        var vehicles = new List<Vehicle>();
-        foreach (var group in groups)
-        {
-            var vehicle = TestDataBuilder.CreateTestVehicle(group.Id);
-            context.Vehicles.Add(vehicle);
-            vehicles.Add(vehicle);
-        }
-        await context.SaveChangesAsync();
-
-        var bookings = new List<Booking>();
-        foreach (var vehicle in vehicles.Where(v => v.GroupId != null))
-        {
-            var booking = TestDataBuilder.CreateTestBooking(
-                vehicle.Id,
-                vehicle.GroupId!.Value,
-                users.First().Id,
-                BookingStatus.Completed);
-            context.Bookings.Add(booking);
-            bookings.Add(booking);
-        }
-        await context.SaveChangesAsync();
-
-        users.Count.Should().Be(operationCount);
-        groups.Count.Should().BeGreaterThan(0);
-        vehicles.Count.Should().Be(groups.Count);
-        bookings.Count.Should().BeGreaterThan(0);
+        // Verify all operations completed
+        users.Length.Should().Be(operationCount);
+        groups.Length.Should().BeGreaterThan(0);
+        vehicles.Length.Should().Be(groups.Length);
+        bookings.Length.Should().BeGreaterThan(0);
     }
 
     [Fact]

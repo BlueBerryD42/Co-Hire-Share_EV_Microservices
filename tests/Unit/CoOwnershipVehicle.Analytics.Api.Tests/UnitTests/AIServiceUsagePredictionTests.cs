@@ -4,7 +4,6 @@ using Moq;
 using CoOwnershipVehicle.Analytics.Api.Services;
 using CoOwnershipVehicle.Analytics.Api.Tests.Fixtures;
 using CoOwnershipVehicle.Analytics.Api.Models;
-using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Analytics.Api.Tests.UnitTests;
 
@@ -162,10 +161,9 @@ public class AIServiceUsagePredictionTests : IDisposable
     {
         // Arrange - create a new group with no history
         var newGroupId = Guid.NewGuid();
-        var newUserId = Guid.NewGuid();
         var newUser = new CoOwnershipVehicle.Domain.Entities.User
         {
-            Id = newUserId,
+            Id = Guid.NewGuid(),
             Email = "newuser@test.com",
             FirstName = "New",
             LastName = "User",
@@ -174,27 +172,7 @@ public class AIServiceUsagePredictionTests : IDisposable
             CreatedAt = DateTime.UtcNow
         };
 
-        var newGroup = new OwnershipGroup
-        {
-            Id = newGroupId,
-            Name = "Insufficient History Group",
-            Status = GroupStatus.Active,
-            CreatedBy = newUserId,
-            CreatedAt = DateTime.UtcNow,
-            Members = new List<GroupMember>
-            {
-                new GroupMember
-                {
-                    UserId = newUserId,
-                    SharePercentage = 1.0m,
-                    RoleInGroup = GroupRole.Member,
-                    CreatedAt = DateTime.UtcNow
-                }
-            }
-        };
-
         _fixture.MainContext.Users.Add(newUser);
-        _fixture.MainContext.OwnershipGroups.Add(newGroup);
         await _fixture.MainContext.SaveChangesAsync();
 
         // Act

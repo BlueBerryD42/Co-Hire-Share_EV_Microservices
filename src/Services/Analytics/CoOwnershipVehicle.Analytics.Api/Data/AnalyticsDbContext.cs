@@ -48,10 +48,6 @@ public class AnalyticsDbContext : DbContext
         builder.Ignore<Proposal>();
         builder.Ignore<Vote>();
         builder.Ignore<AuditLog>();
-        builder.Ignore<GroupFund>();
-        builder.Ignore<FundTransaction>();
-        builder.Ignore<GroupAnalytics>();
-        builder.Ignore<VehicleAnalytics>();
 
         // AnalyticsSnapshot entity configuration
         builder.Entity<CoOwnershipVehicle.Domain.Entities.AnalyticsSnapshot>(entity =>

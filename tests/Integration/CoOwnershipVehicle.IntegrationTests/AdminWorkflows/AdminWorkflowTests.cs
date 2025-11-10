@@ -185,20 +185,18 @@ public class AdminWorkflowTests : IntegrationTestBase
         groupReport.All(g => g.MemberCount > 0).Should().BeTrue();
 
         // Run booking report
-        var vehicles = new List<Vehicle>();
-        foreach (var group in groups.Take(3))
-        {
-            vehicles.Add(await CreateAndSaveVehicleAsync(group.Id));
-        }
+        var vehicles = await DbContext.Vehicles
+            .Where(v => v.GroupId != null)
+            .ToListAsync();
 
         var bookings = new List<Booking>();
-        foreach (var vehicle in vehicles)
+        foreach (var vehicle in vehicles.Take(3))
         {
             var booking = TestDataBuilder.CreateTestBooking(
                 vehicle.Id,
                 vehicle.GroupId!.Value,
-                users.First().Id,
-                BookingStatus.Completed);
+                users.First().Id
+            );
             bookings.Add(booking);
         }
         DbContext.Bookings.AddRange(bookings);

@@ -406,42 +406,6 @@ public class AIServicePerformanceTests : IDisposable
         _mainContext.Bookings.AddRange(bookings);
         await _mainContext.SaveChangesAsync();
 
-        // Seed analytics summaries for fairness calculations
-        var totalUsageHours = bookings.Sum(b => (b.EndAt - b.StartAt).TotalHours);
-        var totalUsageHoursInt = (int)Math.Round(totalUsageHours, MidpointRounding.AwayFromZero);
-        var userAnalytics = bookings
-            .GroupBy(b => b.UserId)
-            .Select(g => new UserAnalytics
-            {
-                Id = Guid.NewGuid(),
-                UserId = g.Key,
-                GroupId = groupId,
-                PeriodStart = DateTime.UtcNow.AddMonths(-3),
-                PeriodEnd = DateTime.UtcNow,
-                Period = AnalyticsPeriod.Monthly,
-                OwnershipShare = 1m / memberCount,
-                UsageShare = totalUsageHours <= 0 ? 0 : (decimal)(g.Sum(b => (b.EndAt - b.StartAt).TotalHours) / totalUsageHours),
-                TotalUsageHours = (int)Math.Round(g.Sum(b => (b.EndAt - b.StartAt).TotalHours), MidpointRounding.AwayFromZero),
-                TotalBookings = g.Count()
-            })
-            .ToList();
-
-        var snapshot = new AnalyticsSnapshot
-        {
-            Id = Guid.NewGuid(),
-            GroupId = groupId,
-            VehicleId = vehicleId,
-            SnapshotDate = DateTime.UtcNow.Date,
-            Period = AnalyticsPeriod.Monthly,
-            TotalBookings = bookings.Count,
-            TotalUsageHours = totalUsageHoursInt,
-            ActiveUsers = memberCount
-        };
-
-        _analyticsContext.UserAnalytics.AddRange(userAnalytics);
-        _analyticsContext.AnalyticsSnapshots.Add(snapshot);
-        await _analyticsContext.SaveChangesAsync();
-
         return groupId;
     }
 
@@ -625,46 +589,6 @@ public class AIServicePerformanceTests : IDisposable
         _mainContext.Vehicles.Add(vehicle);
         _mainContext.Bookings.AddRange(bookingsList);
         await _mainContext.SaveChangesAsync();
-
-        // Seed analytics entries with uneven usage to drive complex fairness logic
-        var totalHours = bookingsList.Sum(b => (b.EndAt - b.StartAt).TotalHours);
-        var totalHoursInt = (int)Math.Round(totalHours, MidpointRounding.AwayFromZero);
-        var analyticsEntries = bookingsList
-            .GroupBy(b => b.UserId)
-            .Select(g =>
-            {
-                var hours = g.Sum(b => (b.EndAt - b.StartAt).TotalHours);
-                return new UserAnalytics
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = g.Key,
-                    GroupId = groupId,
-                    PeriodStart = DateTime.UtcNow.AddMonths(-3),
-                    PeriodEnd = DateTime.UtcNow,
-                    Period = AnalyticsPeriod.Monthly,
-                    OwnershipShare = 1m / members,
-                    UsageShare = totalHours <= 0 ? 0 : (decimal)(hours / totalHours),
-                    TotalUsageHours = (int)Math.Round(hours, MidpointRounding.AwayFromZero),
-                    TotalBookings = g.Count()
-                };
-            })
-            .ToList();
-
-        var fairnessSnapshot = new AnalyticsSnapshot
-        {
-            Id = Guid.NewGuid(),
-            GroupId = groupId,
-            VehicleId = vehicleId,
-            SnapshotDate = DateTime.UtcNow.Date,
-            Period = AnalyticsPeriod.Monthly,
-            TotalBookings = bookingsList.Count,
-            TotalUsageHours = totalHoursInt,
-            ActiveUsers = members
-        };
-
-        _analyticsContext.UserAnalytics.AddRange(analyticsEntries);
-        _analyticsContext.AnalyticsSnapshots.Add(fairnessSnapshot);
-        await _analyticsContext.SaveChangesAsync();
 
         return groupId;
     }

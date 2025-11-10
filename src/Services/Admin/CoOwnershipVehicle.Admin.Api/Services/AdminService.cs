@@ -22,8 +22,8 @@ public class AdminService : IAdminService
 
     public async Task<DashboardMetricsDto> GetDashboardMetricsAsync(DashboardRequestDto request)
     {
-        var cacheKey = await GenerateDashboardCacheKeyAsync(request);
-
+        var cacheKey = $"dashboard_metrics_{request.Period}_{request.IncludeGrowthMetrics}_{request.IncludeAlerts}";
+        
         if (_cache.TryGetValue(cacheKey, out DashboardMetricsDto? cachedMetrics))
         {
             return cachedMetrics!;
@@ -34,26 +34,19 @@ public class AdminService : IAdminService
         try
         {
             // Get user metrics
-            var userMetrics = await GetUserMetricsAsync(request.Period);
-            metrics.Users = userMetrics;
+            metrics.Users = await GetUserMetricsAsync(request.Period);
             
             // Get group metrics
-            var groupMetrics = await GetGroupMetricsAsync(request.Period);
-            metrics.Groups = groupMetrics;
+            metrics.Groups = await GetGroupMetricsAsync(request.Period);
             
             // Get vehicle metrics
-            var vehicleMetrics = await GetVehicleMetricsAsync(request.Period);
-            metrics.Vehicles = vehicleMetrics;
+            metrics.Vehicles = await GetVehicleMetricsAsync(request.Period);
             
             // Get booking metrics
             metrics.Bookings = await GetBookingMetricsAsync(request.Period);
             
             // Get revenue metrics
-            metrics.Revenue = await GetRevenueMetricsAsync(
-                request.Period,
-                userMetrics.TotalUsers,
-                groupMetrics.TotalGroups,
-                vehicleMetrics.TotalVehicles);
+            metrics.Revenue = await GetRevenueMetricsAsync(request.Period);
             
             // Get system health
             metrics.SystemHealth = await GetSystemHealthAsync();
@@ -77,63 +70,6 @@ public class AdminService : IAdminService
         }
 
         return metrics;
-    }
-
-    private async Task<string> GenerateDashboardCacheKeyAsync(DashboardRequestDto request)
-    {
-        var baseKey = $"dashboard_metrics_{request.Period}_{request.IncludeGrowthMetrics}_{request.IncludeAlerts}";
-
-        var userCount = await _context.Users.CountAsync();
-        var groupCount = await _context.OwnershipGroups.CountAsync();
-        var vehicleCount = await _context.Vehicles.CountAsync();
-        var bookingCount = await _context.Bookings.CountAsync();
-        var paymentCount = await _context.Payments.CountAsync();
-        var expenseCount = await _context.Expenses.CountAsync();
-
-        var latestUserUpdate = await _context.Users
-            .OrderByDescending(u => u.UpdatedAt)
-            .Select(u => (DateTime?)u.UpdatedAt)
-            .FirstOrDefaultAsync() ?? DateTime.MinValue;
-
-        var latestGroupUpdate = await _context.OwnershipGroups
-            .OrderByDescending(g => g.UpdatedAt)
-            .Select(g => (DateTime?)g.UpdatedAt)
-            .FirstOrDefaultAsync() ?? DateTime.MinValue;
-
-        var latestVehicleUpdate = await _context.Vehicles
-            .OrderByDescending(v => v.UpdatedAt)
-            .Select(v => (DateTime?)v.UpdatedAt)
-            .FirstOrDefaultAsync() ?? DateTime.MinValue;
-
-        var latestBookingUpdate = await _context.Bookings
-            .OrderByDescending(b => b.UpdatedAt)
-            .Select(b => (DateTime?)b.UpdatedAt)
-            .FirstOrDefaultAsync() ?? DateTime.MinValue;
-
-        var latestPaymentUpdate = await _context.Payments
-            .OrderByDescending(p => p.UpdatedAt)
-            .Select(p => (DateTime?)p.UpdatedAt)
-            .FirstOrDefaultAsync() ?? DateTime.MinValue;
-
-        var latestExpenseUpdate = await _context.Expenses
-            .OrderByDescending(e => e.UpdatedAt)
-            .Select(e => (DateTime?)e.UpdatedAt)
-            .FirstOrDefaultAsync() ?? DateTime.MinValue;
-
-        return string.Join('_',
-            baseKey,
-            userCount,
-            groupCount,
-            vehicleCount,
-            bookingCount,
-            paymentCount,
-            expenseCount,
-            latestUserUpdate.Ticks,
-            latestGroupUpdate.Ticks,
-            latestVehicleUpdate.Ticks,
-            latestBookingUpdate.Ticks,
-            latestPaymentUpdate.Ticks,
-            latestExpenseUpdate.Ticks);
     }
 
     private async Task<UserMetricsDto> GetUserMetricsAsync(TimePeriod period)
@@ -276,13 +212,14 @@ public class AdminService : IAdminService
         };
     }
 
-    private async Task<RevenueMetricsDto> GetRevenueMetricsAsync(TimePeriod period, int totalUsers, int totalGroups, int totalVehicles)
+    private async Task<RevenueMetricsDto> GetRevenueMetricsAsync(TimePeriod period)
     {
         var now = DateTime.UtcNow;
         var periodStart = GetPeriodStart(now, period);
         var previousPeriodStart = GetPeriodStart(periodStart.AddDays(-1), period);
 
         var revenueData = await GetRevenueDataAsync(now, periodStart, previousPeriodStart);
+        var entityCounts = await GetEntityCountsAsync();
         var growthPercentage = CalculateGrowthPercentage((double)revenueData.PreviousPeriod, (double)revenueData.ThisPeriod);
 
         return new RevenueMetricsDto
@@ -292,9 +229,9 @@ public class AdminService : IAdminService
             WeeklyRevenue = revenueData.Weekly,
             DailyRevenue = revenueData.Daily,
             RevenueGrowthPercentage = growthPercentage,
-            AverageRevenuePerUser = totalUsers > 0 ? revenueData.Total / totalUsers : 0,
-            AverageRevenuePerGroup = totalGroups > 0 ? revenueData.Total / totalGroups : 0,
-            AverageRevenuePerVehicle = totalVehicles > 0 ? revenueData.Total / totalVehicles : 0
+            AverageRevenuePerUser = entityCounts.Users > 0 ? revenueData.Total / entityCounts.Users : 0,
+            AverageRevenuePerGroup = entityCounts.Groups > 0 ? revenueData.Total / entityCounts.Groups : 0,
+            AverageRevenuePerVehicle = entityCounts.Vehicles > 0 ? revenueData.Total / entityCounts.Vehicles : 0
         };
     }
 
@@ -325,6 +262,15 @@ public class AdminService : IAdminService
             .SumAsync(p => p.Amount);
 
         return (totalRevenue, monthlyRevenue, weeklyRevenue, dailyRevenue, revenueThisPeriod, revenuePreviousPeriod);
+    }
+
+    private async Task<(int Users, int Groups, int Vehicles)> GetEntityCountsAsync()
+    {
+        var totalUsers = await _context.Users.CountAsync();
+        var totalGroups = await _context.OwnershipGroups.CountAsync();
+        var totalVehicles = await _context.Vehicles.CountAsync();
+
+        return (totalUsers, totalGroups, totalVehicles);
     }
 
     public async Task<SystemHealthDto> GetSystemHealthAsync()
@@ -454,12 +400,12 @@ public class AdminService : IAdminService
         var now = DateTime.UtcNow;
         var allTimeRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed).SumAsync(p => p.Amount);
         var yearStart = new DateTime(now.Year, 1, 1);
-        var rollingMonthStart = now.AddDays(-30);
+        var monthStart = new DateTime(now.Year, now.Month, 1);
         var weekStart = now.AddDays(-7);
         var dayStart = now.AddDays(-1);
 
         var yearRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= yearStart).SumAsync(p => p.Amount);
-        var monthRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= rollingMonthStart).SumAsync(p => p.Amount);
+        var monthRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= monthStart).SumAsync(p => p.Amount);
         var weekRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= weekStart).SumAsync(p => p.Amount);
         var dayRevenue = await _context.Payments.Where(p => p.Status == PaymentStatus.Completed && p.PaidAt >= dayStart).SumAsync(p => p.Amount);
 
@@ -764,80 +710,6 @@ public class AdminService : IAdminService
         return latest.Join(map, l => l.GroupId, g => g.Id, (l, g) => new GroupNegativeBalanceDto { GroupId = l.GroupId, GroupName = g.Name, Balance = l.BalanceAfter }).ToList();
     }
 
-    private async Task<(KycStatus Status, string Reason)> DetermineOverallKycStatusAsync(Guid userId, KycDocument? updatedDocument = null)
-    {
-        var documents = await _context.KycDocuments
-            .Where(d => d.UserId == userId && (updatedDocument == null || d.Id != updatedDocument.Id))
-            .ToListAsync();
-
-        if (updatedDocument != null)
-        {
-            documents.Add(updatedDocument);
-        }
-
-        if (!documents.Any())
-        {
-            return (KycStatus.Pending, "No KYC documents uploaded");
-        }
-
-        if (documents.Any(d => d.Status == KycDocumentStatus.Rejected))
-        {
-            return (KycStatus.Rejected, "One or more documents rejected");
-        }
-
-        if (documents.Any(d => d.Status == KycDocumentStatus.RequiresUpdate))
-        {
-            return (KycStatus.Pending, "Documents require updates");
-        }
-
-        if (documents.Any(d => d.Status == KycDocumentStatus.Pending || d.Status == KycDocumentStatus.UnderReview))
-        {
-            return (KycStatus.InReview, "Documents under review");
-        }
-
-        if (documents.All(d => d.Status == KycDocumentStatus.Approved) && documents.Count >= 2)
-        {
-            return (KycStatus.Approved, "All documents approved");
-        }
-
-        return (KycStatus.InReview, "Awaiting additional documents");
-    }
-
-    private void ApplyUserKycStatusChange(User user, KycStatus newStatus, Guid adminUserId, string? reason)
-    {
-        var now = DateTime.UtcNow;
-        var oldStatus = user.KycStatus;
-
-        if (oldStatus == newStatus && string.IsNullOrWhiteSpace(reason))
-        {
-            return;
-        }
-
-        if (oldStatus != newStatus)
-        {
-            user.KycStatus = newStatus;
-            user.UpdatedAt = now;
-        }
-
-        var baseDetail = oldStatus == newStatus
-            ? $"KYC status confirmed as {newStatus}."
-            : $"KYC status changed from {oldStatus} to {newStatus}.";
-
-        var details = string.IsNullOrWhiteSpace(reason) ? baseDetail : $"{baseDetail} Reason: {reason}";
-
-        _context.AuditLogs.Add(new AuditLog
-        {
-            Entity = "User",
-            EntityId = user.Id,
-            Action = "KycStatusUpdated",
-            Details = details,
-            PerformedBy = adminUserId,
-            Timestamp = now,
-            IpAddress = "Admin API",
-            UserAgent = "Admin API"
-        });
-    }
-
     private DateTime GetPeriodStart(DateTime date, TimePeriod period)
     {
         return period switch
@@ -1125,74 +997,6 @@ public class AdminService : IAdminService
             .ToListAsync();
 
         return users;
-    }
-
-    public async Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto request, Guid adminUserId)
-    {
-        var document = await _context.KycDocuments
-            .Include(d => d.User)
-            .FirstOrDefaultAsync(d => d.Id == documentId);
-
-        if (document == null)
-            throw new ArgumentException("KYC document not found");
-
-        var reviewer = await _context.Users.FirstOrDefaultAsync(u => u.Id == adminUserId);
-        if (reviewer == null)
-            throw new ArgumentException("Reviewer not found");
-
-        var now = DateTime.UtcNow;
-        document.Status = request.Status;
-        document.ReviewNotes = request.ReviewNotes;
-        document.ReviewedBy = adminUserId;
-        document.ReviewedAt = now;
-        document.UpdatedAt = now;
-
-        _context.AuditLogs.Add(new AuditLog
-        {
-            Entity = "KycDocument",
-            EntityId = document.Id,
-            Action = "Reviewed",
-            Details = $"KYC document {document.DocumentType} reviewed with status {request.Status}.",
-            PerformedBy = adminUserId,
-            Timestamp = now,
-            IpAddress = "Admin API",
-            UserAgent = "Admin API"
-        });
-
-        var (overallStatus, reason) = await DetermineOverallKycStatusAsync(document.UserId, document);
-
-        var user = document.User ?? await _context.Users.FirstAsync(u => u.Id == document.UserId);
-
-        ApplyUserKycStatusChange(user, overallStatus, adminUserId, reason);
-
-        await _context.SaveChangesAsync();
-
-        return new KycDocumentDto
-        {
-            Id = document.Id,
-            UserId = document.UserId,
-            UserName = $"{user.FirstName} {user.LastName}",
-            DocumentType = document.DocumentType,
-            FileName = document.FileName,
-            StorageUrl = document.StorageUrl,
-            Status = document.Status,
-            ReviewNotes = document.ReviewNotes,
-            ReviewedBy = document.ReviewedBy,
-            ReviewerName = $"{reviewer.FirstName} {reviewer.LastName}",
-            ReviewedAt = document.ReviewedAt,
-            UploadedAt = document.CreatedAt
-        };
-    }
-
-    public async Task<bool> UpdateUserKycStatusAsync(Guid userId, UpdateUserKycStatusDto request, Guid adminUserId)
-    {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
-        if (user == null)
-            return false;
-
-        ApplyUserKycStatusChange(user, request.Status, adminUserId, request.Reason);
-        await _context.SaveChangesAsync();
-        return true;
     }
 
     private UserAccountStatus GetUserAccountStatus(User user)
