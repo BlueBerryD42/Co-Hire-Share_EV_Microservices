@@ -46,6 +46,8 @@ public class UserDbContext : IdentityDbContext<CoOwnershipVehicle.Domain.Entitie
         builder.Ignore<Proposal>();
         builder.Ignore<Vote>();
         builder.Ignore<AuditLog>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
 
         // Configure Identity tables with custom names
         builder.Entity<CoOwnershipVehicle.Domain.Entities.User>().ToTable("Users");

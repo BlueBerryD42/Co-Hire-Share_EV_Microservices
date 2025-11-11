@@ -45,6 +45,8 @@ public class PaymentDbContext : DbContext
         builder.Ignore<Proposal>();
         builder.Ignore<AuditLog>();
         builder.Ignore<Vote>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
 
         // User entity configuration (simplified for Payment service)
         builder.Entity<User>(entity =>

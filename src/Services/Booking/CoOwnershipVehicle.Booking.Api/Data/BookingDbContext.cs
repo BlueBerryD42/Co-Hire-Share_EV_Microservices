@@ -55,6 +55,8 @@ public class BookingDbContext : DbContext
         builder.Ignore<Vote>();
         builder.Ignore<MaintenanceSchedule>();
         builder.Ignore<MaintenanceRecord>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
 
         // User entity configuration (simplified for Booking service)
         builder.Entity<User>(entity =>

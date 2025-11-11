@@ -35,6 +35,8 @@ public class AdminDbContext : DbContext
 
         // Ignore entities that aren't needed in Admin service
         modelBuilder.Ignore<AnalyticsSnapshot>();
+        modelBuilder.Ignore<GroupFund>();
+        modelBuilder.Ignore<FundTransaction>();
 
         // Configure User entity
         modelBuilder.Entity<User>(entity =>

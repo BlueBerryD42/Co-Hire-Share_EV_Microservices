@@ -69,6 +69,8 @@ public class AuthDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         builder.Ignore<UserAnalytics>();
         builder.Ignore<VehicleAnalytics>();
         builder.Ignore<GroupAnalytics>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
 
         // Ignore new document management entities
         builder.Ignore<DocumentTemplate>();
