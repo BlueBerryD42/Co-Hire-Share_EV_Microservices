@@ -55,6 +55,8 @@ public class AuthDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         builder.Ignore<Expense>();
         builder.Ignore<Invoice>();
         builder.Ignore<Payment>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
         builder.Ignore<Booking>();
         builder.Ignore<CheckIn>();
         builder.Ignore<Notification>();

@@ -46,12 +46,12 @@ builder.Services.AddIdentity<User, IdentityRole<Guid>>(options =>
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequireUppercase = true;
         options.Password.RequiredLength = 8;
-        
+
         // Lockout settings
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.AllowedForNewUsers = true;
-        
+
         // User settings
         options.User.RequireUniqueEmail = true;
     })
@@ -92,7 +92,7 @@ builder.Services.AddMassTransit(x =>
 {
     // Add consumers
     x.AddConsumer<CoOwnershipVehicle.Auth.Api.Consumers.UserProfileUpdatedConsumer>();
-    
+
     x.UsingRabbitMq((context, cfg) =>
     {
         cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
@@ -108,7 +108,7 @@ StackExchange.Redis.IConnectionMultiplexer? redisConnection = null;
 try
 {
     var programLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
-    programLogger.LogInformation("Redis Connection String: {ConnectionString}", redisConfig.ConnectionString);
+    programLogger.LogInformation("Redis Connection String: {ConnectionString}", redisConfig.ConnectionString );
     programLogger.LogInformation("Redis Database: {Database}", redisConfig.Database);
 
     var configuration = new StackExchange.Redis.ConfigurationOptions();
@@ -146,14 +146,14 @@ try
     // Use ConnectAsync with timeout to prevent hanging
     var connectTask = StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(configuration);
     var timeoutTask = Task.Delay(TimeSpan.FromSeconds(10));
-    
+
     var completedTask = await Task.WhenAny(connectTask, timeoutTask);
     if (completedTask == timeoutTask)
     {
         programLogger.LogWarning("Redis connection timed out after 10 seconds. Continuing without Redis.");
         throw new TimeoutException("Redis connection timed out after 10 seconds");
     }
-    
+
     redisConnection = await connectTask;
 
     // Quick ping test with timeout
@@ -161,13 +161,13 @@ try
     var pingTask = db.PingAsync();
     var pingTimeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
     var pingCompleted = await Task.WhenAny(pingTask, pingTimeoutTask);
-    
+
     if (pingCompleted == pingTimeoutTask)
     {
         programLogger.LogWarning("Redis ping timed out after 5 seconds. Continuing without Redis.");
         throw new TimeoutException("Redis ping timed out after 5 seconds");
     }
-    
+
     await pingTask;
 
     programLogger.LogInformation("✅ Successfully connected to Redis");
@@ -206,24 +206,24 @@ builder.Services.AddEndpointsApiExplorer();
 // Configure Swagger with JWT support
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo 
-    { 
-        Title = "Co-Ownership Vehicle Auth API", 
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Co-Ownership Vehicle Auth API",
         Version = "v1",
         Description = "Authentication and authorization service for the Co-Ownership Vehicle Management System"
     });
-    
+
     // Add JWT Authentication to Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. Enter your token below (without 'Bearer ' prefix).",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,  
-        Scheme = "bearer",            
-        BearerFormat = "JWT"             
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
-    
+
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -278,10 +278,10 @@ using (var scope = app.Services.CreateScope())
     var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-    
+
     // Ensure database is created
     await context.Database.EnsureCreatedAsync();
-    
+
     // Seed initial data
     await CoOwnershipVehicle.Auth.Api.Data.AuthDataSeeder.SeedAsync(context, userManager, roleManager);
 }
