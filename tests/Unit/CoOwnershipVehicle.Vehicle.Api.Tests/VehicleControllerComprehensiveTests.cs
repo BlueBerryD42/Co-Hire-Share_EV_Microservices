@@ -9,6 +9,9 @@ using System.Net;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Vehicle.Api.Tests
 {
@@ -20,6 +23,11 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
     {
         private readonly CustomWebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter() }
+        };
 
         public VehicleControllerComprehensiveTests(CustomWebApplicationFactory<Program> factory)
         {
@@ -42,7 +50,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
 
             // Assert
             response.EnsureSuccessStatusCode();
-            var vehicles = await response.Content.ReadFromJsonAsync<List<CoOwnershipVehicle.Domain.Entities.Vehicle>>();
+            var vehicles = await response.Content.ReadFromJsonAsync<List<VehicleResponseDto>>(JsonOptions);
             Assert.NotNull(vehicles);
             Assert.True(vehicles.Count >= 2, "Should have at least the 2 seeded test vehicles"); // At least 2 from seed data
         }
@@ -55,7 +63,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
 
             // Assert
             response.EnsureSuccessStatusCode();
-            var vehicles = await response.Content.ReadFromJsonAsync<List<CoOwnershipVehicle.Domain.Entities.Vehicle>>();
+            var vehicles = await response.Content.ReadFromJsonAsync<List<VehicleResponseDto>>(JsonOptions);
             Assert.NotNull(vehicles);
             // All vehicles should belong to the test user's group
             Assert.All(vehicles, v => Assert.Equal(new Guid("3fa85f64-5717-4562-b3fc-2c963f66afa7"), v.GroupId));
@@ -76,7 +84,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
 
             // Assert
             response.EnsureSuccessStatusCode();
-            var vehicle = await response.Content.ReadFromJsonAsync<CoOwnershipVehicle.Domain.Entities.Vehicle>();
+            var vehicle = await response.Content.ReadFromJsonAsync<VehicleResponseDto>(JsonOptions);
             Assert.NotNull(vehicle);
             Assert.Equal(vehicleId, vehicle.Id);
             Assert.Equal("VIN123456789012345", vehicle.Vin);
@@ -120,11 +128,11 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
 
             // Assert
             Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-            var createdVehicle = await response.Content.ReadFromJsonAsync<CoOwnershipVehicle.Domain.Entities.Vehicle>();
+            var createdVehicle = await response.Content.ReadFromJsonAsync<VehicleResponseDto>(JsonOptions);
             Assert.NotNull(createdVehicle);
             Assert.Equal(newVehicle.Vin, createdVehicle.Vin);
             Assert.Equal(newVehicle.PlateNumber, createdVehicle.PlateNumber);
-            Assert.Equal(CoOwnershipVehicle.Domain.Entities.VehicleStatus.Available, createdVehicle.Status);
+            Assert.Equal(VehicleStatus.Available, createdVehicle.Status);
         }
 
         [Fact]
@@ -230,9 +238,9 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
 
             // Assert
             response.EnsureSuccessStatusCode();
-            var updatedVehicle = await response.Content.ReadFromJsonAsync<CoOwnershipVehicle.Domain.Entities.Vehicle>();
+            var updatedVehicle = await response.Content.ReadFromJsonAsync<VehicleResponseDto>(JsonOptions);
             Assert.NotNull(updatedVehicle);
-            Assert.Equal(CoOwnershipVehicle.Domain.Entities.VehicleStatus.Maintenance, updatedVehicle.Status);
+            Assert.Equal(VehicleStatus.Maintenance, updatedVehicle.Status);
         }
 
         [Fact]
@@ -275,8 +283,8 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
 
                 // Assert
                 response.EnsureSuccessStatusCode();
-                var vehicle = await response.Content.ReadFromJsonAsync<CoOwnershipVehicle.Domain.Entities.Vehicle>();
-                Assert.Equal(status, vehicle?.Status);
+                var vehicle = await response.Content.ReadFromJsonAsync<VehicleResponseDto>(JsonOptions);
+                Assert.Equal(status, vehicle!.Status);
             }
         }
 
@@ -299,7 +307,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
 
             // Assert
             response.EnsureSuccessStatusCode();
-            var updatedVehicle = await response.Content.ReadFromJsonAsync<CoOwnershipVehicle.Domain.Entities.Vehicle>();
+            var updatedVehicle = await response.Content.ReadFromJsonAsync<VehicleResponseDto>(JsonOptions);
             Assert.NotNull(updatedVehicle);
             Assert.Equal(15000, updatedVehicle.Odometer);
         }
@@ -388,7 +396,7 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
 
             // Assert
             response.EnsureSuccessStatusCode();
-            var vehicles = await response.Content.ReadFromJsonAsync<List<CoOwnershipVehicle.Domain.Entities.Vehicle>>();
+            var vehicles = await response.Content.ReadFromJsonAsync<List<VehicleResponseDto>>(JsonOptions);
             Assert.NotNull(vehicles);
             Assert.All(vehicles, v =>
             {
@@ -442,5 +450,19 @@ namespace CoOwnershipVehicle.Vehicle.Api.Tests
     public class UpdateOdometerDto
     {
         public int Odometer { get; set; }
+    }
+
+    public class VehicleResponseDto
+    {
+        public Guid Id { get; set; }
+        public string Vin { get; set; } = string.Empty;
+        public string PlateNumber { get; set; } = string.Empty;
+        public string Model { get; set; } = string.Empty;
+        public int Year { get; set; }
+        public string? Color { get; set; }
+        public VehicleStatus Status { get; set; }
+        public DateTime? LastServiceDate { get; set; }
+        public int Odometer { get; set; }
+        public Guid? GroupId { get; set; }
     }
 }

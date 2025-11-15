@@ -25,9 +25,11 @@ public class AdminDbContext : DbContext
     public DbSet<Document> Documents { get; set; }
     public DbSet<KycDocument> KycDocuments { get; set; }
     public DbSet<LedgerEntry> LedgerEntries { get; set; }
-        public DbSet<Vote> Votes { get; set; }
-        public DbSet<Dispute> Disputes { get; set; }
-        public DbSet<DisputeComment> DisputeComments { get; set; }
+    public DbSet<GroupFund> GroupFunds { get; set; }
+    public DbSet<FundTransaction> FundTransactions { get; set; }
+    public DbSet<Vote> Votes { get; set; }
+    public DbSet<Dispute> Disputes { get; set; }
+    public DbSet<DisputeComment> DisputeComments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -182,6 +184,56 @@ public class AdminDbContext : DbContext
 
         modelBuilder.Entity<AuditLog>()
             .HasIndex(a => new { a.Entity, a.EntityId });
+
+        // Configure GroupFund entity
+        modelBuilder.Entity<GroupFund>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TotalBalance).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ReserveBalance).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.LastUpdated).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Group)
+                  .WithOne(g => g.Fund)
+                  .HasForeignKey<GroupFund>(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.GroupId).IsUnique();
+        });
+
+        // Configure FundTransaction entity
+        modelBuilder.Entity<FundTransaction>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.BalanceBefore).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.BalanceAfter).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.Reference).HasMaxLength(200);
+            entity.Property(e => e.TransactionDate).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Group)
+                  .WithMany(g => g.FundTransactions)
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Initiator)
+                  .WithMany(u => u.InitiatedFundTransactions)
+                  .HasForeignKey(e => e.InitiatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Approver)
+                  .WithMany(u => u.ApprovedFundTransactions)
+                  .HasForeignKey(e => e.ApprovedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.InitiatedBy);
+            entity.HasIndex(e => e.ApprovedBy);
+            entity.HasIndex(e => new { e.GroupId, e.TransactionDate });
+        });
 
         // Configure KycDocument entity relationships
         modelBuilder.Entity<KycDocument>(entity =>
