@@ -45,6 +45,12 @@ public class AuthDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
             entity.Ignore(e => e.ExpensesCreated);
             entity.Ignore(e => e.Payments);
             entity.Ignore(e => e.Bookings);
+            entity.Ignore(e => e.CheckIns);
+            entity.Ignore(e => e.Votes);
+            entity.Ignore(e => e.AuditLogs);
+            entity.Ignore(e => e.RecurringBookings);
+            entity.Ignore(e => e.InitiatedFundTransactions);
+            entity.Ignore(e => e.ApprovedFundTransactions);
         });
 
         // Ignore entities that aren't needed in Auth service
@@ -56,6 +62,7 @@ public class AuthDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         builder.Ignore<Invoice>();
         builder.Ignore<Payment>();
         builder.Ignore<Booking>();
+        builder.Ignore<RecurringBooking>();
         builder.Ignore<CheckIn>();
         builder.Ignore<Notification>();
         builder.Ignore<NotificationTemplate>();
@@ -69,6 +76,8 @@ public class AuthDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         builder.Ignore<UserAnalytics>();
         builder.Ignore<VehicleAnalytics>();
         builder.Ignore<GroupAnalytics>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
 
         // Ignore new document management entities
         builder.Ignore<DocumentTemplate>();
