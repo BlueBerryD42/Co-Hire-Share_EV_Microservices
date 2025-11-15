@@ -68,9 +68,13 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Phone).HasMaxLength(20);
             entity.Property(e => e.KycStatus).HasConversion<int>();
             entity.Property(e => e.Role).HasConversion<int>();
-            
+
             entity.HasIndex(e => e.Email).IsUnique();
             entity.HasIndex(e => e.Phone);
+
+            // Ignore navigation properties for FundTransaction (managed by GroupDbContext)
+            entity.Ignore(e => e.InitiatedFundTransactions);
+            entity.Ignore(e => e.ApprovedFundTransactions);
         });
 
         // OwnershipGroup entity configuration
@@ -86,6 +90,10 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
                   .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => e.Name);
+
+            // Ignore navigation properties for GroupFund and FundTransaction (managed by GroupDbContext)
+            entity.Ignore(e => e.Fund);
+            entity.Ignore(e => e.FundTransactions);
         });
 
         // GroupMember entity configuration
@@ -369,6 +377,10 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
         // Ignore LateReturnFee - it's managed by BookingDbContext
         builder.Ignore<LateReturnFee>();
+
+        // Ignore GroupFund and FundTransaction - they're managed by GroupDbContext
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
 
         // Proposal entity configuration
         builder.Entity<Proposal>(entity =>

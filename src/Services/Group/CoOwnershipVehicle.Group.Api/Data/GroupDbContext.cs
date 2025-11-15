@@ -535,12 +535,12 @@ public class GroupDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(e => e.Initiator)
-                  .WithMany(u => u.InitiatedFundTransactions)
+                  .WithMany()
                   .HasForeignKey(e => e.InitiatedBy)
                   .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Approver)
-                  .WithMany(u => u.ApprovedFundTransactions)
+                  .WithMany()
                   .HasForeignKey(e => e.ApprovedBy)
                   .OnDelete(DeleteBehavior.Restrict);
 
