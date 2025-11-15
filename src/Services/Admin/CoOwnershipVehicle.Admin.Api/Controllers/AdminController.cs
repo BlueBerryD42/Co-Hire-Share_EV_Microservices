@@ -32,9 +32,15 @@ public class AdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<FinancialOverviewDto>> GetFinancialOverview()
     {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         return await ExecuteAdminActionAsync(
             () => _adminService.GetFinancialOverviewAsync(),
-            "retrieving financial overview");
+            "retrieving financial overview",
+            "SystemAdmin", "Staff");
     }
 
     /// <summary>
@@ -47,9 +53,15 @@ public class AdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<FinancialGroupBreakdownDto>> GetFinancialByGroups()
     {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         return await ExecuteAdminActionAsync(
             () => _adminService.GetFinancialByGroupsAsync(),
-            "retrieving financial groups breakdown");
+            "retrieving financial groups breakdown",
+            "SystemAdmin", "Staff");
     }
 
     /// <summary>
@@ -62,9 +74,15 @@ public class AdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<PaymentStatisticsDto>> GetPaymentStatistics()
     {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         return await ExecuteAdminActionAsync(
             () => _adminService.GetPaymentStatisticsAsync(),
-            "retrieving payment statistics");
+            "retrieving payment statistics",
+            "SystemAdmin", "Staff");
     }
 
     /// <summary>
@@ -79,7 +97,8 @@ public class AdminController : ControllerBase
     {
         return await ExecuteAdminActionAsync(
             () => _adminService.GetExpenseAnalysisAsync(),
-            "retrieving expense analysis");
+            "retrieving expense analysis",
+            "SystemAdmin", "Staff");
     }
 
     /// <summary>
@@ -94,7 +113,8 @@ public class AdminController : ControllerBase
     {
         return await ExecuteAdminActionAsync(
             () => _adminService.GetFinancialAnomaliesAsync(),
-            "retrieving financial anomalies");
+            "retrieving financial anomalies",
+            "SystemAdmin", "Staff");
     }
 
     /// <summary>
@@ -112,7 +132,7 @@ public class AdminController : ControllerBase
             var bytes = await _adminService.GenerateFinancialPdfAsync(request);
             var fileName = $"financial_{request.Type}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.pdf";
             return File(bytes, "application/pdf", fileName);
-        }, "generating financial PDF report");
+        }, "generating financial PDF report", "SystemAdmin", "Staff");
     }
 
     /// <summary>
@@ -130,7 +150,7 @@ public class AdminController : ControllerBase
             var bytes = await _adminService.GenerateFinancialExcelAsync(request);
             var fileName = $"financial_{request.Type}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
             return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }, "generating financial Excel report");
+        }, "generating financial Excel report", "SystemAdmin", "Staff");
     }
 
     /// <summary>
@@ -145,9 +165,15 @@ public class AdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<DashboardMetricsDto>> GetDashboard([FromQuery] DashboardRequestDto request)
     {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         return await ExecuteAdminActionAsync(
             () => _adminService.GetDashboardMetricsAsync(request),
-            "Error retrieving dashboard metrics"
+            "Error retrieving dashboard metrics",
+            "SystemAdmin", "Staff"
         );
     }
 
@@ -165,7 +191,8 @@ public class AdminController : ControllerBase
     {
         return await ExecuteAdminActionAsync(
             () => _adminService.GetRecentActivityAsync(count),
-            "Error retrieving recent activity"
+            "Error retrieving recent activity",
+            "SystemAdmin", "Staff"
         );
     }
 
@@ -182,7 +209,8 @@ public class AdminController : ControllerBase
     {
         return await ExecuteAdminActionAsync(
             () => _adminService.GetAlertsAsync(),
-            "Error retrieving alerts"
+            "Error retrieving alerts",
+            "SystemAdmin", "Staff"
         );
     }
 
@@ -199,7 +227,8 @@ public class AdminController : ControllerBase
     {
         return await ExecuteAdminActionAsync(
             () => _adminService.GetSystemHealthAsync(),
-            "Error retrieving system health"
+            "Error retrieving system health",
+            "SystemAdmin", "Staff"
         );
     }
 
@@ -222,7 +251,8 @@ public class AdminController : ControllerBase
                 var fileName = $"dashboard_{DateTime.UtcNow:yyyyMMdd_HHmmss}.pdf";
                 return File(pdfBytes, "application/pdf", fileName);
             },
-            "Error exporting dashboard to PDF"
+            "Error exporting dashboard to PDF",
+            "SystemAdmin", "Staff"
         );
     }
 
@@ -245,7 +275,8 @@ public class AdminController : ControllerBase
                 var fileName = $"dashboard_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
                 return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
             },
-            "Error exporting dashboard to Excel"
+            "Error exporting dashboard to Excel",
+            "SystemAdmin", "Staff"
         );
     }
 
@@ -284,9 +315,15 @@ public class AdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<UserListResponseDto>> GetUsers([FromQuery] UserListRequestDto request)
     {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         return await ExecuteAdminActionAsync(
             () => _adminService.GetUsersAsync(request),
-            "Error retrieving users"
+            "Error retrieving users",
+            "SystemAdmin", "Staff"
         );
     }
 
@@ -305,6 +342,11 @@ public class AdminController : ControllerBase
     {
         try
         {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
             var result = await _adminService.GetUserDetailsAsync(id);
             return Ok(result);
         }
@@ -335,6 +377,11 @@ public class AdminController : ControllerBase
     {
         try
         {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             var adminUserId = GetCurrentUserId();
             var result = await _adminService.UpdateUserStatusAsync(id, request, adminUserId);
             
@@ -366,6 +413,11 @@ public class AdminController : ControllerBase
     {
         try
         {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             var adminUserId = GetCurrentUserId();
             var result = await _adminService.UpdateUserRoleAsync(id, request, adminUserId);
             
@@ -394,8 +446,84 @@ public class AdminController : ControllerBase
     {
         return await ExecuteAdminActionAsync(
             () => _adminService.GetPendingKycUsersAsync(),
-            "Error retrieving pending KYC users"
+            "Error retrieving pending KYC users",
+            "SystemAdmin", "Staff"
         );
+    }
+
+    /// <summary>
+    /// Review a user's KYC document
+    /// </summary>
+    [HttpPost("kyc/documents/{documentId:guid}/review")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(KycDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<KycDocumentDto>> ReviewKycDocument(Guid documentId, [FromBody] ReviewKycDocumentDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var adminUserId = GetCurrentUserId();
+            var document = await _adminService.ReviewKycDocumentAsync(documentId, request, adminUserId);
+            return Ok(document);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reviewing KYC document {DocumentId}", documentId);
+            return StatusCode(500, new { message = "An error occurred while reviewing KYC document" });
+        }
+    }
+
+    /// <summary>
+    /// Update user's overall KYC status
+    /// </summary>
+    [HttpPut("users/{id:guid}/kyc-status")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UpdateUserKycStatus(Guid id, [FromBody] UpdateUserKycStatusDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var adminUserId = GetCurrentUserId();
+            var updated = await _adminService.UpdateUserKycStatusAsync(id, request, adminUserId);
+
+            if (!updated)
+                return NotFound(new { message = "User not found" });
+
+            return Ok(new { message = "KYC status updated successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating KYC status for user {UserId}", id);
+            return StatusCode(500, new { message = "An error occurred while updating user KYC status" });
+        }
     }
 
     /// <summary>
@@ -410,9 +538,15 @@ public class AdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<GroupListResponseDto>> GetGroups([FromQuery] GroupListRequestDto request)
     {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         return await ExecuteAdminActionAsync(
             () => _adminService.GetGroupsAsync(request),
-            "Error retrieving groups"
+            "Error retrieving groups",
+            "SystemAdmin", "Staff"
         );
     }
 
@@ -431,6 +565,11 @@ public class AdminController : ControllerBase
     {
         try
         {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             var result = await _adminService.GetGroupDetailsAsync(id);
             return Ok(result);
         }
@@ -461,6 +600,11 @@ public class AdminController : ControllerBase
     {
         try
         {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             var adminUserId = GetCurrentUserId();
             var result = await _adminService.UpdateGroupStatusAsync(id, request, adminUserId);
             
@@ -492,6 +636,11 @@ public class AdminController : ControllerBase
     {
         try
         {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             var result = await _adminService.GetGroupAuditTrailAsync(id, request);
             return Ok(result);
         }
@@ -522,6 +671,11 @@ public class AdminController : ControllerBase
     {
         try
         {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             var adminUserId = GetCurrentUserId();
             var result = await _adminService.InterveneInGroupAsync(id, request, adminUserId);
             
@@ -552,6 +706,11 @@ public class AdminController : ControllerBase
     {
         try
         {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             var result = await _adminService.GetGroupHealthAsync(id);
             return Ok(result);
         }
@@ -566,10 +725,15 @@ public class AdminController : ControllerBase
         }
     }
 
-    private async Task<ActionResult<T>> ExecuteAdminActionAsync<T>(Func<Task<T>> action, string errorMessage)
+    private async Task<ActionResult<T>> ExecuteAdminActionAsync<T>(Func<Task<T>> action, string errorMessage, params string[] requiredRoles)
     {
         try
         {
+            if (requiredRoles.Length > 0 && !UserHasAnyRole(requiredRoles))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             var result = await action();
             return Ok(result);
         }
@@ -580,10 +744,15 @@ public class AdminController : ControllerBase
         }
     }
 
-    private async Task<IActionResult> ExecuteAdminFileActionAsync(Func<Task<IActionResult>> action, string errorMessage)
+    private async Task<IActionResult> ExecuteAdminFileActionAsync(Func<Task<IActionResult>> action, string errorMessage, params string[] requiredRoles)
     {
         try
         {
+            if (requiredRoles.Length > 0 && !UserHasAnyRole(requiredRoles))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
             return await action();
         }
         catch (Exception ex)
@@ -603,17 +772,22 @@ public class AdminController : ControllerBase
             var adminUserId = GetCurrentUserId();
             var disputeId = await _adminService.CreateDisputeAsync(request, adminUserId);
             return disputeId;
-        }, "creating dispute");
+        }, "creating dispute", "SystemAdmin", "Staff");
     }
 
     [HttpGet("disputes")]
     [Authorize(Roles = "SystemAdmin,Staff")]
     public async Task<ActionResult<DisputeListResponseDto>> GetDisputes([FromQuery] DisputeListRequestDto request)
     {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
         return await ExecuteAdminActionAsync(async () =>
         {
             return await _adminService.GetDisputesAsync(request);
-        }, "retrieving disputes");
+        }, "retrieving disputes", "SystemAdmin", "Staff");
     }
 
     [HttpGet("disputes/{id}")]
@@ -623,43 +797,91 @@ public class AdminController : ControllerBase
         return await ExecuteAdminActionAsync(async () =>
         {
             return await _adminService.GetDisputeDetailsAsync(id);
-        }, "retrieving dispute details");
+        }, "retrieving dispute details", "SystemAdmin", "Staff");
     }
 
     [HttpPut("disputes/{id}/assign")]
     [Authorize(Roles = "SystemAdmin,Staff")]
     public async Task<ActionResult<object>> AssignDispute(Guid id, [FromBody] AssignDisputeDto request)
     {
-        return await ExecuteAdminActionAsync(async () =>
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        try
         {
             var adminUserId = GetCurrentUserId();
             var success = await _adminService.AssignDisputeAsync(id, request, adminUserId);
-            return new { message = "Dispute assigned successfully" };
-        }, "assigning dispute");
+            if (!success)
+            {
+                return NotFound(new { message = "Dispute not found" });
+            }
+
+            return Ok(new { message = "Dispute assigned successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error assigning dispute {DisputeId}", id);
+            return StatusCode(500, new { message = "An error occurred while assigning dispute" });
+        }
     }
 
     [HttpPost("disputes/{id}/comment")]
     [Authorize(Roles = "SystemAdmin,Staff,GroupAdmin,CoOwner")]
     public async Task<ActionResult<object>> AddDisputeComment(Guid id, [FromBody] AddDisputeCommentDto request)
     {
-        return await ExecuteAdminActionAsync(async () =>
+        try
         {
             var userId = GetCurrentUserId();
             var success = await _adminService.AddDisputeCommentAsync(id, request, userId);
-            return new { message = "Comment added successfully" };
-        }, "adding dispute comment");
+
+            if (!success)
+            {
+                return new NotFoundObjectResult(new { message = "Dispute not found" });
+            }
+
+            return new OkObjectResult(new { message = "Comment added successfully" });
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding dispute comment for dispute {DisputeId}", id);
+            return StatusCode(500, new { message = "An error occurred while adding dispute comment" });
+        }
     }
 
     [HttpPut("disputes/{id}/resolve")]
     [Authorize(Roles = "SystemAdmin,Staff")]
     public async Task<ActionResult<object>> ResolveDispute(Guid id, [FromBody] ResolveDisputeDto request)
     {
-        return await ExecuteAdminActionAsync(async () =>
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        try
         {
             var adminUserId = GetCurrentUserId();
             var success = await _adminService.ResolveDisputeAsync(id, request, adminUserId);
-            return new { message = "Dispute resolved successfully" };
-        }, "resolving dispute");
+            return new OkObjectResult(new { message = "Dispute resolved successfully" });
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resolving dispute {DisputeId}", id);
+            return StatusCode(500, new { message = "An error occurred while resolving dispute" });
+        }
     }
 
     [HttpGet("disputes/statistics")]
@@ -669,7 +891,7 @@ public class AdminController : ControllerBase
         return await ExecuteAdminActionAsync(async () =>
         {
             return await _adminService.GetDisputeStatisticsAsync();
-        }, "retrieving dispute statistics");
+        }, "retrieving dispute statistics", "SystemAdmin", "Staff");
     }
 
     private Guid GetCurrentUserId()
@@ -680,6 +902,16 @@ public class AdminController : ControllerBase
             throw new UnauthorizedAccessException("Unable to determine current user ID");
         }
         return userId;
+    }
+
+    private bool UserHasAnyRole(params string[] roles)
+    {
+        if (roles == null || roles.Length == 0)
+        {
+            return true;
+        }
+
+        return roles.Any(role => HttpContext.User?.IsInRole(role) == true);
     }
 }
 
