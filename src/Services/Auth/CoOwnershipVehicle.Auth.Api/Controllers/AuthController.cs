@@ -629,8 +629,7 @@ public class AuthController : ControllerBase
 
     private string GenerateConfirmationLink(Guid userId, string token)
     {
-        // Hard-code tạm thời để test
-        var frontendUrl = "http://localhost:5173";
+        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:5173";
 
         var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
         var link = $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
@@ -642,8 +641,7 @@ public class AuthController : ControllerBase
 
     private string GeneratePasswordResetLink(Guid userId, string token)
     {
-        // Hard-code tạm thời để test
-        var frontendUrl = "http://localhost:5173";
+        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:5173";
 
         var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
         return $"{frontendUrl}/reset-password?userId={userId}&token={encodedToken}";
