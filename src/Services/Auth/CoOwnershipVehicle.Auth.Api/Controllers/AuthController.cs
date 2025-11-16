@@ -613,36 +613,16 @@ public class AuthController : ControllerBase
         }
     }
 
-    //private string GenerateConfirmationLink(Guid userId, string token)
-    //{
-    //    var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
-    //    var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
-    //    return $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
-    //}
-
-    //private string GeneratePasswordResetLink(Guid userId, string token)
-    //{
-    //    var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
-    //    var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
-    //    return $"{frontendUrl}/reset-password?userId={userId}&token={encodedToken}";
-    //}
-
     private string GenerateConfirmationLink(Guid userId, string token)
     {
-        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:5173";
-
+        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL_MAIL") ?? "http://localhost:5173";
         var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
-        var link = $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
-
-        _logger.LogInformation("📧 Generated confirmation link: {Link}", link);
-
-        return link;
+        return $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
     }
 
     private string GeneratePasswordResetLink(Guid userId, string token)
     {
-        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:5173";
-
+        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL_MAIL") ?? "http://localhost:5173";
         var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
         return $"{frontendUrl}/reset-password?userId={userId}&token={encodedToken}";
     }
