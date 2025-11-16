@@ -59,15 +59,15 @@ public class TestDataFixture : IDisposable
         MainContext.Expenses.AddRange(expenses);
         MainContext.SaveChanges();
 
+        var analyticsSnapshots = CreateSnapshotData(groups, vehicles, bookings);
+        AnalyticsContext.AnalyticsSnapshots.AddRange(analyticsSnapshots);
+        AnalyticsContext.SaveChanges();
+
         // Create test user analytics
-        var userAnalytics = CreateTestUserAnalytics(users, groups);
+        var userAnalytics = CreateTestUserAnalytics(users, groups, bookings);
         AnalyticsContext.UserAnalytics.AddRange(userAnalytics);
         AnalyticsContext.SaveChanges();
 
-        // Create test analytics snapshots
-        var snapshots = CreateTestAnalyticsSnapshots(groups, vehicles);
-        AnalyticsContext.AnalyticsSnapshots.AddRange(snapshots);
-        AnalyticsContext.SaveChanges();
     }
 
     private List<User> CreateTestUsers()
@@ -414,6 +414,19 @@ public class TestDataFixture : IDisposable
             Id = Guid.NewGuid(),
             GroupId = groups[1].Id,
             VehicleId = vehicles[1].Id,
+            ExpenseType = ExpenseType.Repair,
+            Amount = 600m,
+            Description = "Suspension repair at Dealer Service Center",
+            DateIncurred = now.AddMonths(-3),
+            CreatedBy = users[1].Id,
+            IsRecurring = false
+        });
+
+        expenses.Add(new Expense
+        {
+            Id = Guid.NewGuid(),
+            GroupId = groups[1].Id,
+            VehicleId = vehicles[1].Id,
             ExpenseType = ExpenseType.Cleaning,
             Amount = 75m,
             Description = "Professional cleaning",
@@ -425,10 +438,13 @@ public class TestDataFixture : IDisposable
         return expenses;
     }
 
-    private List<UserAnalytics> CreateTestUserAnalytics(List<User> users, List<OwnershipGroup> groups)
+    private List<UserAnalytics> CreateTestUserAnalytics(List<User> users, List<OwnershipGroup> groups, List<Booking> bookings)
     {
         var analytics = new List<UserAnalytics>();
         var now = DateTime.UtcNow;
+        var groupedBookings = bookings
+            .GroupBy(b => (b.GroupId, b.UserId))
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         // Balanced group analytics
         analytics.Add(new UserAnalytics
@@ -441,8 +457,8 @@ public class TestDataFixture : IDisposable
             Period = AnalyticsPeriod.Monthly,
             OwnershipShare = 0.33m,
             UsageShare = 0.33m,
-            TotalUsageHours = 240,
-            TotalBookings = 10
+            TotalUsageHours = groupedBookings.TryGetValue((groups[0].Id, users[0].Id), out var a0) ? a0.Sum(b => (int)(b.EndAt - b.StartAt).TotalHours) : 240,
+            TotalBookings = groupedBookings.TryGetValue((groups[0].Id, users[0].Id), out var a0b) ? a0b.Count : 10
         });
 
         analytics.Add(new UserAnalytics
@@ -455,8 +471,8 @@ public class TestDataFixture : IDisposable
             Period = AnalyticsPeriod.Monthly,
             OwnershipShare = 0.33m,
             UsageShare = 0.33m,
-            TotalUsageHours = 240,
-            TotalBookings = 10
+            TotalUsageHours = groupedBookings.TryGetValue((groups[0].Id, users[1].Id), out var a1) ? a1.Sum(b => (int)(b.EndAt - b.StartAt).TotalHours) : 240,
+            TotalBookings = groupedBookings.TryGetValue((groups[0].Id, users[1].Id), out var a1b) ? a1b.Count : 10
         });
 
         analytics.Add(new UserAnalytics
@@ -469,11 +485,18 @@ public class TestDataFixture : IDisposable
             Period = AnalyticsPeriod.Monthly,
             OwnershipShare = 0.34m,
             UsageShare = 0.34m,
-            TotalUsageHours = 240,
-            TotalBookings = 10
+            TotalUsageHours = groupedBookings.TryGetValue((groups[0].Id, users[2].Id), out var a2) ? a2.Sum(b => (int)(b.EndAt - b.StartAt).TotalHours) : 240,
+            TotalBookings = groupedBookings.TryGetValue((groups[0].Id, users[2].Id), out var a2b) ? a2b.Count : 10
         });
 
         // Imbalanced group analytics
+        var imbalancedUsageShares = new Dictionary<Guid, decimal>
+        {
+            [users[0].Id] = 0.01m,
+            [users[1].Id] = 0.02m,
+            [users[2].Id] = 0.97m
+        };
+
         analytics.Add(new UserAnalytics
         {
             Id = Guid.NewGuid(),
@@ -483,9 +506,9 @@ public class TestDataFixture : IDisposable
             PeriodEnd = now,
             Period = AnalyticsPeriod.Monthly,
             OwnershipShare = 0.25m,
-            UsageShare = 0.25m,
-            TotalUsageHours = 100,
-            TotalBookings = 5
+            UsageShare = imbalancedUsageShares[users[0].Id],
+            TotalUsageHours = (int)(imbalancedUsageShares[users[0].Id] * 1000),
+            TotalBookings = groupedBookings.TryGetValue((groups[1].Id, users[0].Id), out var b0List) ? b0List.Count : 5
         });
 
         analytics.Add(new UserAnalytics
@@ -497,9 +520,9 @@ public class TestDataFixture : IDisposable
             PeriodEnd = now,
             Period = AnalyticsPeriod.Monthly,
             OwnershipShare = 0.25m,
-            UsageShare = 0.25m,
-            TotalUsageHours = 100,
-            TotalBookings = 5
+            UsageShare = imbalancedUsageShares[users[1].Id],
+            TotalUsageHours = (int)(imbalancedUsageShares[users[1].Id] * 1000),
+            TotalBookings = groupedBookings.TryGetValue((groups[1].Id, users[1].Id), out var b1List) ? b1List.Count : 5
         });
 
         analytics.Add(new UserAnalytics
@@ -511,42 +534,60 @@ public class TestDataFixture : IDisposable
             PeriodEnd = now,
             Period = AnalyticsPeriod.Monthly,
             OwnershipShare = 0.50m,
-            UsageShare = 0.50m,
-            TotalUsageHours = 200,
-            TotalBookings = 10
+            UsageShare = imbalancedUsageShares[users[2].Id],
+            TotalUsageHours = (int)(imbalancedUsageShares[users[2].Id] * 1000),
+            TotalBookings = groupedBookings.TryGetValue((groups[1].Id, users[2].Id), out var b2List) ? b2List.Count : 10
         });
 
         return analytics;
     }
 
-    private List<AnalyticsSnapshot> CreateTestAnalyticsSnapshots(List<OwnershipGroup> groups, List<Vehicle> vehicles)
+    private List<AnalyticsSnapshot> CreateSnapshotData(List<OwnershipGroup> groups, List<Vehicle> vehicles, List<Booking> bookings)
     {
         var snapshots = new List<AnalyticsSnapshot>();
         var now = DateTime.UtcNow;
+        var bookingsByGroup = bookings.GroupBy(b => b.GroupId).ToDictionary(g => g.Key, g => g.ToList());
 
-        for (int i = 0; i < 6; i++)
+        foreach (var group in groups)
         {
-            var monthStart = new DateTime(now.Year, now.Month, 1).AddMonths(-i);
-            var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
-
-            snapshots.Add(new AnalyticsSnapshot
+            var vehicle = vehicles.FirstOrDefault(v => v.GroupId == group.Id);
+            if (vehicle == null)
             {
-                Id = Guid.NewGuid(),
-                GroupId = groups[0].Id,
-                VehicleId = vehicles[0].Id,
-                SnapshotDate = monthStart,
-                Period = AnalyticsPeriod.Monthly,
-                TotalBookings = 30 - (i * 2),
-                TotalUsageHours = 720 - (i * 20),
-                ActiveUsers = 3,
-                TotalDistance = 3000 - (i * 100),
-                TotalRevenue = 3000m - (i * 100),
-                TotalExpenses = 1500m - (i * 50),
-                NetProfit = 1500m - (i * 50),
-                UtilizationRate = 0.8m,
-                MaintenanceEfficiency = 0.85m,
-                UserSatisfactionScore = 0.90m
-            });
+                continue;
+           }
+
+            for (int i = 0; i < 6; i++)
+            {
+                var monthStart = new DateTime(now.Year, now.Month, 1).AddMonths(-i);
+                var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
+                var groupBookings = bookingsByGroup.TryGetValue(group.Id, out var gBookings)
+                    ? gBookings.Where(b => b.StartAt >= monthStart && b.StartAt <= monthEnd).ToList()
+                    : new List<Booking>();
+                var totalHours = groupBookings.Sum(b => (b.EndAt - b.StartAt).TotalHours);
+                var totalBookings = groupBookings.Count;
+                var activeUsers = bookingsByGroup.TryGetValue(group.Id, out var allGroupBookings)
+                    ? allGroupBookings.Select(b => b.UserId).Distinct().Count()
+                    : 0;
+
+                snapshots.Add(new AnalyticsSnapshot
+                {
+                    Id = Guid.NewGuid(),
+                    GroupId = group.Id,
+                    VehicleId = vehicle.Id,
+                    SnapshotDate = monthStart,
+                    Period = AnalyticsPeriod.Monthly,
+                    TotalBookings = totalBookings,
+                    TotalUsageHours = (int)Math.Round(totalHours, MidpointRounding.AwayFromZero),
+                    ActiveUsers = activeUsers,
+                    TotalDistance = Math.Max(500, 3000 - (i * 100)),
+                    TotalRevenue = Math.Max(300, 3000m - (i * 100)),
+                    TotalExpenses = Math.Max(100, 1500m - (i * 50)),
+                    NetProfit = Math.Max(50, 1500m - (i * 50)),
+                    UtilizationRate = 0.6m,
+                    MaintenanceEfficiency = 0.75m,
+                    UserSatisfactionScore = 0.85m
+                });
+            }
         }
 
         return snapshots;

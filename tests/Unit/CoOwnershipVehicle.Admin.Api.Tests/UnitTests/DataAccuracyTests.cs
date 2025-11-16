@@ -194,11 +194,20 @@ public class DataAccuracyTests : IDisposable
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 2000, Status = PaymentStatus.Completed, Method = PaymentMethod.CreditCard, CreatedAt = now.AddDays(-5), PaidAt = now.AddDays(-5) },
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 500, Status = PaymentStatus.Completed, Method = PaymentMethod.CreditCard, CreatedAt = now.AddDays(-35), PaidAt = now.AddDays(-35) }
         };
-        _context.Payments.AddRange(payments);
-        await _context.SaveChangesAsync();
+
+        var isolatedOptions = new DbContextOptionsBuilder<AdminDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        await using var isolatedContext = new AdminDbContext(isolatedOptions);
+        using var isolatedCache = new MemoryCache(new MemoryCacheOptions());
+        var isolatedService = new AdminService(isolatedContext, isolatedCache, _loggerMock.Object);
+
+        isolatedContext.Payments.AddRange(payments);
+        await isolatedContext.SaveChangesAsync();
 
         // Act
-        var result = await _adminService.GetFinancialOverviewAsync();
+        var result = await isolatedService.GetFinancialOverviewAsync();
 
         // Assert
         result.TotalRevenueMonth.Should().Be(3000); // Only payments in last 30 days
