@@ -187,7 +187,7 @@ public static class EnvironmentHelper
             UseSsl = bool.Parse(GetEnvironmentVariable("SMTP_USE_SSL", configuration) ?? "true"),
             FromEmail = GetEnvironmentVariable("EMAIL_FROM", configuration) ?? string.Empty,
             FromName = GetEnvironmentVariable("EMAIL_FROM_NAME", configuration) ?? "Co-Ownership Vehicle",
-            FrontendUrl = GetEnvironmentVariable("FRONTEND_URL", configuration) ?? "https://localhost:5173"
+            FrontendUrl = GetEnvironmentVariable("FRONTEND_URL", configuration) ?? "http://localhost:5173"
         };
     }
 
@@ -354,7 +354,7 @@ public class EmailConfigParams
     public bool UseSsl { get; set; } = true;
     public string FromEmail { get; set; } = string.Empty;
     public string FromName { get; set; } = "Co-Ownership Vehicle";
-    public string FrontendUrl { get; set; } = "https://localhost:5173";
+    public string FrontendUrl { get; set; } = "http://localhost:5173";
 }
 
 /// <summary>
