@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
@@ -19,14 +19,16 @@ public class AuthController : ControllerBase
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthController> _logger;
+    private readonly IConfiguration _configuration;
 
     public AuthController(
-        UserManager<User> userManager,
-        SignInManager<User> signInManager,
-        IJwtTokenService tokenService,
-        IPublishEndpoint publishEndpoint,
-        IEmailService emailService,
-        ILogger<AuthController> logger)
+         UserManager<User> userManager,
+         SignInManager<User> signInManager,
+         IJwtTokenService tokenService,
+         IPublishEndpoint publishEndpoint,
+         IEmailService emailService,
+         ILogger<AuthController> logger,
+         IConfiguration configuration) 
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -34,6 +36,7 @@ public class AuthController : ControllerBase
         _publishEndpoint = publishEndpoint;
         _emailService = emailService;
         _logger = logger;
+        _configuration = configuration; 
     }
 
     /// <summary>
@@ -48,6 +51,10 @@ public class AuthController : ControllerBase
             {
                 return BadRequest(ModelState);
             }
+
+            var frontendUrl = _configuration["EmailSettings:FrontendUrl"]
+                        ?? Environment.GetEnvironmentVariable("FRONTEND_URL");
+            _logger.LogInformation("FRONTEND_URL is: {FrontendUrl}", frontendUrl);
 
             // Check if user already exists
             var existingUser = await _userManager.FindByEmailAsync(request.Email);
@@ -606,16 +613,36 @@ public class AuthController : ControllerBase
         }
     }
 
+    //private string GenerateConfirmationLink(Guid userId, string token)
+    //{
+    //    var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
+    //    var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
+    //    return $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
+    //}
+
+    //private string GeneratePasswordResetLink(Guid userId, string token)
+    //{
+    //    var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
+    //    var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
+    //    return $"{frontendUrl}/reset-password?userId={userId}&token={encodedToken}";
+    //}
+
     private string GenerateConfirmationLink(Guid userId, string token)
     {
-        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
+        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:5173";
+
         var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
-        return $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
+        var link = $"{frontendUrl}/confirm-email?userId={userId}&token={encodedToken}";
+
+        _logger.LogInformation("📧 Generated confirmation link: {Link}", link);
+
+        return link;
     }
 
     private string GeneratePasswordResetLink(Guid userId, string token)
     {
-        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:3000";
+        var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://localhost:5173";
+
         var encodedToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(token));
         return $"{frontendUrl}/reset-password?userId={userId}&token={encodedToken}";
     }
