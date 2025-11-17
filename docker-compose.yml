@@ -32,7 +32,7 @@ services:
       - notification-api
       - coownership-api
     ports:
-      - "61610:8080"
+      - "61600:8080"
     networks:
       - coownership
 
