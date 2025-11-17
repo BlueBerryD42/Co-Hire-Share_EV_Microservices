@@ -2,11 +2,11 @@
   "Routes": [
     {
       "DownstreamPathTemplate": "/api/Auth/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "auth-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61601
         }
       ],
       "UpstreamPathTemplate": "/api/Auth/{everything}",
@@ -20,11 +20,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/user/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "user-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61602
         }
       ],
       "UpstreamPathTemplate": "/api/user/{everything}",
@@ -38,11 +38,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/group/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "group-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61603
         }
       ],
       "UpstreamPathTemplate": "/api/group/{everything}",
@@ -56,11 +56,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/document/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "group-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61603
         }
       ],
       "UpstreamPathTemplate": "/api/document/{everything}",
@@ -74,11 +74,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/fund/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "group-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61603
         }
       ],
       "UpstreamPathTemplate": "/api/fund/{everything}",
@@ -92,7 +92,7 @@
     },
     {
       "DownstreamPathTemplate": "/api/proposal/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
           "Host": "localhost",
@@ -110,11 +110,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/vehicle/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "vehicle-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61604
         }
       ],
       "UpstreamPathTemplate": "/api/vehicle/{everything}",
@@ -128,11 +128,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/maintenance/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "vehicle-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61604
         }
       ],
       "UpstreamPathTemplate": "/api/maintenance/{everything}",
@@ -146,11 +146,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/payment/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "payment-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61605
         }
       ],
       "UpstreamPathTemplate": "/api/payment/{everything}",
@@ -164,11 +164,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/booking/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "booking-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61606
         }
       ],
       "UpstreamPathTemplate": "/api/booking/{everything}",
@@ -182,11 +182,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/admin/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "admin-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61607
         }
       ],
       "UpstreamPathTemplate": "/api/admin/{everything}",
@@ -200,11 +200,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/analytics/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "analytics-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61608
         }
       ],
       "UpstreamPathTemplate": "/api/analytics/{everything}",
@@ -218,11 +218,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/ai/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "analytics-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61608
         }
       ],
       "UpstreamPathTemplate": "/api/ai/{everything}",
@@ -236,11 +236,11 @@
     },
     {
       "DownstreamPathTemplate": "/api/notification/{everything}",
-      "DownstreamScheme": "http",
+      "DownstreamScheme": "https",
       "DownstreamHostAndPorts": [
         {
-          "Host": "notification-api",
-          "Port": 8080
+          "Host": "localhost",
+          "Port": 61609
         }
       ],
       "UpstreamPathTemplate": "/api/notification/{everything}",
