@@ -152,11 +152,6 @@ public class DamageReportService : IDamageReportService
 
         var booking = report.CheckIn.Booking ?? throw new InvalidOperationException("Damage report is missing booking information.");
 
-        if (!await _bookingRepository.IsGroupAdminAsync(userId, booking.GroupId, cancellationToken))
-        {
-            throw new UnauthorizedAccessException("Only group administrators can update damage report status.");
-        }
-
         report.Status = request.Status;
         if (request.EstimatedCost.HasValue)
         {
@@ -209,28 +204,22 @@ public class DamageReportService : IDamageReportService
 
     private async Task NotifyGroupAdminsAsync(CoOwnershipVehicle.Domain.Entities.Booking booking, DamageReport report, CancellationToken cancellationToken)
     {
-        var adminUserIds = booking.Group.Members
-            .Where(m => m.RoleInGroup == GroupRole.Admin)
-            .Select(m => m.UserId)
-            .Distinct()
-            .ToList();
-
-        if (!adminUserIds.Contains(booking.UserId))
+        var recipients = new HashSet<Guid>
         {
-            adminUserIds.Add(booking.UserId);
-        }
+            booking.UserId,
+            report.ReportedByUserId
+        };
 
-        if (!adminUserIds.Any())
+        if (!recipients.Any())
         {
             return;
         }
 
-        var vehicle = booking.Vehicle ?? await _bookingRepository.GetVehicleByIdAsync(booking.VehicleId, cancellationToken);
-        var message = $"Severe vehicle damage reported for {vehicle?.Model ?? "vehicle"} ({vehicle?.PlateNumber}). Severity: {report.Severity}. Location: {report.Location}.";
+        var message = $"Severe vehicle damage reported for vehicle {booking.VehicleId}. Severity: {report.Severity}. Location: {report.Location}.";
 
         await _publishEndpoint.Publish(new BulkNotificationEvent
         {
-            UserIds = adminUserIds,
+            UserIds = recipients.ToList(),
             GroupId = booking.GroupId,
             Title = "Severe vehicle damage reported",
             Message = message,

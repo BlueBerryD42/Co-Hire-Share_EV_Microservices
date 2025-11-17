@@ -126,6 +126,7 @@ public class LateReturnFeesController : ControllerBase
     /// Waive a late return fee (group admins only).
     /// </summary>
     [HttpPost("{feeId:guid}/waive")]
+    [Authorize(Roles = "SystemAdmin,GroupAdmin")]
     [ProducesResponseType(typeof(LateReturnFeeDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -161,7 +162,7 @@ public class LateReturnFeesController : ControllerBase
             return true;
         }
 
-        if (await _bookingRepository.IsGroupAdminAsync(userId, groupId, cancellationToken))
+        if (User.IsInRole("SystemAdmin") || User.IsInRole("GroupAdmin"))
         {
             return true;
         }
