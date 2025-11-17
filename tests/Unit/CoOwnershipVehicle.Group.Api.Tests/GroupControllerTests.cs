@@ -2,6 +2,7 @@ using System.Security.Claims;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Group.Api.Controllers;
 using CoOwnershipVehicle.Group.Api.Data;
+using CoOwnershipVehicle.Group.Api.Services.Interfaces;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using FluentAssertions;
@@ -35,7 +36,30 @@ public class GroupControllerTests : IDisposable
         _testUserId = Guid.NewGuid();
         _testGroupId = Guid.NewGuid();
 
-        _controller = new GroupController(_context, _publishEndpointMock.Object, _loggerMock.Object);
+        // Mock IUserServiceClient
+        var userServiceClientMock = new Mock<IUserServiceClient>();
+        userServiceClientMock.Setup(x => x.GetUserAsync(_testUserId, It.IsAny<string>()))
+            .ReturnsAsync(new UserInfoDto { Id = _testUserId, Email = "test@example.com", FirstName = "Test", LastName = "User" });
+        userServiceClientMock.Setup(x => x.GetUserAsync(It.IsAny<Guid>(), It.IsAny<string>()))
+            .ReturnsAsync((Guid userId, string token) => new UserInfoDto 
+            { 
+                Id = userId, 
+                Email = userId == _testUserId ? "test@example.com" : $"user{userId}@example.com", 
+                FirstName = userId == _testUserId ? "Test" : "User", 
+                LastName = userId == _testUserId ? "User" : "Name" 
+            });
+        userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<List<Guid>>(), It.IsAny<string>()))
+            .ReturnsAsync((List<Guid> userIds, string token) => userIds.ToDictionary(
+                id => id,
+                id => new UserInfoDto 
+                { 
+                    Id = id, 
+                    Email = id == _testUserId ? "test@example.com" : $"user{id}@example.com", 
+                    FirstName = id == _testUserId ? "Test" : "User", 
+                    LastName = id == _testUserId ? "User" : "Name" 
+                }));
+
+        _controller = new GroupController(_context, _publishEndpointMock.Object, _loggerMock.Object, userServiceClientMock.Object);
         
         // Setup user claims
         var claims = new List<Claim>
@@ -44,12 +68,14 @@ public class GroupControllerTests : IDisposable
         };
         var identity = new ClaimsIdentity(claims, "Test");
         var principal = new ClaimsPrincipal(identity);
+        var httpContext = new DefaultHttpContext
+        {
+            User = principal
+        };
+        httpContext.Request.Headers["Authorization"] = "Bearer test-token";
         _controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new DefaultHttpContext
-            {
-                User = principal
-            }
+            HttpContext = httpContext
         };
 
         SeedTestData();
@@ -57,17 +83,7 @@ public class GroupControllerTests : IDisposable
 
     private void SeedTestData()
     {
-        // Create test user
-        var user = new User
-        {
-            Id = _testUserId,
-            Email = "test@example.com",
-            FirstName = "Test",
-            LastName = "User",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        _context.Users.Add(user);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
 
         // Create test group
         var group = new OwnershipGroup
@@ -130,7 +146,7 @@ public class GroupControllerTests : IDisposable
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        _context.Users.Add(otherUser);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
 
         var otherGroup = new OwnershipGroup
         {
@@ -212,7 +228,7 @@ public class GroupControllerTests : IDisposable
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        _context.Users.Add(otherUser);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
 
         var otherGroup = new OwnershipGroup
         {
@@ -349,7 +365,7 @@ public class GroupControllerTests : IDisposable
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        _context.Users.Add(member2);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
         await _context.SaveChangesAsync();
 
         var createDto = new CreateGroupDto

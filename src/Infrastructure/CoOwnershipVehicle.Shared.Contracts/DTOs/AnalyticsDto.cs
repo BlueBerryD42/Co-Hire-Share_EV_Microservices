@@ -40,7 +40,9 @@ public class UserAnalyticsDto
     
     // Usage Statistics
     public int TotalBookings { get; set; }
+    public int CompletedBookings { get; set; }
     public int TotalUsageHours { get; set; }
+    public decimal AverageBookingDuration { get; set; }
     public decimal TotalDistance { get; set; }
     public decimal OwnershipShare { get; set; }
     public decimal UsageShare { get; set; }
@@ -72,6 +74,7 @@ public class VehicleAnalyticsDto
     // Performance Metrics
     public decimal TotalDistance { get; set; }
     public int TotalBookings { get; set; }
+    public int CompletedBookings { get; set; }
     public int TotalUsageHours { get; set; }
     public decimal UtilizationRate { get; set; }
     public decimal AvailabilityRate { get; set; }
@@ -113,6 +116,8 @@ public class GroupAnalyticsDto
     
     // Activity Metrics
     public int TotalBookings { get; set; }
+    public int CompletedBookings { get; set; }
+    public int TotalUsageHours { get; set; }
     public int TotalProposals { get; set; }
     public int TotalVotes { get; set; }
     public decimal ParticipationRate { get; set; }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using CoOwnershipVehicle.Admin.Api.Data;
 using CoOwnershipVehicle.Admin.Api.Services;
+using CoOwnershipVehicle.Admin.Api.Services.HttpClients;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 
@@ -15,6 +16,11 @@ public class DataAccuracyTests : IDisposable
     private readonly AdminDbContext _context;
     private readonly IMemoryCache _cache;
     private readonly Mock<ILogger<AdminService>> _loggerMock;
+    private readonly Mock<IUserServiceClient> _userServiceClientMock;
+    private readonly Mock<IGroupServiceClient> _groupServiceClientMock;
+    private readonly Mock<IVehicleServiceClient> _vehicleServiceClientMock;
+    private readonly Mock<IBookingServiceClient> _bookingServiceClientMock;
+    private readonly Mock<IPaymentServiceClient> _paymentServiceClientMock;
     private readonly AdminService _adminService;
     private readonly DbContextOptions<AdminDbContext> _options;
 
@@ -27,8 +33,21 @@ public class DataAccuracyTests : IDisposable
         _context = new AdminDbContext(_options);
         _cache = new MemoryCache(new MemoryCacheOptions());
         _loggerMock = new Mock<ILogger<AdminService>>();
+        _userServiceClientMock = new Mock<IUserServiceClient>();
+        _groupServiceClientMock = new Mock<IGroupServiceClient>();
+        _vehicleServiceClientMock = new Mock<IVehicleServiceClient>();
+        _bookingServiceClientMock = new Mock<IBookingServiceClient>();
+        _paymentServiceClientMock = new Mock<IPaymentServiceClient>();
 
-        _adminService = new AdminService(_context, _cache, _loggerMock.Object);
+        _adminService = new AdminService(
+            _context,
+            _cache,
+            _loggerMock.Object,
+            _userServiceClientMock.Object,
+            _groupServiceClientMock.Object,
+            _vehicleServiceClientMock.Object,
+            _bookingServiceClientMock.Object,
+            _paymentServiceClientMock.Object);
     }
 
     public void Dispose()
@@ -201,7 +220,15 @@ public class DataAccuracyTests : IDisposable
 
         await using var isolatedContext = new AdminDbContext(isolatedOptions);
         using var isolatedCache = new MemoryCache(new MemoryCacheOptions());
-        var isolatedService = new AdminService(isolatedContext, isolatedCache, _loggerMock.Object);
+        var isolatedService = new AdminService(
+            isolatedContext,
+            isolatedCache,
+            _loggerMock.Object,
+            _userServiceClientMock.Object,
+            _groupServiceClientMock.Object,
+            _vehicleServiceClientMock.Object,
+            _bookingServiceClientMock.Object,
+            _paymentServiceClientMock.Object);
 
         isolatedContext.Payments.AddRange(payments);
         await isolatedContext.SaveChangesAsync();

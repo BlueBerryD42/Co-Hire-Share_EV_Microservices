@@ -1,9 +1,11 @@
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Group.Api.Contracts;
 using CoOwnershipVehicle.Group.Api.Data;
+using CoOwnershipVehicle.Group.Api.Services.Interfaces;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using MassTransit;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -15,15 +17,31 @@ public class FundService : IFundService
     private readonly GroupDbContext _context;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<FundService> _logger;
+    private readonly IUserServiceClient _userServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public FundService(
         GroupDbContext context,
         IPublishEndpoint publishEndpoint,
-        ILogger<FundService> logger)
+        ILogger<FundService> logger,
+        IUserServiceClient userServiceClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _publishEndpoint = publishEndpoint ?? throw new ArgumentNullException(nameof(publishEndpoint));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _userServiceClient = userServiceClient ?? throw new ArgumentNullException(nameof(userServiceClient));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            return string.Empty;
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     public async Task<FundBalanceDto> GetFundBalanceAsync(Guid groupId, Guid userId)
@@ -59,8 +77,6 @@ public class FundService : IFundService
 
         // Get recent transactions
         var recentTransactions = await _context.FundTransactions
-            .Include(t => t.Initiator)
-            .Include(t => t.Approver)
             .Where(t => t.GroupId == groupId)
             .OrderByDescending(t => t.TransactionDate)
             .Take(10)
@@ -79,19 +95,32 @@ public class FundService : IFundService
             .Where(t => t.Type == FundTransactionType.Withdrawal)
             .Sum(t => t.Amount);
 
-        var memberContributions = await _context.FundTransactions
-            .Include(t => t.Initiator)
-            .Where(t => t.GroupId == groupId && 
-                       t.Type == FundTransactionType.Deposit && 
-                       t.Status == FundTransactionStatus.Completed)
+        // Fetch user data via HTTP for member contributions
+        var accessToken = GetAccessToken();
+        var depositUserIds = allTransactions
+            .Where(t => t.Type == FundTransactionType.Deposit && t.Status == FundTransactionStatus.Completed)
+            .Select(t => t.InitiatedBy)
+            .Distinct()
+            .ToList();
+        
+        var users = await _userServiceClient.GetUsersAsync(depositUserIds, accessToken);
+        
+        var memberContributions = allTransactions
+            .Where(t => t.Type == FundTransactionType.Deposit && t.Status == FundTransactionStatus.Completed)
             .GroupBy(t => t.InitiatedBy)
-            .Select(g => new
-            {
-                UserId = g.Key,
-                UserName = g.First().Initiator.FirstName + " " + g.First().Initiator.LastName,
-                Total = g.Sum(t => t.Amount)
-            })
-            .ToDictionaryAsync(x => x.UserName, x => x.Total);
+            .ToDictionary(
+                g => users.ContainsKey(g.Key) ? $"{users[g.Key].FirstName} {users[g.Key].LastName}" : "Unknown",
+                g => g.Sum(t => t.Amount)
+            );
+
+        // Fetch user data for recent transactions
+        var transactionUserIds = recentTransactions
+            .SelectMany(t => new[] { t.InitiatedBy, t.ApprovedBy })
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var transactionUsers = await _userServiceClient.GetUsersAsync(transactionUserIds, accessToken);
 
         return new FundBalanceDto
         {
@@ -100,7 +129,10 @@ public class FundService : IFundService
             ReserveBalance = fund.ReserveBalance,
             AvailableBalance = fund.AvailableBalance,
             LastUpdated = fund.LastUpdated,
-            RecentTransactions = recentTransactions.Select(t => MapToDto(t, t.Initiator, t.Approver)).ToList(),
+            RecentTransactions = recentTransactions.Select(t => 
+                MapToDto(t, 
+                    transactionUsers.GetValueOrDefault(t.InitiatedBy),
+                    t.ApprovedBy.HasValue ? transactionUsers.GetValueOrDefault(t.ApprovedBy.Value) : null)).ToList(),
             Statistics = new FundStatisticsDto
             {
                 TotalDeposits = totalDeposits,
@@ -198,7 +230,8 @@ public class FundService : IFundService
                 DepositedAt = DateTime.UtcNow
             });
 
-            var initiator = await _context.Users.FindAsync(userId);
+            var accessToken = GetAccessToken();
+            var initiator = await _userServiceClient.GetUserAsync(userId, accessToken);
             return MapToDto(fundTransaction, initiator, null);
         }
         catch
@@ -292,7 +325,8 @@ public class FundService : IFundService
             WithdrawnAt = DateTime.UtcNow
         });
 
-        var initiator = await _context.Users.FindAsync(userId);
+        var accessToken = GetAccessToken();
+        var initiator = await _userServiceClient.GetUserAsync(userId, accessToken);
         return MapToDto(fundTransaction, initiator, null);
     }
 
@@ -374,7 +408,8 @@ public class FundService : IFundService
                 AllocatedAt = DateTime.UtcNow
             });
 
-            var initiator = await _context.Users.FindAsync(userId);
+            var accessToken = GetAccessToken();
+            var initiator = await _userServiceClient.GetUserAsync(userId, accessToken);
             return MapToDto(fundTransaction, initiator, null);
         }
         catch
@@ -462,7 +497,8 @@ public class FundService : IFundService
                 AllocatedAt = DateTime.UtcNow
             });
 
-            var initiator = await _context.Users.FindAsync(userId);
+            var accessToken = GetAccessToken();
+            var initiator = await _userServiceClient.GetUserAsync(userId, accessToken);
             return MapToDto(fundTransaction, initiator, null);
         }
         catch
@@ -491,8 +527,6 @@ public class FundService : IFundService
         }
 
         var query = _context.FundTransactions
-            .Include(t => t.Initiator)
-            .Include(t => t.Approver)
             .Where(t => t.GroupId == groupId);
 
         if (type.HasValue)
@@ -519,9 +553,22 @@ public class FundService : IFundService
             .Take(pageSize)
             .ToListAsync();
 
+        // Fetch user data via HTTP
+        var accessToken = GetAccessToken();
+        var transactionUserIds = transactions
+            .SelectMany(t => new[] { t.InitiatedBy, t.ApprovedBy })
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var users = await _userServiceClient.GetUsersAsync(transactionUserIds, accessToken);
+
         return new FundTransactionHistoryDto
         {
-            Transactions = transactions.Select(t => MapToDto(t, t.Initiator, t.Approver)).ToList(),
+            Transactions = transactions.Select(t => 
+                MapToDto(t, 
+                    users.GetValueOrDefault(t.InitiatedBy),
+                    t.ApprovedBy.HasValue ? users.GetValueOrDefault(t.ApprovedBy.Value) : null)).ToList(),
             TotalCount = totalCount,
             Page = page,
             PageSize = pageSize,
@@ -550,7 +597,6 @@ public class FundService : IFundService
         };
 
         var transactions = await _context.FundTransactions
-            .Include(t => t.Initiator)
             .Where(t => t.GroupId == groupId && 
                        t.TransactionDate >= startDate && 
                        t.Status == FundTransactionStatus.Completed)
@@ -568,16 +614,22 @@ public class FundService : IFundService
             .Where(t => t.Type == FundTransactionType.Allocation || t.Type == FundTransactionType.Release)
             .Sum(t => t.Type == FundTransactionType.Allocation ? t.Amount : -t.Amount);
 
+        // Fetch user data via HTTP for member contributions
+        var accessToken = GetAccessToken();
+        var depositUserIds = transactions
+            .Where(t => t.Type == FundTransactionType.Deposit)
+            .Select(t => t.InitiatedBy)
+            .Distinct()
+            .ToList();
+        var users = await _userServiceClient.GetUsersAsync(depositUserIds, accessToken);
+
         var memberContributions = transactions
             .Where(t => t.Type == FundTransactionType.Deposit)
             .GroupBy(t => t.InitiatedBy)
-            .Select(g => new
-            {
-                UserId = g.Key,
-                UserName = g.First().Initiator.FirstName + " " + g.First().Initiator.LastName,
-                Total = g.Sum(t => t.Amount)
-            })
-            .ToDictionary(x => x.UserName, x => x.Total);
+            .ToDictionary(
+                g => users.ContainsKey(g.Key) ? $"{users[g.Key].FirstName} {users[g.Key].LastName}" : "Unknown",
+                g => g.Sum(t => t.Amount)
+            );
 
         // Calculate average balance (simplified - would need historical snapshots for accurate calculation)
         var fund = await _context.GroupFunds.FirstOrDefaultAsync(f => f.GroupId == groupId);
@@ -595,14 +647,14 @@ public class FundService : IFundService
         };
     }
 
-    private static FundTransactionDto MapToDto(FundTransaction transaction, User? initiator, User? approver)
+    private static FundTransactionDto MapToDto(FundTransaction transaction, UserInfoDto? initiator, UserInfoDto? approver)
     {
         return new FundTransactionDto
         {
             Id = transaction.Id,
             GroupId = transaction.GroupId,
             InitiatedBy = transaction.InitiatedBy,
-            InitiatorName = initiator != null ? $"{initiator.FirstName} {initiator.LastName}" : string.Empty,
+            InitiatorName = initiator != null ? $"{initiator.FirstName} {initiator.LastName}" : "Unknown",
             Type = transaction.Type,
             Amount = transaction.Amount,
             BalanceBefore = transaction.BalanceBefore,

@@ -5,6 +5,7 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using CoOwnershipVehicle.Admin.Api.Data;
 using CoOwnershipVehicle.Admin.Api.Services;
+using CoOwnershipVehicle.Admin.Api.Services.HttpClients;
 using CoOwnershipVehicle.Admin.Api.Middleware;
 using CoOwnershipVehicle.Shared.Configuration;
 using Microsoft.Extensions.Caching.Memory;
@@ -120,15 +121,57 @@ builder.Services.AddMassTransit(x =>
 // Add caching
 builder.Services.AddMemoryCache();
 
+// Add HttpContextAccessor for HTTP clients
+builder.Services.AddHttpContextAccessor();
+
+// Configure HTTP clients for inter-service communication
+var serviceUrls = builder.Configuration.GetSection("ServiceUrls");
+var userServiceUrl = serviceUrls["User"] ?? EnvironmentHelper.GetEnvironmentVariable("USER_SERVICE_URL", builder.Configuration) ?? "https://localhost:61602";
+var groupServiceUrl = serviceUrls["Group"] ?? EnvironmentHelper.GetEnvironmentVariable("GROUP_SERVICE_URL", builder.Configuration) ?? "https://localhost:61603";
+var vehicleServiceUrl = serviceUrls["Vehicle"] ?? EnvironmentHelper.GetEnvironmentVariable("VEHICLE_SERVICE_URL", builder.Configuration) ?? "https://localhost:61604";
+var bookingServiceUrl = serviceUrls["Booking"] ?? EnvironmentHelper.GetEnvironmentVariable("BOOKING_SERVICE_URL", builder.Configuration) ?? "https://localhost:61606";
+var paymentServiceUrl = serviceUrls["Payment"] ?? EnvironmentHelper.GetEnvironmentVariable("PAYMENT_SERVICE_URL", builder.Configuration) ?? "https://localhost:61605";
+
+// Register HTTP clients
+builder.Services.AddHttpClient<IUserServiceClient, UserServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(userServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient<IGroupServiceClient, GroupServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(groupServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient<IVehicleServiceClient, VehicleServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(vehicleServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(bookingServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient<IPaymentServiceClient, PaymentServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(paymentServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+// HttpClient for health checks
+builder.Services.AddHttpClient();
+
 // Services
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<ISystemHealthService, SystemHealthService>();
 builder.Services.AddScoped<ISystemMetricsService, SystemMetricsService>();
 builder.Services.AddScoped<ISystemLogsService, SystemLogsService>();
 builder.Services.AddScoped<IAlertService, AlertService>();
-
-// HttpClient for health checks
-builder.Services.AddHttpClient();
 
 var app = builder.Build();
 

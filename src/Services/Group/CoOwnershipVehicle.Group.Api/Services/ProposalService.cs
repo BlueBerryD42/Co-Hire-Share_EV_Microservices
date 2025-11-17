@@ -1,9 +1,11 @@
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Group.Api.Contracts;
 using CoOwnershipVehicle.Group.Api.Data;
+using CoOwnershipVehicle.Group.Api.Services.Interfaces;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using MassTransit;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VoteChoice = CoOwnershipVehicle.Domain.Entities.VoteChoice;
@@ -15,15 +17,31 @@ public class ProposalService : IProposalService
     private readonly GroupDbContext _context;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<ProposalService> _logger;
+    private readonly IUserServiceClient _userServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public ProposalService(
         GroupDbContext context,
         IPublishEndpoint publishEndpoint,
-        ILogger<ProposalService> logger)
+        ILogger<ProposalService> logger,
+        IUserServiceClient userServiceClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _publishEndpoint = publishEndpoint ?? throw new ArgumentNullException(nameof(publishEndpoint));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _userServiceClient = userServiceClient ?? throw new ArgumentNullException(nameof(userServiceClient));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            return string.Empty;
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     public async Task<ProposalDto> CreateProposalAsync(CreateProposalDto createDto, Guid userId)
@@ -98,8 +116,9 @@ public class ProposalService : IProposalService
             VotingEndDate = proposal.VotingEndDate
         });
 
-        // Get creator name
-        var creator = await _context.Users.FindAsync(userId);
+        // Get creator name via HTTP call
+        var accessToken = GetAccessToken();
+        var creator = await _userServiceClient.GetUserAsync(userId, accessToken);
 
         return MapToDto(proposal, creator);
     }
@@ -164,8 +183,6 @@ public class ProposalService : IProposalService
     {
         var proposal = await _context.Proposals
             .Include(p => p.Votes)
-                .ThenInclude(v => v.Voter)
-            .Include(p => p.Creator)
             .Include(p => p.Group)
             .FirstOrDefaultAsync(p => p.Id == proposalId);
 
@@ -211,6 +228,32 @@ public class ProposalService : IProposalService
             ? proposal.VotingEndDate - DateTime.UtcNow
             : (TimeSpan?)null;
 
+        // Fetch user data via HTTP
+        var accessToken = GetAccessToken();
+        var userIds = proposal.Votes.Select(v => v.VoterId).ToList();
+        userIds.Add(proposal.CreatedBy);
+        var users = await _userServiceClient.GetUsersAsync(userIds.Distinct().ToList(), accessToken);
+
+        var creator = users.GetValueOrDefault(proposal.CreatedBy);
+        var creatorName = creator != null ? $"{creator.FirstName} {creator.LastName}" : "Unknown";
+
+        var votes = new List<VoteDto>();
+        foreach (var vote in proposal.Votes)
+        {
+            var voter = users.GetValueOrDefault(vote.VoterId);
+            votes.Add(new VoteDto
+            {
+                Id = vote.Id,
+                ProposalId = vote.ProposalId,
+                VoterId = vote.VoterId,
+                VoterName = voter != null ? $"{voter.FirstName} {voter.LastName}" : "Unknown",
+                Weight = vote.Weight,
+                Choice = vote.Choice,
+                Comment = vote.Comment,
+                VotedAt = vote.VotedAt
+            });
+        }
+
         return new ProposalDetailsDto
         {
             Id = proposal.Id,
@@ -226,18 +269,8 @@ public class ProposalService : IProposalService
             RequiredMajority = proposal.RequiredMajority,
             CreatedAt = proposal.CreatedAt,
             UpdatedAt = proposal.UpdatedAt,
-            CreatorName = $"{proposal.Creator.FirstName} {proposal.Creator.LastName}",
-            Votes = proposal.Votes.Select(v => new VoteDto
-            {
-                Id = v.Id,
-                ProposalId = v.ProposalId,
-                VoterId = v.VoterId,
-                VoterName = $"{v.Voter.FirstName} {v.Voter.LastName}",
-                Weight = v.Weight,
-                Choice = v.Choice,
-                Comment = v.Comment,
-                VotedAt = v.VotedAt
-            }).ToList(),
+            CreatorName = creatorName,
+            Votes = votes,
             VoteTally = voteTally,
             VotingProgress = votingProgress,
             TimeRemaining = timeRemaining
@@ -310,8 +343,9 @@ public class ProposalService : IProposalService
         _logger.LogInformation("Vote cast on proposal {ProposalId} by user {UserId} with choice {Choice}",
             proposalId, userId, voteDto.Choice);
 
-        // Get voter name
-        var voter = await _context.Users.FindAsync(userId);
+        // Get voter name via HTTP call
+        var accessToken = GetAccessToken();
+        var voter = await _userServiceClient.GetUserAsync(userId, accessToken);
 
         // Publish event (using existing VoteCreatedEvent)
         await _publishEndpoint.Publish(new VoteCreatedEvent
@@ -330,7 +364,7 @@ public class ProposalService : IProposalService
             Id = vote.Id,
             ProposalId = vote.ProposalId,
             VoterId = vote.VoterId,
-            VoterName = voter != null ? $"{voter.FirstName} {voter.LastName}" : string.Empty,
+            VoterName = voter != null ? $"{voter.FirstName} {voter.LastName}" : "Unknown",
             Weight = vote.Weight,
             Choice = vote.Choice,
             Comment = vote.Comment,
@@ -342,7 +376,6 @@ public class ProposalService : IProposalService
     {
         var proposal = await _context.Proposals
             .Include(p => p.Votes)
-                .ThenInclude(v => v.Voter)
             .Include(p => p.Group)
             .FirstOrDefaultAsync(p => p.Id == proposalId);
 
@@ -386,15 +419,24 @@ public class ProposalService : IProposalService
 
         var passed = quorumMet && yesWeight >= (totalWeight * proposal.RequiredMajority);
 
-        var voteBreakdown = proposal.Votes.Select(v => new VoteBreakdownDto
+        // Fetch user data via HTTP
+        var accessToken = GetAccessToken();
+        var userIds = proposal.Votes.Select(v => v.VoterId).Distinct().ToList();
+        var users = await _userServiceClient.GetUsersAsync(userIds, accessToken);
+
+        var voteBreakdown = proposal.Votes.Select(v =>
         {
-            VoterId = v.VoterId,
-            VoterName = $"{v.Voter.FirstName} {v.Voter.LastName}",
-            Choice = v.Choice,
-            Weight = v.Weight,
-            WeightPercentage = totalOwnership > 0 ? v.Weight / totalOwnership : 0m,
-            VotedAt = v.VotedAt,
-            Comment = v.Comment
+            var voter = users.GetValueOrDefault(v.VoterId);
+            return new VoteBreakdownDto
+            {
+                VoterId = v.VoterId,
+                VoterName = voter != null ? $"{voter.FirstName} {voter.LastName}" : "Unknown",
+                Choice = v.Choice,
+                Weight = v.Weight,
+                WeightPercentage = totalOwnership > 0 ? v.Weight / totalOwnership : 0m,
+                VotedAt = v.VotedAt,
+                Comment = v.Comment
+            };
         }).ToList();
 
         return new ProposalResultsDto
@@ -476,7 +518,9 @@ public class ProposalService : IProposalService
             ClosedAt = DateTime.UtcNow
         });
 
-        var creator = await _context.Users.FindAsync(proposal.CreatedBy);
+        // Get creator name via HTTP call
+        var accessToken = GetAccessToken();
+        var creator = await _userServiceClient.GetUserAsync(proposal.CreatedBy, accessToken);
         return MapToDto(proposal, creator);
     }
 
@@ -533,7 +577,7 @@ public class ProposalService : IProposalService
         return true;
     }
 
-    private static ProposalDto MapToDto(Proposal proposal, User? creator)
+    private static ProposalDto MapToDto(Proposal proposal, UserInfoDto? creator)
     {
         return new ProposalDto
         {
@@ -550,7 +594,7 @@ public class ProposalService : IProposalService
             RequiredMajority = proposal.RequiredMajority,
             CreatedAt = proposal.CreatedAt,
             UpdatedAt = proposal.UpdatedAt,
-            CreatorName = creator != null ? $"{creator.FirstName} {creator.LastName}" : string.Empty
+            CreatorName = creator != null ? $"{creator.FirstName} {creator.LastName}" : "Unknown"
         };
     }
 }

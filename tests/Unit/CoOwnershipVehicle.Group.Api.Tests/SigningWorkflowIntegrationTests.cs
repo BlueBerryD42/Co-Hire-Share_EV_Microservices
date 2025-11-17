@@ -3,6 +3,7 @@ using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.DTOs;
 using CoOwnershipVehicle.Group.Api.Services.Implementations;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,30 @@ public class SigningWorkflowIntegrationTests : IDisposable
             .Setup(x => x.GenerateSigningUrl(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((token, baseUrl) => $"{baseUrl.TrimEnd('/')}/sign/{token}");
 
+        _signerIds = new List<Guid> { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+
+        // Mock IUserServiceClient
+        var userServiceClientMock = new Mock<IUserServiceClient>();
+        foreach (var signerId in _signerIds)
+        {
+            var index = _signerIds.IndexOf(signerId);
+            userServiceClientMock.Setup(x => x.GetUserAsync(signerId, It.IsAny<string>()))
+                .ReturnsAsync(new UserInfoDto { Id = signerId, Email = $"user{index}@test.com", FirstName = $"User{index}", LastName = "Test", Role = UserRole.CoOwner });
+        }
+        userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<List<Guid>>(), It.IsAny<string>()))
+            .ReturnsAsync((List<Guid> userIds, string token) => userIds.ToDictionary(
+                id => id,
+                id => {
+                    var index = _signerIds.IndexOf(id);
+                    return new UserInfoDto { Id = id, Email = $"user{index}@test.com", FirstName = $"User{index}", LastName = "Test", Role = UserRole.CoOwner };
+                }));
+
+        // Mock IHttpContextAccessor
+        var httpContextAccessorMock = new Mock<IHttpContextAccessor>();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Authorization"] = "Bearer test-token";
+        httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+
         _documentService = new DocumentService(
             _context,
             _mockStorageService.Object,
@@ -60,9 +85,9 @@ public class SigningWorkflowIntegrationTests : IDisposable
             mockSigningToken.Object,
             _mockCertificateService.Object,
             mockNotification.Object,
-            _mockLogger.Object);
-
-        _signerIds = new List<Guid> { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+            _mockLogger.Object,
+            userServiceClientMock.Object,
+            httpContextAccessorMock.Object);
         SeedTestData();
     }
 
@@ -96,7 +121,7 @@ public class SigningWorkflowIntegrationTests : IDisposable
             SharePercentage = 0.33m
         }).ToList();
 
-        _context.Users.AddRange(users);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
         _context.OwnershipGroups.Add(group);
         _context.GroupMembers.AddRange(members);
         _context.SaveChanges();

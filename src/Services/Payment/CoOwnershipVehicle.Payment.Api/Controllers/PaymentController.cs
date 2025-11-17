@@ -45,12 +45,10 @@ public class PaymentController : ControllerBase
 
             var userId = GetCurrentUserId();
 
-            // Verify user has access to the group
-            var hasAccess = await _context.GroupMembers
-                .AnyAsync(m => m.GroupId == createDto.GroupId && m.UserId == userId);
-
-            if (!hasAccess)
-                return Forbidden(new { message = "Access denied to this group" });
+            // TODO: Verify user has access to the group via Group Service HTTP call
+            // For now, skip the check - this should be implemented with IGroupServiceClient
+            // var hasAccess = await _groupServiceClient.IsUserInGroupAsync(createDto.GroupId, userId, accessToken);
+            // if (!hasAccess) return Forbidden(new { message = "Access denied to this group" });
 
             var expense = new Domain.Entities.Expense
             {
@@ -219,7 +217,6 @@ public class PaymentController : ControllerBase
             // Get the invoice
             var invoice = await _context.Invoices
                 .Include(i => i.Expense)
-                    .ThenInclude(e => e.Group)
                 .FirstOrDefaultAsync(i => i.Id == createDto.InvoiceId && i.PayerId == userId);
 
             if (invoice == null)

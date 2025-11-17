@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Group.Api.Data;
+using CoOwnershipVehicle.Group.Api.Services.Interfaces;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using CoOwnershipVehicle.Domain.Entities;
@@ -17,15 +18,28 @@ public class GroupController : ControllerBase
     private readonly GroupDbContext _context;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<GroupController> _logger;
+    private readonly IUserServiceClient _userServiceClient;
 
     public GroupController(
         GroupDbContext context,
         IPublishEndpoint publishEndpoint,
-        ILogger<GroupController> logger)
+        ILogger<GroupController> logger,
+        IUserServiceClient userServiceClient)
     {
         _context = context;
         _publishEndpoint = publishEndpoint;
         _logger = logger;
+        _userServiceClient = userServiceClient;
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = HttpContext.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            return string.Empty;
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     /// <summary>
@@ -41,45 +55,54 @@ public class GroupController : ControllerBase
             
             var groups = await _context.OwnershipGroups
                 .Include(g => g.Members)
-                    .ThenInclude(m => m.User)
                 .Include(g => g.Vehicles)
                 .Where(g => g.Members.Any(m => m.UserId == userId))
-                .Select(g => new GroupDto
+                .ToListAsync();
+
+            // Fetch user data via HTTP
+            var accessToken = GetAccessToken();
+            var allMemberUserIds = groups.SelectMany(g => g.Members.Select(m => m.UserId)).Distinct().ToList();
+            var users = await _userServiceClient.GetUsersAsync(allMemberUserIds, accessToken);
+
+            var groupDtos = groups.Select(g => new GroupDto
+            {
+                Id = g.Id,
+                Name = g.Name,
+                Description = g.Description,
+                Status = (GroupStatus)g.Status,
+                CreatedBy = g.CreatedBy,
+                CreatedAt = g.CreatedAt,
+                Members = g.Members.Select(m =>
                 {
-                    Id = g.Id,
-                    Name = g.Name,
-                    Description = g.Description,
-                    Status = (GroupStatus)g.Status,
-                    CreatedBy = g.CreatedBy,
-                    CreatedAt = g.CreatedAt,
-                    Members = g.Members.Select(m => new GroupMemberDto
+                    var user = users.GetValueOrDefault(m.UserId);
+                    return new GroupMemberDto
                     {
                         Id = m.Id,
                         UserId = m.UserId,
-                        UserFirstName = m.User.FirstName,
-                        UserLastName = m.User.LastName,
-                        UserEmail = m.User.Email!,
+                        UserFirstName = user?.FirstName ?? "Unknown",
+                        UserLastName = user?.LastName ?? "",
+                        UserEmail = user?.Email ?? "",
                         SharePercentage = m.SharePercentage,
                         RoleInGroup = (GroupRole)m.RoleInGroup,
                         JoinedAt = m.JoinedAt
-                    }).ToList(),
-                    Vehicles = g.Vehicles.Select(v => new VehicleDto
-                    {
-                        Id = v.Id,
-                        Vin = v.Vin,
-                        PlateNumber = v.PlateNumber,
-                        Model = v.Model,
-                        Year = v.Year,
-                        Color = v.Color,
-                        Status = (VehicleStatus)v.Status,
-                        Odometer = v.Odometer,
-                        GroupId = v.GroupId,
-                        GroupName = g.Name
-                    }).ToList()
-                })
-                .ToListAsync();
+                    };
+                }).ToList(),
+                Vehicles = g.Vehicles.Select(v => new VehicleDto
+                {
+                    Id = v.Id,
+                    Vin = v.Vin,
+                    PlateNumber = v.PlateNumber,
+                    Model = v.Model,
+                    Year = v.Year,
+                    Color = v.Color,
+                    Status = (VehicleStatus)v.Status,
+                    Odometer = v.Odometer,
+                    GroupId = v.GroupId,
+                    GroupName = g.Name
+                }).ToList()
+            }).ToList();
 
-            return Ok(groups);
+            return Ok(groupDtos);
         }
         catch (Exception ex)
         {
@@ -100,48 +123,57 @@ public class GroupController : ControllerBase
             
             var group = await _context.OwnershipGroups
                 .Include(g => g.Members)
-                    .ThenInclude(m => m.User)
                 .Include(g => g.Vehicles)
                 .Where(g => g.Id == id && g.Members.Any(m => m.UserId == userId))
-                .Select(g => new GroupDto
-                {
-                    Id = g.Id,
-                    Name = g.Name,
-                    Description = g.Description,
-                    Status = (GroupStatus)g.Status,
-                    CreatedBy = g.CreatedBy,
-                    CreatedAt = g.CreatedAt,
-                    Members = g.Members.Select(m => new GroupMemberDto
-                    {
-                        Id = m.Id,
-                        UserId = m.UserId,
-                        UserFirstName = m.User.FirstName,
-                        UserLastName = m.User.LastName,
-                        UserEmail = m.User.Email!,
-                        SharePercentage = m.SharePercentage,
-                        RoleInGroup = (GroupRole)m.RoleInGroup,
-                        JoinedAt = m.JoinedAt
-                    }).ToList(),
-                    Vehicles = g.Vehicles.Select(v => new VehicleDto
-                    {
-                        Id = v.Id,
-                        Vin = v.Vin,
-                        PlateNumber = v.PlateNumber,
-                        Model = v.Model,
-                        Year = v.Year,
-                        Color = v.Color,
-                        Status = (VehicleStatus)v.Status,
-                        Odometer = v.Odometer,
-                        GroupId = v.GroupId,
-                        GroupName = g.Name
-                    }).ToList()
-                })
                 .FirstOrDefaultAsync();
 
             if (group == null)
                 return NotFound(new { message = "Group not found or access denied" });
 
-            return Ok(group);
+            // Fetch user data via HTTP
+            var accessToken = GetAccessToken();
+            var memberUserIds = group.Members.Select(m => m.UserId).Distinct().ToList();
+            var users = await _userServiceClient.GetUsersAsync(memberUserIds, accessToken);
+
+            var groupDto = new GroupDto
+            {
+                Id = group.Id,
+                Name = group.Name,
+                Description = group.Description,
+                Status = (GroupStatus)group.Status,
+                CreatedBy = group.CreatedBy,
+                CreatedAt = group.CreatedAt,
+                Members = group.Members.Select(m =>
+                {
+                    var user = users.GetValueOrDefault(m.UserId);
+                    return new GroupMemberDto
+                    {
+                        Id = m.Id,
+                        UserId = m.UserId,
+                        UserFirstName = user?.FirstName ?? "Unknown",
+                        UserLastName = user?.LastName ?? "",
+                        UserEmail = user?.Email ?? "",
+                        SharePercentage = m.SharePercentage,
+                        RoleInGroup = (GroupRole)m.RoleInGroup,
+                        JoinedAt = m.JoinedAt
+                    };
+                }).ToList(),
+                Vehicles = group.Vehicles.Select(v => new VehicleDto
+                {
+                    Id = v.Id,
+                    Vin = v.Vin,
+                    PlateNumber = v.PlateNumber,
+                    Model = v.Model,
+                    Year = v.Year,
+                    Color = v.Color,
+                    Status = (VehicleStatus)v.Status,
+                    Odometer = v.Odometer,
+                    GroupId = v.GroupId,
+                    GroupName = group.Name
+                }).ToList()
+            };
+
+            return Ok(groupDto);
         }
         catch (Exception ex)
         {

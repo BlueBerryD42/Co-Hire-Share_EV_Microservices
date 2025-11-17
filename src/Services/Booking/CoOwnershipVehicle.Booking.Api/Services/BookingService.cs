@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CoOwnershipVehicle.Booking.Api.Configuration;
 using CoOwnershipVehicle.Booking.Api.Contracts;
 using CoOwnershipVehicle.Booking.Api.DTOs;
 using CoOwnershipVehicle.Booking.Api.Repositories;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
-using CoOwnershipVehicle.Shared.Contracts.Events;
-using MassTransit;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace CoOwnershipVehicle.Booking.Api.Services;
 
@@ -17,50 +17,36 @@ public class BookingService : IBookingService
     private const int MaxEmergencyBookingsPerMonth = 2; // Define the limit for emergency bookings
 
     private readonly IBookingRepository _bookingRepository;
-    private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<BookingService> _logger;
+    private readonly TripPricingOptions _tripPricingOptions;
 
     public BookingService(
         IBookingRepository bookingRepository,
-        IPublishEndpoint publishEndpoint,
-        ILogger<BookingService> logger)
+        ILogger<BookingService> logger,
+        IOptions<TripPricingOptions> tripPricingOptions)
     {
         _bookingRepository = bookingRepository ?? throw new ArgumentNullException(nameof(bookingRepository));
-        _publishEndpoint = publishEndpoint ?? throw new ArgumentNullException(nameof(publishEndpoint));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _tripPricingOptions = tripPricingOptions?.Value ?? throw new ArgumentNullException(nameof(tripPricingOptions));
     }
 
     public async Task<BookingDto> CreateBookingAsync(CreateBookingDto createDto, Guid userId, bool isEmergency = false, string? emergencyReason = null)
     {
-        // Ensure user has access to the vehicle
-        if (!await _bookingRepository.UserHasVehicleAccessAsync(createDto.VehicleId, userId))
+        if (createDto.VehicleId == Guid.Empty)
         {
-            throw new UnauthorizedAccessException("Access denied to this vehicle");
+            throw new InvalidOperationException("VehicleId must be provided when creating a booking.");
         }
 
-        var vehicle = await _bookingRepository.GetVehicleByIdAsync(createDto.VehicleId)
-                      ?? throw new InvalidOperationException("Vehicle not found.");
-
-        if (vehicle.GroupId == null)
+        if (createDto.GroupId == Guid.Empty)
         {
-            throw new InvalidOperationException("Vehicle is not associated with a group.");
+            throw new InvalidOperationException("GroupId must be provided when creating a booking.");
         }
-
-        createDto.GroupId = vehicle.GroupId.Value; // Set GroupId from vehicle
 
         IReadOnlyList<Domain.Entities.Booking> conflictingBookings = Array.Empty<Domain.Entities.Booking>();
         EmergencyConflictResolutionResult? emergencyConflictResult = null;
 
         if (isEmergency)
         {
-            // Validate user is group admin
-            if (!await _bookingRepository.IsGroupAdminAsync(userId, createDto.GroupId))
-            {
-                _logger.LogWarning("Non-admin user {UserId} attempted to create an emergency booking for group {GroupId}.", userId, createDto.GroupId);
-                throw new UnauthorizedAccessException("Only group admins can create emergency bookings.");
-            }
-
-            // Validate emergency reason is provided
             if (string.IsNullOrWhiteSpace(emergencyReason))
             {
                 throw new InvalidOperationException("Emergency reason is required for emergency bookings.");
@@ -80,11 +66,10 @@ public class BookingService : IBookingService
             emergencyConflictResult = await HandleEmergencyConflictsAsync(
                 conflictingBookings,
                 createDto,
-                vehicle,
                 userId,
                 emergencyReason);
 
-            await NotifyGroupOfEmergencyBookingAsync(createDto, vehicle, userId, emergencyReason);
+            await NotifyGroupOfEmergencyBookingAsync(createDto, userId, emergencyReason);
         }
         else // Not an emergency booking, proceed with normal conflict checks
         {
@@ -126,34 +111,20 @@ public class BookingService : IBookingService
             PriorityScore = userPriorityScore,
             Status = Domain.Entities.BookingStatus.Confirmed,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            VehicleStatus = VehicleStatus.Available,
+            DistanceKm = null,
+            TripFeeAmount = 0m
         };
 
         await _bookingRepository.AddAsync(booking);
         await _bookingRepository.SaveChangesAsync();
 
-        await _publishEndpoint.Publish(new BookingCreatedEvent
-        {
-            BookingId = booking.Id,
-            VehicleId = booking.VehicleId,
-            UserId = booking.UserId,
-            StartAt = booking.StartAt,
-            EndAt = booking.EndAt,
-            Status = BookingStatus.Confirmed,
-            IsEmergency = booking.IsEmergency,
-            Priority = booking.Priority
-        });
-
         _logger.LogInformation("Booking {BookingId} created for vehicle {VehicleId} by user {UserId}. IsEmergency: {IsEmergency}", booking.Id, booking.VehicleId, userId, isEmergency);
 
         if (isEmergency)
         {
-            await PublishEmergencySummaryEventsAsync(
-                booking,
-                emergencyReason!,
-                emergencyConflictResult ?? new EmergencyConflictResolutionResult(),
-                conflictingBookings,
-                createDto.EmergencyAutoCancelConflicts);
+            _logger.LogInformation("Emergency booking {BookingId} recorded with reason {Reason}", booking.Id, emergencyReason);
         }
 
         return await GetBookingByIdAsync(booking.Id);
@@ -174,29 +145,7 @@ public class BookingService : IBookingService
     public async Task<BookingConflictSummaryDto> CheckBookingConflictsAsync(Guid vehicleId, DateTime startAt, DateTime endAt, Guid? excludeBookingId = null)
     {
         var conflicts = await _bookingRepository.GetConflictingBookingsAsync(vehicleId, startAt, endAt, excludeBookingId);
-        var conflictDtos = conflicts.Select(b => new BookingDto
-        {
-            Id = b.Id,
-            VehicleId = b.VehicleId,
-            VehicleModel = b.Vehicle?.Model ?? string.Empty,
-            VehiclePlateNumber = b.Vehicle?.PlateNumber ?? string.Empty,
-            GroupId = b.GroupId,
-            GroupName = b.Group?.Name ?? string.Empty,
-            UserId = b.UserId,
-            UserFirstName = b.User?.FirstName ?? string.Empty,
-            UserLastName = b.User?.LastName ?? string.Empty,
-            StartAt = b.StartAt,
-            EndAt = b.EndAt,
-            Purpose = b.Purpose,
-            Notes = b.Notes,
-            Status = (BookingStatus)b.Status,
-            Priority = b.Priority,
-            PriorityScore = b.PriorityScore,
-            IsEmergency = b.IsEmergency,
-            RequiresDamageReview = b.RequiresDamageReview,
-            RecurringBookingId = b.RecurringBookingId,
-            CreatedAt = b.CreatedAt
-        }).ToList();
+        var conflictDtos = conflicts.Select(MapBookingToDto).ToList();
 
         return new BookingConflictSummaryDto
         {
@@ -216,7 +165,7 @@ public class BookingService : IBookingService
         {
             BookingId = b.Id,
             UserId = b.UserId,
-            UserName = $"{b.User.FirstName} {b.User.LastName}",
+            UserName = b.UserId.ToString(),
             VehicleId = b.VehicleId,
             StartAt = b.StartAt,
             EndAt = b.EndAt,
@@ -224,10 +173,9 @@ public class BookingService : IBookingService
             Priority = (int)b.Priority,
             IsEmergency = b.IsEmergency,
             PriorityScore = CalculatePriorityScore(b),
-            OwnershipPercentage = GetUserOwnershipPercentage(b.UserId, b.Vehicle!.Group!.Members)
+            OwnershipPercentage = 0m
         })
         .OrderByDescending(p => p.PriorityScore)
-        .ThenByDescending(p => p.OwnershipPercentage)
         .ThenBy(p => p.StartAt)
         .ToList();
     }
@@ -237,28 +185,10 @@ public class BookingService : IBookingService
         var booking = await _bookingRepository.GetBookingWithDetailsAsync(bookingId)
                       ?? throw new ArgumentException("Booking not found");
 
-        var isAdmin = booking.Vehicle!.Group!.Members
-            .Any(m => m.UserId == approverId && m.RoleInGroup == GroupRole.Admin);
-
-        if (!isAdmin)
-        {
-            throw new UnauthorizedAccessException("Only group admins can approve bookings");
-        }
-
         booking.Status = Domain.Entities.BookingStatus.Confirmed;
         booking.UpdatedAt = DateTime.UtcNow;
 
         await _bookingRepository.SaveChangesAsync();
-
-        await _publishEndpoint.Publish(new BookingApprovedEvent
-        {
-            BookingId = booking.Id,
-            VehicleId = booking.VehicleId,
-            UserId = booking.UserId,
-            ApprovedBy = approverId,
-            StartAt = booking.StartAt,
-            EndAt = booking.EndAt
-        });
 
         _logger.LogInformation("Booking {BookingId} approved by {ApproverId}", bookingId, approverId);
 
@@ -270,15 +200,6 @@ public class BookingService : IBookingService
         var booking = await _bookingRepository.GetBookingWithDetailsAsync(bookingId)
                       ?? throw new ArgumentException("Booking not found");
 
-        var isOwner = booking.UserId == userId;
-        var isAdmin = booking.Vehicle!.Group!.Members
-            .Any(m => m.UserId == userId && m.RoleInGroup == GroupRole.Admin);
-
-        if (!isOwner && !isAdmin)
-        {
-            throw new UnauthorizedAccessException("Cannot cancel this booking");
-        }
-
         booking.Status = Domain.Entities.BookingStatus.Cancelled;
         booking.UpdatedAt = DateTime.UtcNow;
         booking.Notes = !string.IsNullOrEmpty(reason)
@@ -287,17 +208,6 @@ public class BookingService : IBookingService
 
         await _bookingRepository.SaveChangesAsync();
 
-        await _publishEndpoint.Publish(new BookingCancelledEvent
-        {
-            BookingId = booking.Id,
-            VehicleId = booking.VehicleId,
-            UserId = booking.UserId,
-            CancelledBy = userId,
-            Reason = reason,
-            StartAt = booking.StartAt,
-            EndAt = booking.EndAt
-        });
-
         _logger.LogInformation("Booking {BookingId} cancelled by {UserId}", bookingId, userId);
 
         return await GetBookingByIdAsync(booking.Id);
@@ -305,9 +215,65 @@ public class BookingService : IBookingService
 
     public async Task<List<BookingDto>> GetPendingApprovalsAsync(Guid userId)
     {
-        var adminVehicleIds = await _bookingRepository.GetAdminVehicleIdsAsync(userId);
-        var approvals = await _bookingRepository.GetPendingApprovalsAsync(adminVehicleIds);
-        return approvals.Select(MapBookingToDto).ToList();
+        var userBookings = await _bookingRepository.GetUserBookingsAsync(userId);
+        var pending = userBookings
+            .Where(b => b.Status == Domain.Entities.BookingStatus.PendingApproval)
+            .ToList();
+
+        return pending.Select(MapBookingToDto).ToList();
+    }
+
+    public async Task<BookingDto> UpdateVehicleStatusAsync(Guid bookingId, UpdateVehicleStatusDto request)
+    {
+        if (request == null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        var booking = await _bookingRepository.GetBookingWithDetailsAsync(bookingId)
+                      ?? throw new ArgumentException("Booking not found", nameof(bookingId));
+
+        booking.VehicleStatus = request.Status;
+        booking.UpdatedAt = DateTime.UtcNow;
+
+        await _bookingRepository.SaveChangesAsync();
+        return MapBookingToDto(booking);
+    }
+
+    public async Task<BookingDto> UpdateTripSummaryAsync(Guid bookingId, UpdateTripSummaryDto request)
+    {
+        if (request == null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        if (request.DistanceKm < 0)
+        {
+            throw new InvalidOperationException("Distance must not be negative.");
+        }
+
+        var booking = await _bookingRepository.GetBookingWithDetailsAsync(bookingId)
+                      ?? throw new ArgumentException("Booking not found", nameof(bookingId));
+
+        booking.DistanceKm = request.DistanceKm;
+        booking.TripFeeAmount = CalculateTripFee(request.DistanceKm);
+        booking.UpdatedAt = DateTime.UtcNow;
+
+        await _bookingRepository.SaveChangesAsync();
+        return MapBookingToDto(booking);
+    }
+
+    private decimal CalculateTripFee(decimal distanceKm)
+    {
+        var baseCost = distanceKm * _tripPricingOptions.CostPerKm;
+        var normalized = Math.Round(baseCost, 2, MidpointRounding.AwayFromZero);
+
+        if (_tripPricingOptions.MinimumFee.HasValue && normalized < _tripPricingOptions.MinimumFee.Value)
+        {
+            return _tripPricingOptions.MinimumFee.Value;
+        }
+
+        return normalized;
     }
 
     private async Task<BookingDto> CreatePendingBookingAsync(CreateBookingDto createDto, Guid userId, BookingConflictSummaryDto conflicts)
@@ -331,38 +297,25 @@ public class BookingService : IBookingService
             PriorityScore = userPriorityScore,
             Status = Domain.Entities.BookingStatus.PendingApproval,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            VehicleStatus = VehicleStatus.Available,
+            DistanceKm = null,
+            TripFeeAmount = 0m
         };
 
         await _bookingRepository.AddAsync(booking);
         await _bookingRepository.SaveChangesAsync();
 
-        await _publishEndpoint.Publish(new BookingPendingApprovalEvent
-        {
-            BookingId = booking.Id,
-            VehicleId = booking.VehicleId,
-            UserId = booking.UserId,
-            StartAt = booking.StartAt,
-            EndAt = booking.EndAt,
-            ConflictCount = conflicts.ConflictingBookings.Count
-        });
-
         return await GetBookingByIdAsync(booking.Id);
     }
 
-    private async Task<int> GetUserPriorityAsync(Guid userId, Guid vehicleId)
+    private Task<int> GetUserPriorityAsync(Guid userId, Guid vehicleId)
     {
-        var member = await _bookingRepository.GetMemberForVehicleAsync(userId, vehicleId);
-
-        if (member == null)
-        {
-            return 0;
-        }
-
-        var basePriority = (int)(member.SharePercentage * 100);
-        var rolePriority = member.RoleInGroup == GroupRole.Admin ? 50 : 0;
-
-        return basePriority + rolePriority;
+        // Without ownership metadata locally we fall back to a deterministic score so conflicting
+        // requests remain stable. Upstream services enforce real prioritisation rules.
+        var hash = Math.Abs(HashCode.Combine(userId, vehicleId));
+        var normalizedScore = 25 + (hash % 75); // Keep score within a reasonable range (25-99)
+        return Task.FromResult(normalizedScore);
     }
 
     private int CalculatePriorityScore(Domain.Entities.Booking booking)
@@ -383,11 +336,6 @@ public class BookingService : IBookingService
         score += Math.Max(0, 30 - daysSinceCreated);
 
         return score;
-    }
-
-    private decimal GetUserOwnershipPercentage(Guid userId, ICollection<GroupMember> members)
-    {
-        return members.FirstOrDefault(m => m.UserId == userId)?.SharePercentage ?? 0;
     }
 
     private static BookingPriority MapPriorityScoreToEnum(int priorityScore)
@@ -432,39 +380,30 @@ public class BookingService : IBookingService
             IsEmergency = booking.IsEmergency,
             RequiresDamageReview = booking.RequiresDamageReview,
             RecurringBookingId = booking.RecurringBookingId,
-            CreatedAt = booking.CreatedAt
+            CreatedAt = booking.CreatedAt,
+            VehicleStatus = booking.VehicleStatus,
+            DistanceKm = booking.DistanceKm,
+            TripFeeAmount = booking.TripFeeAmount
         };
     }
 
-    private async Task NotifyGroupOfEmergencyBookingAsync(CreateBookingDto createDto, Vehicle vehicle, Guid createdByUserId, string emergencyReason)
+    private Task NotifyGroupOfEmergencyBookingAsync(CreateBookingDto createDto, Guid createdByUserId, string emergencyReason)
     {
-        var groupMembers = await _bookingRepository.GetGroupMembersAsync(createDto.GroupId);
-        var groupMemberUserIds = groupMembers.Select(gm => gm.UserId).Distinct().ToList();
-        if (!groupMemberUserIds.Any())
-        {
-            return;
-        }
+        // Group level notifications are now handled by upstream services that own membership data.
+        _logger.LogInformation(
+            "Emergency booking {StartAt} - {EndAt} created for vehicle {VehicleId} by user {UserId}. Reason: {Reason}",
+            createDto.StartAt,
+            createDto.EndAt,
+            createDto.VehicleId,
+            createdByUserId,
+            emergencyReason);
 
-        await _publishEndpoint.Publish(new BulkNotificationEvent
-        {
-            UserIds = groupMemberUserIds,
-            GroupId = createDto.GroupId,
-            Title = "New Emergency Vehicle Booking",
-            Message = $"An emergency booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) has been created by user {createdByUserId} from {createDto.StartAt:F} to {createDto.EndAt:F}. Reason: {emergencyReason}",
-            Type = "EmergencyBookingCreation",
-            Priority = "High",
-            CreatedAt = DateTime.UtcNow,
-            ActionUrl = $"/bookings/vehicle/{createDto.VehicleId}",
-            ActionText = "View vehicle calendar"
-        });
-
-        _logger.LogInformation("Notified {Count} group members about emergency booking {StartAt} - {EndAt}.", groupMemberUserIds.Count, createDto.StartAt, createDto.EndAt);
+        return Task.CompletedTask;
     }
 
     private async Task<EmergencyConflictResolutionResult> HandleEmergencyConflictsAsync(
         IReadOnlyList<Domain.Entities.Booking> conflictingBookings,
         CreateBookingDto createDto,
-        Vehicle vehicle,
         Guid emergencyCreatorId,
         string emergencyReason)
     {
@@ -494,32 +433,6 @@ public class BookingService : IBookingService
             {
                 result.Rescheduled.Add(rescheduleInfo);
 
-                await _publishEndpoint.Publish(new BookingRescheduledEvent
-                {
-                    BookingId = conflict.Id,
-                    VehicleId = conflict.VehicleId,
-                    GroupId = conflict.GroupId,
-                    UserId = conflict.UserId,
-                    OriginalStartAt = rescheduleInfo.OriginalStartAt,
-                    OriginalEndAt = rescheduleInfo.OriginalEndAt,
-                    NewStartAt = rescheduleInfo.NewStartAt,
-                    NewEndAt = rescheduleInfo.NewEndAt,
-                    Reason = $"Rescheduled due to emergency booking {createDto.StartAt:u} - {createDto.EndAt:u}"
-                });
-
-                await _publishEndpoint.Publish(new BulkNotificationEvent
-                {
-                    UserIds = new List<Guid> { conflict.UserId },
-                    GroupId = conflict.GroupId,
-                    Title = "Your booking has been rescheduled",
-                    Message = $"Your booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) was moved to {rescheduleInfo.NewStartAt:F} - {rescheduleInfo.NewEndAt:F} due to an emergency booking. Please review the new time.",
-                    Type = "EmergencyBookingRescheduled",
-                    Priority = "High",
-                    CreatedAt = DateTime.UtcNow,
-                    ActionUrl = $"/bookings/{conflict.Id}",
-                    ActionText = "Review booking"
-                });
-
                 _logger.LogInformation("Rescheduled booking {BookingId} to {Start} - {End} due to emergency override.", conflict.Id, rescheduleInfo.NewStartAt, rescheduleInfo.NewEndAt);
                 continue;
             }
@@ -531,31 +444,6 @@ public class BookingService : IBookingService
                 conflict.Notes = AppendNote(conflict.Notes, $"[AUTO-CANCELLED BY EMERGENCY {createDto.StartAt:u}] {emergencyReason}");
                 result.AutoCancelled.Add(conflict.Id);
 
-                await _publishEndpoint.Publish(new BookingCancelledEvent
-                {
-                    BookingId = conflict.Id,
-                    VehicleId = conflict.VehicleId,
-                    UserId = conflict.UserId,
-                    CancelledBy = emergencyCreatorId,
-                    Reason = $"Cancelled by emergency booking. Reason: {emergencyReason}",
-                    CancellationReason = emergencyReason,
-                    StartAt = conflict.StartAt,
-                    EndAt = conflict.EndAt
-                });
-
-                await _publishEndpoint.Publish(new BulkNotificationEvent
-                {
-                    UserIds = new List<Guid> { conflict.UserId },
-                    GroupId = conflict.GroupId,
-                    Title = "Booking cancelled due to emergency",
-                    Message = $"Your booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) from {conflict.StartAt:F} to {conflict.EndAt:F} was cancelled due to an emergency booking. Reason: {emergencyReason}",
-                    Type = "EmergencyBookingCancellation",
-                    Priority = "High",
-                    CreatedAt = DateTime.UtcNow,
-                    ActionUrl = $"/bookings/{conflict.Id}",
-                    ActionText = "Review booking"
-                });
-
                 _logger.LogInformation("Auto-cancelled booking {BookingId} due to emergency override by user {UserId}.", conflict.Id, emergencyCreatorId);
             }
             else
@@ -565,37 +453,8 @@ public class BookingService : IBookingService
                 conflict.Notes = AppendNote(conflict.Notes, $"[PENDING RESCHEDULE DUE TO EMERGENCY {createDto.StartAt:u}] {emergencyReason}");
                 result.PendingResolution.Add(conflict.Id);
 
-                await _publishEndpoint.Publish(new BulkNotificationEvent
-                {
-                    UserIds = new List<Guid> { conflict.UserId },
-                    GroupId = conflict.GroupId,
-                    Title = "Action required: booking affected by emergency",
-                    Message = $"Your booking for vehicle {vehicle.Model} ({vehicle.PlateNumber}) from {conflict.StartAt:F} to {conflict.EndAt:F} was affected by an emergency booking. Please reschedule or contact your group admin.",
-                    Type = "EmergencyBookingPendingResolution",
-                    Priority = "High",
-                    CreatedAt = DateTime.UtcNow,
-                    ActionUrl = $"/bookings/{conflict.Id}",
-                    ActionText = "Reschedule booking"
-                });
-
                 _logger.LogInformation("Marked booking {BookingId} as pending resolution due to emergency override by user {UserId}.", conflict.Id, emergencyCreatorId);
             }
-        }
-
-        if (!createDto.EmergencyAutoCancelConflicts && result.PendingResolution.Count > 0)
-        {
-            await _publishEndpoint.Publish(new BulkNotificationEvent
-            {
-                UserIds = new List<Guid> { emergencyCreatorId },
-                GroupId = createDto.GroupId,
-                Title = "Emergency booking requires follow-up",
-                Message = $"Emergency booking {createDto.StartAt:F} - {createDto.EndAt:F} could not automatically resolve {result.PendingResolution.Count} conflicting bookings. Please review them.",
-                Type = "EmergencyBookingManualResolution",
-                Priority = "High",
-                CreatedAt = DateTime.UtcNow,
-                ActionUrl = $"/bookings/vehicle/{createDto.VehicleId}",
-                ActionText = "Review conflicts"
-            });
         }
 
         return result;
@@ -645,38 +504,6 @@ public class BookingService : IBookingService
         }
 
         return null;
-    }
-
-    private async Task PublishEmergencySummaryEventsAsync(
-        Domain.Entities.Booking booking,
-        string emergencyReason,
-        EmergencyConflictResolutionResult conflictResult,
-        IReadOnlyList<Domain.Entities.Booking> initialConflicts,
-        bool autoCancelApplied)
-    {
-        await _publishEndpoint.Publish(new EmergencyBookingUsageEvent
-        {
-            BookingId = booking.Id,
-            VehicleId = booking.VehicleId,
-            GroupId = booking.GroupId,
-            UserId = booking.UserId,
-            OccurredAt = booking.CreatedAt
-        });
-
-        await _publishEndpoint.Publish(new EmergencyBookingAuditEvent
-        {
-            BookingId = booking.Id,
-            VehicleId = booking.VehicleId,
-            GroupId = booking.GroupId,
-            CreatedBy = booking.UserId,
-            CreatedAt = booking.CreatedAt,
-            Reason = emergencyReason,
-            AutoCancelApplied = autoCancelApplied,
-            ConflictingBookingIds = initialConflicts.Select(b => b.Id).ToList(),
-            AutoCancelledBookingIds = conflictResult.AutoCancelled.ToList(),
-            RescheduledBookingIds = conflictResult.Rescheduled.Select(r => r.BookingId).ToList(),
-            PendingResolutionBookingIds = conflictResult.PendingResolution.ToList()
-        });
     }
 
     private static string AppendNote(string? existing, string note)

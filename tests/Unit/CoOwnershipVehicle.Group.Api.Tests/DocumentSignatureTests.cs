@@ -3,6 +3,7 @@ using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.DTOs;
 using CoOwnershipVehicle.Group.Api.Services.Implementations;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -57,6 +58,25 @@ public class DocumentSignatureTests : IDisposable
             .Setup(x => x.GenerateSigningUrl(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((token, baseUrl) => $"{baseUrl.TrimEnd('/')}/sign/{token}");
 
+        // Mock IUserServiceClient
+        var userServiceClientMock = new Mock<IUserServiceClient>();
+        userServiceClientMock.Setup(x => x.GetUserAsync(_testUserId, It.IsAny<string>()))
+            .ReturnsAsync(new UserInfoDto { Id = _testUserId, Email = "user1@test.com", FirstName = "Test", LastName = "User1", Role = UserRole.CoOwner });
+        userServiceClientMock.Setup(x => x.GetUserAsync(_testUser2Id, It.IsAny<string>()))
+            .ReturnsAsync(new UserInfoDto { Id = _testUser2Id, Email = "user2@test.com", FirstName = "Test", LastName = "User2", Role = UserRole.CoOwner });
+        userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<List<Guid>>(), It.IsAny<string>()))
+            .ReturnsAsync((List<Guid> userIds, string token) => userIds.ToDictionary(
+                id => id,
+                id => id == _testUserId 
+                    ? new UserInfoDto { Id = _testUserId, Email = "user1@test.com", FirstName = "Test", LastName = "User1", Role = UserRole.CoOwner }
+                    : new UserInfoDto { Id = _testUser2Id, Email = "user2@test.com", FirstName = "Test", LastName = "User2", Role = UserRole.CoOwner }));
+
+        // Mock IHttpContextAccessor
+        var httpContextAccessorMock = new Mock<IHttpContextAccessor>();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Authorization"] = "Bearer test-token";
+        httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+
         _documentService = new DocumentService(
             _context,
             _mockStorageService.Object,
@@ -64,7 +84,9 @@ public class DocumentSignatureTests : IDisposable
             mockSigningToken.Object,
             _mockCertificateService.Object,
             mockNotification.Object,
-            _mockLogger.Object);
+            _mockLogger.Object,
+            userServiceClientMock.Object,
+            httpContextAccessorMock.Object);
 
         // Seed test data
         SeedTestData();
@@ -123,7 +145,7 @@ public class DocumentSignatureTests : IDisposable
             SharePercentage = 0.5m
         };
 
-        _context.Users.AddRange(user1, user2);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
         _context.OwnershipGroups.Add(group);
         _context.GroupMembers.AddRange(member1, member2);
         _context.SaveChanges();

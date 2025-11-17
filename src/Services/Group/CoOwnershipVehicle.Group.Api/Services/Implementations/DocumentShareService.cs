@@ -2,6 +2,8 @@ using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.DTOs;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using BCrypt.Net;
 
@@ -13,17 +15,33 @@ public class DocumentShareService : IDocumentShareService
     private readonly IFileStorageService _fileStorage;
     private readonly INotificationService _notificationService;
     private readonly ILogger<DocumentShareService> _logger;
+    private readonly IUserServiceClient _userServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public DocumentShareService(
         GroupDbContext context,
         IFileStorageService fileStorage,
         INotificationService notificationService,
-        ILogger<DocumentShareService> logger)
+        ILogger<DocumentShareService> logger,
+        IUserServiceClient userServiceClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _fileStorage = fileStorage;
         _notificationService = notificationService;
         _logger = logger;
+        _userServiceClient = userServiceClient ?? throw new ArgumentNullException(nameof(userServiceClient));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            return string.Empty;
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     public async Task<CreateShareResponse> CreateShareAsync(
@@ -530,16 +548,18 @@ public class DocumentShareService : IDocumentShareService
         {
             _logger.LogInformation("Sending share notification to {Email}", share.RecipientEmail);
 
-            // Create a notification user object
-            var recipient = new User
+            // Create a notification user DTO object
+            var recipient = new UserInfoDto
             {
+                Id = Guid.Empty, // External recipient, no user ID
                 Email = share.RecipientEmail!,
                 FirstName = share.SharedWith,
                 LastName = ""
             };
 
-            // Get sharer details
-            var sharer = await _context.Users.FindAsync(share.SharedBy);
+            // Get sharer details via HTTP
+            var accessToken = GetAccessToken();
+            var sharer = await _userServiceClient.GetUserAsync(share.SharedBy, accessToken);
             if (sharer == null) return false;
 
             // Build email content

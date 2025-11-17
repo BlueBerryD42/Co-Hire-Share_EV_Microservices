@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using CoOwnershipVehicle.Booking.Api.Contracts;
+using CoOwnershipVehicle.Booking.Api.DTOs;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using System.IdentityModel.Tokens.Jwt;
@@ -250,6 +251,54 @@ public class BookingController : ControllerBase
         {
             _logger.LogError(ex, "Error cancelling booking {BookingId}", id);
             return StatusCode(500, new { message = "An error occurred while cancelling booking" });
+        }
+    }
+
+    /// <summary>
+    /// Update the recorded vehicle status for a booking.
+    /// </summary>
+    [HttpPatch("{id:guid}/vehicle-status")]
+    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto dto)
+    {
+        try
+        {
+            var booking = await _bookingService.UpdateVehicleStatusAsync(id, dto);
+            return Ok(booking);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating vehicle status for booking {BookingId}", id);
+            return StatusCode(500, new { message = "An error occurred while updating vehicle status" });
+        }
+    }
+
+    /// <summary>
+    /// Record trip summary (distance, fee) after completion.
+    /// </summary>
+    [HttpPatch("{id:guid}/trip-summary")]
+    public async Task<IActionResult> UpdateTripSummary(Guid id, [FromBody] UpdateTripSummaryDto dto)
+    {
+        try
+        {
+            var booking = await _bookingService.UpdateTripSummaryAsync(id, dto);
+            return Ok(booking);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating trip summary for booking {BookingId}", id);
+            return StatusCode(500, new { message = "An error occurred while updating trip summary" });
         }
     }
 

@@ -10,6 +10,7 @@ using CoOwnershipVehicle.User.Api.Services;
 using CoOwnershipVehicle.User.Api.Consumers;
 using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
+using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -74,23 +75,19 @@ builder.Services.AddMassTransit(x =>
     {
         cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
         
-        cfg.ReceiveEndpoint("user-service", e =>
-        {
-            e.ConfigureConsumer<UserRegisteredConsumer>(context);
-        });
-        
+        // Configure endpoints - MassTransit automatically creates queues/exchanges for consumers
+        // When UserRegisteredEvent is published, it will be routed to UserRegisteredConsumer
         cfg.ConfigureEndpoints(context);
     });
 });
 
-// Add HttpClient for service-to-service communication
+// Add HttpClient for UserSyncService (HTTP pattern, consistent with other services)
 builder.Services.AddHttpClient<UserSyncService>(client =>
 {
-    // Configure HttpClient to ignore SSL certificate errors for development
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
-// Add a separate HttpClient for other uses
+// Add HttpClient for other service-to-service communication
 builder.Services.AddHttpClient();
 
 // Add application services
@@ -175,7 +172,39 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var context = scope.ServiceProvider.GetRequiredService<UserDbContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        
+        logger.LogInformation("Checking for pending migrations...");
+        var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
+        if (pendingMigrations.Any())
+        {
+            logger.LogInformation("Applying {Count} pending migrations: {Migrations}", 
+                pendingMigrations.Count(), string.Join(", ", pendingMigrations));
+        }
+        else
+        {
+            logger.LogInformation("No pending migrations. Database is up to date.");
+        }
+        
         await context.Database.MigrateAsync();
+        logger.LogInformation("Migrations applied successfully.");
+        
+        // Verify UserProfiles table exists
+        var canConnect = await context.Database.CanConnectAsync();
+        if (canConnect)
+        {
+            logger.LogInformation("Database connection verified.");
+            // Try to query UserProfiles table to verify it exists
+            try
+            {
+                var count = await context.UserProfiles.CountAsync();
+                logger.LogInformation("UserProfiles table verified. Current record count: {Count}", count);
+            }
+            catch (Exception tableEx)
+            {
+                logger.LogError(tableEx, "ERROR: UserProfiles table verification failed. This may indicate a migration issue.");
+            }
+        }
         
         // Seed initial data (User service doesn't need UserManager/RoleManager)
         await CoOwnershipVehicle.User.Api.Data.UserDataSeeder.SeedAsync(context);
@@ -183,8 +212,8 @@ try
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"[ERROR] Failed to apply database migrations or seed data: {ex.Message}");
-    Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogError(ex, "Failed to apply database migrations or seed data");
     // Don't crash - let the app start and handle migrations later if needed
 }
 

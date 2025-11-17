@@ -32,7 +32,7 @@ public class UserController : ControllerBase
         {
             var userId = GetCurrentUserId();
             
-            // First, ensure user is synced from Auth service
+            // Sync user from Auth service (HTTP pattern, consistent with other services)
             var syncedUser = await _userSyncService.SyncUserAsync(userId);
             
             if (syncedUser == null)
@@ -41,15 +41,12 @@ public class UserController : ControllerBase
                 return NotFound(new { message = "User profile not found" });
             }
             
-            // Small delay to ensure database transaction is committed
-            await Task.Delay(100);
-            
-            // Then get the full profile with KYC documents
+            // Get the full profile with KYC documents
             var profile = await _userService.GetUserProfileAsync(userId);
             
             if (profile == null)
             {
-                _logger.LogWarning("User profile not found after sync for user {UserId}", userId);
+                _logger.LogWarning("User profile not found for user {UserId}", userId);
                 return NotFound(new { message = "User profile not found" });
             }
 
@@ -59,6 +56,40 @@ public class UserController : ControllerBase
         {
             _logger.LogError(ex, "Error getting user profile");
             return StatusCode(500, new { message = "An error occurred while retrieving profile" });
+        }
+    }
+
+    /// <summary>
+    /// Get basic user information by ID (any authenticated user)
+    /// This endpoint allows users to get basic info (name, email) for other users,
+    /// typically used for displaying member names in groups, proposals, etc.
+    /// </summary>
+    [HttpGet("basic/{userId:guid}")]
+    public async Task<IActionResult> GetBasicUserInfo(Guid userId)
+    {
+        try
+        {
+            var profile = await _userService.GetUserProfileAsync(userId);
+            
+            if (profile == null)
+                return NotFound(new { message = "User not found" });
+
+            // Return only basic information (no sensitive data like KYC documents)
+            var basicInfo = new
+            {
+                Id = profile.Id,
+                Email = profile.Email,
+                FirstName = profile.FirstName,
+                LastName = profile.LastName,
+                Phone = profile.Phone
+            };
+
+            return Ok(basicInfo);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting basic user info {UserId}", userId);
+            return StatusCode(500, new { message = "An error occurred while retrieving user information" });
         }
     }
 

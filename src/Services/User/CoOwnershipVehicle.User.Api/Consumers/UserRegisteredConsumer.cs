@@ -20,54 +20,69 @@ public class UserRegisteredConsumer : IConsumer<UserRegisteredEvent>
     {
         var message = context.Message;
         
+        _logger.LogInformation("UserRegisteredEvent received - UserId: {UserId}, Email: {Email}, FirstName: {FirstName}, LastName: {LastName}, Phone: {Phone}, Role: {Role}", 
+            message.UserId, message.Email, message.FirstName, message.LastName, message.Phone, message.Role);
+        
         try
         {
+            // Verify database connection and table exists
+            _logger.LogInformation("Checking database connection and UserProfiles table...");
+            
             // Check if user already exists in our local database
-            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == message.UserId);
+            // Use explicit table name to avoid any EF Core caching issues
+            var existingUser = await _context.UserProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == message.UserId);
+            
+            _logger.LogInformation("Checking for existing user profile - UserId: {UserId}, Found: {Found}", 
+                message.UserId, existingUser != null);
             
             if (existingUser == null)
             {
-                // Create new user in User service database
+                // Create new user profile in User service database
                 // NOTE: User service should NOT store authentication data (passwords, tokens, etc.)
                 // Authentication is handled exclusively by the Auth service
-                var newUser = new Domain.Entities.User
+                var newUserProfile = new Domain.Entities.UserProfile
                 {
                     Id = message.UserId,
                     UserName = message.Email,
                     Email = message.Email,
+                    NormalizedEmail = message.Email?.ToUpperInvariant(),
+                    NormalizedUserName = message.Email?.ToUpperInvariant(),
                     FirstName = message.FirstName,
                     LastName = message.LastName,
+                    Phone = message.Phone, // Phone from registration event (profile field)
                     Role = (Domain.Entities.UserRole)message.Role,
                     KycStatus = Domain.Entities.KycStatus.Pending,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
                     // Authentication fields are NOT set - they belong only in Auth service
                     EmailConfirmed = false,
-                    PhoneNumberConfirmed = false,
                     TwoFactorEnabled = false,
                     LockoutEnabled = true,
                     AccessFailedCount = 0
-                    // PasswordHash, SecurityStamp, etc. are intentionally omitted
+                    // PasswordHash, SecurityStamp, PhoneNumber, PhoneNumberConfirmed are intentionally omitted
                 };
 
-                _context.Users.Add(newUser);
+                _context.UserProfiles.Add(newUserProfile);
                 await _context.SaveChangesAsync();
                 
-                _logger.LogInformation("User created in User service database for {UserId} - {Email}", 
+                _logger.LogInformation("User profile created in User service database for {UserId} - {Email}", 
                     message.UserId, message.Email);
             }
             else
             {
-                // Update existing user if needed
+                // Update existing user profile if needed
                 existingUser.Email = message.Email;
                 existingUser.FirstName = message.FirstName;
                 existingUser.LastName = message.LastName;
+                existingUser.Phone = message.Phone ?? existingUser.Phone;
                 existingUser.Role = (Domain.Entities.UserRole)message.Role;
                 existingUser.UpdatedAt = DateTime.UtcNow;
                 
                 await _context.SaveChangesAsync();
                 
-                _logger.LogInformation("User data synchronized for existing user {UserId}", message.UserId);
+                _logger.LogInformation("User profile data synchronized for existing user {UserId}", message.UserId);
             }
 
             // In a real microservices setup, we might:
