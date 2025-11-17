@@ -3,6 +3,7 @@ using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.DTOs;
 using CoOwnershipVehicle.Group.Api.Services.Implementations;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +43,29 @@ public class DocumentServiceIntegrationTests : IDisposable
         _mockNotificationService = new Mock<INotificationService>();
         _mockLogger = new Mock<ILogger<DocumentService>>();
 
+        // Mock IUserServiceClient
+        var userServiceClientMock = new Mock<IUserServiceClient>();
+        userServiceClientMock.Setup(x => x.GetUserAsync(It.IsAny<Guid>(), It.IsAny<string>()))
+            .ReturnsAsync((Guid userId, string token) => userId == _adminUserId 
+                ? new UserInfoDto { Id = _adminUserId, Email = "admin@test.com", FirstName = "Admin", LastName = "User", Role = UserRole.CoOwner }
+                : userId == _memberUserId
+                ? new UserInfoDto { Id = _memberUserId, Email = "member@test.com", FirstName = "Member", LastName = "User", Role = UserRole.CoOwner }
+                : null);
+        userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<List<Guid>>(), It.IsAny<string>()))
+            .ReturnsAsync((List<Guid> userIds, string token) => userIds.ToDictionary(
+                id => id,
+                id => id == _adminUserId 
+                    ? new UserInfoDto { Id = _adminUserId, Email = "admin@test.com", FirstName = "Admin", LastName = "User", Role = UserRole.CoOwner }
+                    : id == _memberUserId
+                    ? new UserInfoDto { Id = _memberUserId, Email = "member@test.com", FirstName = "Member", LastName = "User", Role = UserRole.CoOwner }
+                    : new UserInfoDto { Id = id, Email = "test@test.com", FirstName = "Test", LastName = "User" }));
+
+        // Mock IHttpContextAccessor
+        var httpContextAccessorMock = new Mock<IHttpContextAccessor>();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Authorization"] = "Bearer test-token";
+        httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+
         _documentService = new DocumentService(
             _context,
             _mockFileStorage.Object,
@@ -49,7 +73,9 @@ public class DocumentServiceIntegrationTests : IDisposable
             Mock.Of<ISigningTokenService>(),
             Mock.Of<ICertificateGenerationService>(),
             _mockNotificationService.Object,
-            _mockLogger.Object);
+            _mockLogger.Object,
+            userServiceClientMock.Object,
+            httpContextAccessorMock.Object);
 
         SeedTestData();
     }
@@ -128,7 +154,7 @@ public class DocumentServiceIntegrationTests : IDisposable
             JoinedAt = DateTime.UtcNow
         };
 
-        _context.Users.AddRange(adminUser, memberUser, nonMemberUser);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
         _context.OwnershipGroups.Add(group);
         _context.GroupMembers.AddRange(adminMember, regularMember);
         _context.SaveChanges();

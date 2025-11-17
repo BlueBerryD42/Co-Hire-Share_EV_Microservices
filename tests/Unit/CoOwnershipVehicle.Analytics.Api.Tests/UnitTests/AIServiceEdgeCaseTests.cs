@@ -6,6 +6,7 @@ using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Analytics.Api.Data;
 using CoOwnershipVehicle.Data;
 using Microsoft.EntityFrameworkCore;
+using CoOwnershipVehicle.Analytics.Api.Services.HttpClients;
 
 namespace CoOwnershipVehicle.Analytics.Api.Tests.UnitTests;
 
@@ -14,6 +15,9 @@ public class AIServiceEdgeCaseTests : IDisposable
     private readonly AnalyticsDbContext _analyticsContext;
     private readonly ApplicationDbContext _mainContext;
     private readonly Mock<ILogger<AIService>> _loggerMock;
+    private readonly Mock<IGroupServiceClient> _groupServiceClientMock;
+    private readonly Mock<IBookingServiceClient> _bookingServiceClientMock;
+    private readonly Mock<IPaymentServiceClient> _paymentServiceClientMock;
     private readonly AIService _aiService;
 
     public AIServiceEdgeCaseTests()
@@ -29,7 +33,15 @@ public class AIServiceEdgeCaseTests : IDisposable
         _analyticsContext = new AnalyticsDbContext(analyticsOptions);
         _mainContext = new ApplicationDbContext(mainOptions);
         _loggerMock = new Mock<ILogger<AIService>>();
-        _aiService = new AIService(_analyticsContext, _mainContext, _loggerMock.Object);
+        _groupServiceClientMock = new Mock<IGroupServiceClient>();
+        _bookingServiceClientMock = new Mock<IBookingServiceClient>();
+        _paymentServiceClientMock = new Mock<IPaymentServiceClient>();
+        _aiService = new AIService(
+            _analyticsContext,
+            _groupServiceClientMock.Object,
+            _bookingServiceClientMock.Object,
+            _paymentServiceClientMock.Object,
+            _loggerMock.Object);
     }
 
     public void Dispose()

@@ -66,7 +66,7 @@ public class ProposalControllerTests : IDisposable
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        _context.Users.Add(user);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
 
         var group = new OwnershipGroup
         {

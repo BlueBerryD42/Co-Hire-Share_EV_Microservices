@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using PuppeteerSharp;
 using PuppeteerSharp.Media;
+using Microsoft.AspNetCore.Http;
 
 namespace CoOwnershipVehicle.Group.Api.Services.Implementations;
 
@@ -16,23 +17,40 @@ public class TemplateService : ITemplateService
     private readonly GroupDbContext _context;
     private readonly IFileStorageService _fileStorage;
     private readonly ILogger<TemplateService> _logger;
+    private readonly IUserServiceClient _userServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public TemplateService(
         GroupDbContext context,
         IFileStorageService fileStorage,
-        ILogger<TemplateService> logger)
+        ILogger<TemplateService> logger,
+        IUserServiceClient userServiceClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _fileStorage = fileStorage;
         _logger = logger;
+        _userServiceClient = userServiceClient;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            throw new UnauthorizedAccessException("Missing or invalid authorization header");
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     public async Task<TemplateDetailResponse> CreateTemplateAsync(CreateTemplateRequest request, Guid userId)
     {
         _logger.LogInformation("Creating new template '{Name}' by user {UserId}", request.Name, userId);
 
-        // Verify user is system admin
-        var user = await _context.Users.FindAsync(userId);
+        // Verify user is system admin via HTTP
+        var accessToken = GetAccessToken();
+        var user = await _userServiceClient.GetUserAsync(userId, accessToken);
 
         _logger.LogInformation("User lookup result - UserId: {UserId}, Found: {Found}, Role: {Role}",
             userId,
@@ -172,8 +190,9 @@ public class TemplateService : ITemplateService
     {
         _logger.LogInformation("Updating template {TemplateId} by user {UserId}", templateId, userId);
 
-        // Verify user is system admin
-        var user = await _context.Users.FindAsync(userId);
+        // Verify user is system admin via HTTP
+        var accessToken = GetAccessToken();
+        var user = await _userServiceClient.GetUserAsync(userId, accessToken);
         if (user == null || user.Role != UserRole.SystemAdmin)
         {
             throw new UnauthorizedAccessException("Only system administrators can update templates");
@@ -207,8 +226,9 @@ public class TemplateService : ITemplateService
     {
         _logger.LogInformation("Deleting template {TemplateId} by user {UserId}", templateId, userId);
 
-        // Verify user is system admin
-        var user = await _context.Users.FindAsync(userId);
+        // Verify user is system admin via HTTP
+        var accessToken = GetAccessToken();
+        var user = await _userServiceClient.GetUserAsync(userId, accessToken);
         if (user == null || user.Role != UserRole.SystemAdmin)
         {
             throw new UnauthorizedAccessException("Only system administrators can delete templates");
@@ -384,15 +404,33 @@ public class TemplateService : ITemplateService
             return;
         }
 
-        // Get system admin user (or create a default one)
-        var systemAdmin = await _context.Users.FirstOrDefaultAsync(u => u.Role == UserRole.SystemAdmin);
-        if (systemAdmin == null)
+        // For seeding, use a default system admin ID (Guid.Empty or a known admin ID)
+        // In production, this should be configured via environment variable or configuration
+        var systemAdminId = Guid.Empty; // Default for seeding - templates will be created with this ID
+        
+        // Try to get access token if available (for HTTP context)
+        string? accessToken = null;
+        try
         {
-            _logger.LogWarning("No system admin found for seeding templates");
-            return;
+            accessToken = GetAccessToken();
+            // Try to find a system admin via User Service
+            // Note: This requires an active HTTP context with authentication
+            // If not available, use default ID
+        }
+        catch
+        {
+            _logger.LogWarning("No HTTP context available for seeding templates, using default admin ID");
         }
 
-        var templates = GetPreBuiltTemplates(systemAdmin.Id);
+        // If we have access token, try to find a system admin user
+        if (accessToken != null)
+        {
+            // Note: We would need to list users and find a system admin
+            // For now, use default ID for seeding
+            _logger.LogInformation("Using default system admin ID for template seeding");
+        }
+
+        var templates = GetPreBuiltTemplates(systemAdminId);
 
         _context.DocumentTemplates.AddRange(templates);
         await _context.SaveChangesAsync();

@@ -136,6 +136,14 @@ builder.Services.AddScoped<CoOwnershipVehicle.Group.Api.Contracts.IVotingService
 // Register Fund Service
 builder.Services.AddScoped<CoOwnershipVehicle.Group.Api.Contracts.IFundService, CoOwnershipVehicle.Group.Api.Services.FundService>();
 
+// Register HTTP Client for User Service
+builder.Services.AddHttpClient<CoOwnershipVehicle.Group.Api.Services.Interfaces.IUserServiceClient, CoOwnershipVehicle.Group.Api.Services.UserServiceClient>(client =>
+{
+    var userServiceUrl = builder.Configuration["ServiceUrls:User"] ?? "https://localhost:61602";
+    client.BaseAddress = new Uri(userServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
 // Register Background Services
 builder.Services.AddHostedService<CoOwnershipVehicle.Group.Api.BackgroundServices.SignatureReminderBackgroundService>();
 builder.Services.AddHostedService<CoOwnershipVehicle.Group.Api.BackgroundServices.ProposalExpirationBackgroundService>();
@@ -207,6 +215,9 @@ builder.Services.AddMassTransit(x =>
 });
 
 builder.Services.AddAuthorization();
+
+// Add HttpContextAccessor for accessing HTTP context in services
+builder.Services.AddHttpContextAccessor();
 
 // Add CORS
 builder.Services.AddCors(options =>

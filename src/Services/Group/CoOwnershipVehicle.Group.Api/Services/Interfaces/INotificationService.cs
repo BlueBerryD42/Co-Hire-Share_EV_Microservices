@@ -1,4 +1,5 @@
 using CoOwnershipVehicle.Domain.Entities;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 
 namespace CoOwnershipVehicle.Group.Api.Services.Interfaces;
 
@@ -8,7 +9,7 @@ public interface INotificationService
     /// Send signature reminder to a signer
     /// </summary>
     Task<bool> SendSignatureReminderAsync(
-        User signer,
+        UserInfoDto signer,
         Document document,
         string signingUrl,
         ReminderType reminderType,
@@ -18,23 +19,23 @@ public interface INotificationService
     /// Send notification when signature is provided
     /// </summary>
     Task<bool> SendSignatureProvidedNotificationAsync(
-        User documentOwner,
-        User signer,
+        UserInfoDto documentOwner,
+        UserInfoDto signer,
         Document document);
 
     /// <summary>
     /// Send notification when all signatures are collected
     /// </summary>
     Task<bool> SendAllSignedNotificationAsync(
-        List<User> signers,
-        User documentOwner,
+        List<UserInfoDto> signers,
+        UserInfoDto documentOwner,
         Document document);
 
     /// <summary>
     /// Send notification to next signer (sequential mode)
     /// </summary>
     Task<bool> SendNextSignerTurnNotificationAsync(
-        User nextSigner,
+        UserInfoDto nextSigner,
         Document document,
         string signingUrl,
         int currentSignatureCount,
@@ -44,7 +45,7 @@ public interface INotificationService
     /// Send notification when signature is expiring
     /// </summary>
     Task<bool> SendSignatureExpiringNotificationAsync(
-        User signer,
+        UserInfoDto signer,
         Document document,
         string signingUrl,
         int daysRemaining);
@@ -53,23 +54,23 @@ public interface INotificationService
     /// Send notification when signature has expired
     /// </summary>
     Task<bool> SendSignatureExpiredNotificationAsync(
-        User signer,
-        User documentOwner,
+        UserInfoDto signer,
+        UserInfoDto documentOwner,
         Document document);
 
     /// <summary>
     /// Send document deleted notification
     /// </summary>
     Task<bool> SendDocumentDeletedNotificationAsync(
-        List<User> groupAdmins,
+        List<UserInfoDto> groupAdmins,
         Document document,
-        User deletedBy);
+        UserInfoDto deletedBy);
 
     /// <summary>
     /// Send document restored notification
     /// </summary>
     Task<bool> SendDocumentRestoredNotificationAsync(
-        List<User> groupAdmins,
+        List<UserInfoDto> groupAdmins,
         Document document,
-        User restoredBy);
+        UserInfoDto restoredBy);
 }

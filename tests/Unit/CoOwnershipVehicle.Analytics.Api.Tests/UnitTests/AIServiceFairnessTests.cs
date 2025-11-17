@@ -4,6 +4,7 @@ using Moq;
 using CoOwnershipVehicle.Analytics.Api.Services;
 using CoOwnershipVehicle.Analytics.Api.Tests.Fixtures;
 using CoOwnershipVehicle.Analytics.Api.Models;
+using CoOwnershipVehicle.Analytics.Api.Services.HttpClients;
 
 namespace CoOwnershipVehicle.Analytics.Api.Tests.UnitTests;
 
@@ -11,13 +12,24 @@ public class AIServiceFairnessTests : IDisposable
 {
     private readonly TestDataFixture _fixture;
     private readonly Mock<ILogger<AIService>> _loggerMock;
+    private readonly Mock<IGroupServiceClient> _groupServiceClientMock;
+    private readonly Mock<IBookingServiceClient> _bookingServiceClientMock;
+    private readonly Mock<IPaymentServiceClient> _paymentServiceClientMock;
     private readonly AIService _aiService;
 
     public AIServiceFairnessTests()
     {
         _fixture = new TestDataFixture();
         _loggerMock = new Mock<ILogger<AIService>>();
-        _aiService = new AIService(_fixture.AnalyticsContext, _fixture.MainContext, _loggerMock.Object);
+        _groupServiceClientMock = new Mock<IGroupServiceClient>();
+        _bookingServiceClientMock = new Mock<IBookingServiceClient>();
+        _paymentServiceClientMock = new Mock<IPaymentServiceClient>();
+        _aiService = new AIService(
+            _fixture.AnalyticsContext,
+            _groupServiceClientMock.Object,
+            _bookingServiceClientMock.Object,
+            _paymentServiceClientMock.Object,
+            _loggerMock.Object);
     }
 
     public void Dispose()
