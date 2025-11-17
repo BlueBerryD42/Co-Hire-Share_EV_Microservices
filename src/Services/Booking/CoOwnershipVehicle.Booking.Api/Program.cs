@@ -9,9 +9,7 @@ using CoOwnershipVehicle.Booking.Api.Data;
 using CoOwnershipVehicle.Booking.Api.Repositories;
 using CoOwnershipVehicle.Booking.Api.Contracts;
 using CoOwnershipVehicle.Booking.Api.Services;
-using CoOwnershipVehicle.Booking.Api.Storage;
 using CoOwnershipVehicle.Shared.Configuration;
-using MassTransit;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,14 +38,8 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseSqlServer(connectionString,
         b => b.MigrationsAssembly("CoOwnershipVehicle.Booking.Api")));
 
-builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<ICheckInRepository, CheckInRepository>();
-builder.Services.AddScoped<IDamageReportRepository, DamageReportRepository>();
-builder.Services.AddScoped<INotificationPreferenceRepository, NotificationPreferenceRepository>();
-builder.Services.AddScoped<ILateReturnFeeRepository, LateReturnFeeRepository>();
-builder.Services.AddScoped<IRecurringBookingRepository, RecurringBookingRepository>();
-builder.Services.AddScoped<IBookingTemplateRepository, BookingTemplateRepository>(); // Registered BookingTemplateRepository
 
 // Add JWT Authentication
 var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
@@ -73,41 +65,11 @@ builder.Services.AddAuthentication(options =>
 });
 
 // Add MassTransit for message bus
-builder.Services.AddMassTransit(x =>
-{
-    // Register consumers
-    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceScheduledConsumer>();
-    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceCancelledConsumer>();
-    x.AddConsumer<CoOwnershipVehicle.Booking.Api.Consumers.MaintenanceCompletedConsumer>();
-
-    x.UsingRabbitMq((context, cfg) =>
-    {
-        cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
-        cfg.ConfigureEndpoints(context);
-    });
-});
-
 // Add application services
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ICheckInService, CheckInService>();
-builder.Services.AddScoped<ICheckInReportGenerator, CheckInReportGenerator>();
-builder.Services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
-builder.Services.AddScoped<ILateReturnFeeService, LateReturnFeeService>();
-builder.Services.AddScoped<IDamageReportService, DamageReportService>();
-builder.Services.AddScoped<IRecurringBookingService, RecurringBookingService>();
-builder.Services.AddScoped<IBookingTemplateService, BookingTemplateService>(); // Registered BookingTemplateService
-builder.Services.AddScoped<IQrCodeService, VehicleQrService>();
 builder.Services.AddMemoryCache();
-builder.Services.AddHostedService<BookingReminderBackgroundService>();
-builder.Services.AddHostedService<RecurringBookingGenerationService>();
-builder.Services.Configure<QrCodeOptions>(builder.Configuration.GetSection(QrCodeOptions.SectionName));
-builder.Services.Configure<LateReturnFeeOptions>(builder.Configuration.GetSection(LateReturnFeeOptions.SectionName));
-
-builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
-#pragma warning disable CA1416
-builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
-#pragma warning restore CA1416
-builder.Services.AddSingleton<IVirusScanner, NoOpVirusScanner>();
+builder.Services.Configure<TripPricingOptions>(builder.Configuration.GetSection("TripPricing"));
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

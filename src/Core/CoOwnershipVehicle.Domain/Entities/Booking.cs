@@ -35,6 +35,14 @@ public class Booking : BaseEntity
 
     public bool RequiresDamageReview { get; set; }
 
+    public VehicleStatus VehicleStatus { get; set; } = VehicleStatus.Available;
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? DistanceKm { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal TripFeeAmount { get; set; }
+
     public DateTime? PreCheckoutReminderSentAt { get; set; }
 
     public DateTime? FinalCheckoutReminderSentAt { get; set; }
