@@ -193,6 +193,7 @@ try
 catch (Exception ex)
 {
     Console.WriteLine($"[ERROR] Failed to apply database migrations: {ex.Message}");
+    Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
     // Don't crash - let the app start and handle migrations later if needed
 }
 

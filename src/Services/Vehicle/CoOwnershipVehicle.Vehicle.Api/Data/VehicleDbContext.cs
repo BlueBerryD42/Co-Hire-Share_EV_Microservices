@@ -19,12 +19,8 @@ public class VehicleDbContext : DbContext
     // Vehicle health tracking
     public DbSet<VehicleHealthScore> VehicleHealthScores { get; set; }
 
-    // Related entities (read-only access for cross-service validation)
-    public DbSet<OwnershipGroup> OwnershipGroups { get; set; } // For group access
-    public DbSet<GroupMember> GroupMembers { get; set; } // For access control
-    public DbSet<Booking> Bookings { get; set; } // For availability checks
-    public DbSet<User> Users { get; set; } // For booking or ownership details
-    public DbSet<Expense> Expenses { get; set; } // For maintenance cost linking
+    // Note: User, OwnershipGroup, GroupMember, Booking, Expense entities are NOT included here.
+    // Vehicle service only stores foreign key IDs (Guid) and fetches related data via HTTP calls or events.
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -54,62 +50,12 @@ public class VehicleDbContext : DbContext
         builder.Ignore<AuditLog>();
         builder.Ignore<Vote>();
 
-        // User entity configuration (simplified for Vehicle service)
-        builder.Entity<User>(entity =>
-        {
-            entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Phone).HasMaxLength(20);
-            entity.Property(e => e.KycStatus).HasConversion<int>();
-            entity.Property(e => e.Role).HasConversion<int>();
-            
-            entity.HasIndex(e => e.Email).IsUnique();
-            entity.HasIndex(e => e.Phone);
-            
-            // Ignore navigation properties not relevant to Vehicle service
-            entity.Ignore(e => e.KycDocuments);
-            entity.Ignore(e => e.ExpensesCreated);
-            entity.Ignore(e => e.Payments);
-            entity.Ignore(e => e.CheckIns);
-            entity.Ignore(e => e.Votes);
-            entity.Ignore(e => e.AuditLogs);
-            entity.Ignore(e => e.InitiatedFundTransactions);
-            entity.Ignore(e => e.ApprovedFundTransactions);
-        });
-
-        // OwnershipGroup entity configuration (simplified for Vehicle service)
-        builder.Entity<OwnershipGroup>(entity =>
-        {
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.Description).HasMaxLength(1000);
-            entity.Property(e => e.Status).HasConversion<int>();
-
-            entity.HasOne(e => e.Creator)
-                  .WithMany()
-                  .HasForeignKey(e => e.CreatedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasIndex(e => e.Name);
-        });
-
-        // GroupMember entity configuration (simplified for Vehicle service)
-        builder.Entity<GroupMember>(entity =>
-        {
-            entity.Property(e => e.SharePercentage).HasColumnType("decimal(5,4)");
-            entity.Property(e => e.RoleInGroup).HasConversion<int>();
-
-            entity.HasOne(e => e.Group)
-                  .WithMany(g => g.Members)
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.User)
-                  .WithMany(u => u.GroupMemberships)
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasIndex(e => new { e.GroupId, e.UserId }).IsUnique();
-        });
+        // Ignore cross-service entities - Vehicle service only stores foreign key IDs
+        builder.Ignore<User>();
+        builder.Ignore<OwnershipGroup>();
+        builder.Ignore<GroupMember>();
+        builder.Ignore<Booking>();
+        builder.Ignore<Expense>();
 
         // Vehicle entity configuration
         builder.Entity<Domain.Entities.Vehicle>(entity =>
@@ -174,12 +120,8 @@ builder.Entity<MaintenanceRecord>(entity =>
         .HasForeignKey(e => e.VehicleId)
         .OnDelete(DeleteBehavior.Cascade);
 
-    entity.HasOne(e => e.Group)
-        .WithMany()
-        .HasForeignKey(e => e.GroupId)
-        .OnDelete(DeleteBehavior.SetNull);
-
-    // Expense là optional (read-only)
+    // GroupId is stored but no FK constraint (Group is in another service)
+    entity.Ignore(e => e.Group);
     entity.Ignore(e => e.Expense);
 
     entity.HasIndex(e => new { e.VehicleId, e.Status, e.ScheduledDate });
@@ -187,23 +129,8 @@ builder.Entity<MaintenanceRecord>(entity =>
     entity.HasIndex(e => e.OdometerReading);
 });
 
-// Expense minimal configuration (read-only in this service)
-builder.Entity<Expense>(entity =>
-{
-    entity.Property(e => e.ExpenseType).HasConversion<int>();
-    entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
-});
-
-// Booking entity configuration (simplified for Vehicle service)
-builder.Entity<CoOwnershipVehicle.Domain.Entities.Booking>(entity =>
-{
-    entity.Property(e => e.Status).HasConversion<int>();
-    entity.Property(e => e.PriorityScore).HasColumnType("decimal(10,4)");
-    entity.Property(e => e.Notes).HasMaxLength(500);
-    entity.Property(e => e.PreCheckoutReminderSentAt).HasColumnType("datetime2");
-    entity.Property(e => e.FinalCheckoutReminderSentAt).HasColumnType("datetime2");
-    entity.Property(e => e.MissedCheckoutReminderSentAt).HasColumnType("datetime2");
-});
+// Note: Expense and Booking entities are not configured here - they belong to other services.
+// Vehicle service only stores foreign key IDs when needed.
 
 
         // VehicleHealthScore entity configuration
@@ -234,12 +161,7 @@ builder.Entity<CoOwnershipVehicle.Domain.Entities.Booking>(entity =>
         });
 
         // Ignore all other entities that might be discovered transitively
-        builder.Ignore<OwnershipGroup>();
-        builder.Ignore<GroupMember>();
-        builder.Ignore<User>();
-        builder.Ignore<Booking>();
         builder.Ignore<KycDocument>();
-        builder.Ignore<Expense>();
         builder.Ignore<Invoice>();
         builder.Ignore<Payment>();
         builder.Ignore<Notification>();

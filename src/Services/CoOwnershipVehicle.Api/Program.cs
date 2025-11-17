@@ -131,16 +131,25 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Apply migrations and seed data
-using (var scope = app.Services.CreateScope())
+try
 {
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-    
-    await context.Database.MigrateAsync();
-    
-    // Seed initial data
-    await DataSeeder.SeedAsync(context, userManager, roleManager);
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+        
+        await context.Database.MigrateAsync();
+        
+        // Seed initial data
+        await DataSeeder.SeedAsync(context, userManager, roleManager);
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[ERROR] Failed to apply database migrations or seed data: {ex.Message}");
+    Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+    // Don't crash - let the app start and handle migrations later if needed
 }
 
 app.Run();
