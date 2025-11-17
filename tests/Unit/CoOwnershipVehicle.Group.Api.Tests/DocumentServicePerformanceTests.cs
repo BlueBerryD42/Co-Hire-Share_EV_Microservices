@@ -3,6 +3,7 @@ using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.DTOs;
 using CoOwnershipVehicle.Group.Api.Services.Implementations;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -45,6 +46,21 @@ public class DocumentServicePerformanceTests : IDisposable
         _mockVirusScan = new Mock<IVirusScanService>();
         _mockNotificationService = new Mock<INotificationService>();
 
+        // Mock IUserServiceClient
+        var userServiceClientMock = new Mock<IUserServiceClient>();
+        userServiceClientMock.Setup(x => x.GetUserAsync(_testUserId, It.IsAny<string>()))
+            .ReturnsAsync(new UserInfoDto { Id = _testUserId, Email = "perftest@test.com", FirstName = "Perf", LastName = "Tester", Role = UserRole.CoOwner });
+        userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<List<Guid>>(), It.IsAny<string>()))
+            .ReturnsAsync((List<Guid> userIds, string token) => userIds.ToDictionary(
+                id => id,
+                id => new UserInfoDto { Id = id, Email = "perftest@test.com", FirstName = "Perf", LastName = "Tester", Role = UserRole.CoOwner }));
+
+        // Mock IHttpContextAccessor
+        var httpContextAccessorMock = new Mock<IHttpContextAccessor>();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Authorization"] = "Bearer test-token";
+        httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+
         _documentService = new DocumentService(
             _context,
             _mockFileStorage.Object,
@@ -52,12 +68,16 @@ public class DocumentServicePerformanceTests : IDisposable
             Mock.Of<ISigningTokenService>(),
             Mock.Of<ICertificateGenerationService>(),
             _mockNotificationService.Object,
-            Mock.Of<ILogger<DocumentService>>());
+            Mock.Of<ILogger<DocumentService>>(),
+            userServiceClientMock.Object,
+            httpContextAccessorMock.Object);
 
         _searchService = new DocumentSearchService(
             _context,
             _mockFileStorage.Object,
-            Mock.Of<ILogger<DocumentSearchService>>());
+            Mock.Of<ILogger<DocumentSearchService>>(),
+            userServiceClientMock.Object,
+            httpContextAccessorMock.Object);
 
         SetupMocks();
         SeedTestData();
@@ -112,7 +132,7 @@ public class DocumentServicePerformanceTests : IDisposable
             JoinedAt = DateTime.UtcNow
         };
 
-        _context.Users.Add(user);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
         _context.OwnershipGroups.Add(group);
         _context.GroupMembers.Add(member);
         _context.SaveChanges();

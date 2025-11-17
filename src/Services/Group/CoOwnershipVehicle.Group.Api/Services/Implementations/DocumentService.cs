@@ -1589,8 +1589,9 @@ public class DocumentService : IDocumentService
 
         // TODO: Publish DocumentVersionUpdatedEvent
 
-        // Get uploader name
-        var uploader = await _context.Users.FindAsync(userId);
+        // Get uploader name via HTTP
+        var accessToken = GetAccessToken();
+        var uploader = await _userServiceClient.GetUserAsync(userId, accessToken);
         var uploaderName = uploader != null ? $"{uploader.FirstName} {uploader.LastName}" : "Unknown";
 
         return new DocumentVersionResponse
@@ -1638,8 +1639,8 @@ public class DocumentService : IDocumentService
         // Fetch user data for all version uploaders via HTTP
         var accessToken = GetAccessToken();
         var uploaderIds = document.Versions
-            .Where(v => v.UploadedBy.HasValue)
-            .Select(v => v.UploadedBy!.Value)
+            .Where(v => v.UploadedBy != Guid.Empty)
+            .Select(v => v.UploadedBy)
             .Distinct()
             .ToList();
         var uploaders = await _userServiceClient.GetUsersAsync(uploaderIds, accessToken);
@@ -1648,7 +1649,7 @@ public class DocumentService : IDocumentService
             .OrderByDescending(v => v.VersionNumber)
             .Select(v =>
             {
-                var uploader = v.UploadedBy.HasValue ? uploaders.GetValueOrDefault(v.UploadedBy.Value) : null;
+                var uploader = v.UploadedBy != Guid.Empty ? uploaders.GetValueOrDefault(v.UploadedBy) : null;
                 return new DocumentVersionResponse
                 {
                     Id = v.Id,
@@ -1672,9 +1673,9 @@ public class DocumentService : IDocumentService
         if (!versions.Any(v => v.VersionNumber == 0) && versions.Any())
         {
             // Get uploader name via HTTP
-            var accessToken = GetAccessToken();
-            var uploader = document.UploadedBy.HasValue 
-                ? await _userServiceClient.GetUserAsync(document.UploadedBy.Value, accessToken)
+            var accessTokenForVersion0 = GetAccessToken();
+            var uploader = document.UploadedBy.HasValue && document.UploadedBy.Value != Guid.Empty 
+                ? await _userServiceClient.GetUserAsync(document.UploadedBy.Value, accessTokenForVersion0)
                 : null;
             var uploaderName = uploader != null ? $"{uploader.FirstName} {uploader.LastName}" : "Unknown";
 
@@ -1875,13 +1876,26 @@ public class DocumentService : IDocumentService
         var recipients = new List<ReminderRecipient>();
         var remindersSent = 0;
 
+        // Fetch signer data via HTTP
+        var accessTokenForReminders = GetAccessToken();
+        var signerIds = pendingSignatures.Select(s => s.SignerId).Distinct().ToList();
+        var signers = await _userServiceClient.GetUsersAsync(signerIds, accessTokenForReminders);
+
         foreach (var signature in pendingSignatures)
         {
             var signingUrl = $"{baseUrl}/api/document/{documentId}/sign?token={signature.SigningToken}";
 
+            // Get signer info from fetched data
+            var signer = signers.GetValueOrDefault(signature.SignerId);
+            if (signer == null)
+            {
+                _logger.LogWarning("Signer {SignerId} not found for signature {SignatureId}", signature.SignerId, signature.Id);
+                continue;
+            }
+
             // Send reminder using notification service
             var success = await _notificationService.SendSignatureReminderAsync(
-                signature.Signer,
+                signer,
                 document,
                 signingUrl,
                 ReminderType.Manual,
@@ -2022,9 +2036,10 @@ public class DocumentService : IDocumentService
 </html>";
 
             // Use the notification service to send email
-            // Create a mock user and document for testing
-            var testUser = new User
+            // Create a mock user DTO and document for testing
+            var testUser = new UserInfoDto
             {
+                Id = Guid.NewGuid(),
                 Email = email,
                 FirstName = "Test",
                 LastName = "User"

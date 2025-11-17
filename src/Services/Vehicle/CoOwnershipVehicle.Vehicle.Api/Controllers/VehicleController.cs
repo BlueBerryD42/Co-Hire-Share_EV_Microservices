@@ -266,7 +266,7 @@ public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateV
             }
         }
 
-        // ✅ Cập nhật trạng thái
+        //  Cập nhật trạng thái
         vehicle.Status = updateDto.Status;
         vehicle.UpdatedAt = DateTime.UtcNow;
 

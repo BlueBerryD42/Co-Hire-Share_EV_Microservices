@@ -548,9 +548,10 @@ public class DocumentShareService : IDocumentShareService
         {
             _logger.LogInformation("Sending share notification to {Email}", share.RecipientEmail);
 
-            // Create a notification user object
-            var recipient = new User
+            // Create a notification user DTO object
+            var recipient = new UserInfoDto
             {
+                Id = Guid.Empty, // External recipient, no user ID
                 Email = share.RecipientEmail!,
                 FirstName = share.SharedWith,
                 LastName = ""

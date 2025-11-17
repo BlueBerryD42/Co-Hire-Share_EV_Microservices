@@ -587,7 +587,7 @@ public class AdminService : IAdminService
         
         // Latest ledger balance per group - would need Payment service endpoint
         // For now, use placeholder
-        var balances = new List<{ Guid GroupId, decimal Balance }>();
+        var balances = new List<(Guid GroupId, decimal Balance)>();
 
         var items = new List<GroupFinancialItemDto>();
         foreach (var g in groups)

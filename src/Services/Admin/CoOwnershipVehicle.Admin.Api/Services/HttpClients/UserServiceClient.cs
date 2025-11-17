@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 using Microsoft.AspNetCore.Http;
 
 namespace CoOwnershipVehicle.Admin.Api.Services.HttpClients;

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Analytics.Api.Data;
 using CoOwnershipVehicle.Analytics.Api.Services.HttpClients;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Analytics.Api.Services;
 

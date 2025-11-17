@@ -467,7 +467,7 @@ public class NotificationService : INotificationService
     }
 
     private string GenerateSignatureReminderEmail(
-        User signer,
+        UserInfoDto signer,
         Document document,
         string signingUrl,
         ReminderType reminderType,
@@ -525,7 +525,7 @@ public class NotificationService : INotificationService
     }
 
     private string GenerateExpiringNotificationEmail(
-        User signer,
+        UserInfoDto signer,
         Document document,
         string signingUrl,
         int daysRemaining)
