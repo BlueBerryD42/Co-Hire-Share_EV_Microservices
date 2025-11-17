@@ -25,6 +25,9 @@ public class BookingDto
     public bool RequiresDamageReview { get; set; }
     public Guid? RecurringBookingId { get; set; }
     public DateTime CreatedAt { get; set; }
+    public VehicleStatus VehicleStatus { get; set; }
+    public decimal? DistanceKm { get; set; }
+    public decimal TripFeeAmount { get; set; }
 }
 
 public class CreateBookingDto
