@@ -29,14 +29,14 @@ public class SystemHealthService : ISystemHealthService
         _configuration = configuration;
 
         // Initialize service URLs from configuration or defaults
-        _serviceUrls["Auth"] = _configuration["ServiceUrls:Auth"] ?? "https://localhost:5002";
-        _serviceUrls["User"] = _configuration["ServiceUrls:User"] ?? "https://localhost:5008";
-        _serviceUrls["Group"] = _configuration["ServiceUrls:Group"] ?? "https://localhost:5004";
-        _serviceUrls["Vehicle"] = _configuration["ServiceUrls:Vehicle"] ?? "https://localhost:5009";
-        _serviceUrls["Booking"] = _configuration["ServiceUrls:Booking"] ?? "https://localhost:5003";
-        _serviceUrls["Payment"] = _configuration["ServiceUrls:Payment"] ?? "https://localhost:5007";
-        _serviceUrls["Notification"] = _configuration["ServiceUrls:Notification"] ?? "https://localhost:5005";
-        _serviceUrls["Analytics"] = _configuration["ServiceUrls:Analytics"] ?? "https://localhost:5001";
+        _serviceUrls["Auth"] = _configuration["ServiceUrls:Auth"] ?? "https://localhost:61601";
+        _serviceUrls["User"] = _configuration["ServiceUrls:User"] ?? "https://localhost:61602";
+        _serviceUrls["Group"] = _configuration["ServiceUrls:Group"] ?? "https://localhost:61603";
+        _serviceUrls["Vehicle"] = _configuration["ServiceUrls:Vehicle"] ?? "https://localhost:61604";
+        _serviceUrls["Booking"] = _configuration["ServiceUrls:Booking"] ?? "https://localhost:61606";
+        _serviceUrls["Payment"] = _configuration["ServiceUrls:Payment"] ?? "https://localhost:61605";
+        _serviceUrls["Notification"] = _configuration["ServiceUrls:Notification"] ?? "https://localhost:61609";
+        _serviceUrls["Analytics"] = _configuration["ServiceUrls:Analytics"] ?? "https://localhost:61608";
     }
 
     public async Task<SystemHealthCheckDto> CheckSystemHealthAsync()

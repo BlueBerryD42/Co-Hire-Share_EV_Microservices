@@ -1,12 +1,12 @@
 {
   "profiles": {
-    "CoOwnershipVehicle.Admin.Api": {
+    "CoOwnershipVehicle.ApiGateway": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
-      "applicationUrl": "https://localhost:61607;http://localhost:61617"
+      "applicationUrl": "https://localhost:61600;http://localhost:61610"
     }
   }
 }
