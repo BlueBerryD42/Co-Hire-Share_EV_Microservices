@@ -12,15 +12,18 @@ public class VehicleStatisticsService
 {
     private readonly VehicleDbContext _context;
     private readonly IBookingServiceClient _bookingClient;
+    private readonly IPaymentServiceClient _paymentClient; // Injected
     private readonly ILogger<VehicleStatisticsService> _logger;
 
     public VehicleStatisticsService(
         VehicleDbContext context,
         IBookingServiceClient bookingClient,
+        IPaymentServiceClient paymentClient, // Added
         ILogger<VehicleStatisticsService> logger)
     {
         _context = context;
         _bookingClient = bookingClient;
+        _paymentClient = paymentClient; // Assigned
         _logger = logger;
     }
 
@@ -80,7 +83,7 @@ public class VehicleStatisticsService
             bookingStats, maintenanceSchedules, totalDays);
 
         // 7. Calculate efficiency metrics
-        var efficiencyMetrics = CalculateEfficiencyMetrics(bookingStats, vehicle);
+        var efficiencyMetrics = await CalculateEfficiencyMetrics(bookingStats, vehicle, startDate, endDate, accessToken);
 
         // 8. Analyze usage patterns
         var patterns = AnalyzeUsagePatterns(bookingStats.CompletedBookings);
@@ -91,7 +94,7 @@ public class VehicleStatisticsService
 
         // 10. Calculate comparison to previous period
         var comparison = await CalculatePeriodComparisonAsync(
-            vehicleId, startDate, endDate, accessToken);
+            vehicleId, bookingStats, startDate, endDate, accessToken);
 
         // 11. Calculate benchmarks (if requested)
         BenchmarkData? benchmarks = null;
@@ -208,23 +211,35 @@ public class VehicleStatisticsService
         };
     }
 
-    private EfficiencyMetrics CalculateEfficiencyMetrics(
+    private async Task<EfficiencyMetrics> CalculateEfficiencyMetrics(
         VehicleBookingStatistics bookingStats,
-        Domain.Entities.Vehicle vehicle)
+        Domain.Entities.Vehicle vehicle,
+        DateTime startDate,
+        DateTime endDate,
+        string accessToken)
     {
         var totalRevenue = bookingStats.TotalRevenue;
         var totalDistance = bookingStats.TotalDistance;
         var totalUsageHours = bookingStats.TotalUsageHours;
 
-        // Get maintenance costs from this period
-        // TODO: Get actual costs from Payment service
+        // Get actual costs from Payment service
         decimal totalCosts = 0;
+        if (vehicle.GroupId.HasValue)
+        {
+            var expensesData = await _paymentClient.GetVehicleExpensesAsync(
+                vehicle.GroupId.Value, startDate, endDate, accessToken);
+            totalCosts = expensesData?.TotalAmount ?? 0;
+        }
+        else
+        {
+            _logger.LogWarning("Vehicle {VehicleId} does not have a GroupId. Cannot fetch expenses for efficiency metrics.", vehicle.Id);
+        }
 
         return new EfficiencyMetrics
         {
             DistancePerCharge = null, // TODO: Calculate from check-ins if battery level tracked
-            CostPerKilometer = totalDistance > 0 ? totalCosts / totalDistance : null,
-            CostPerHour = totalUsageHours > 0 ? totalCosts / totalUsageHours : null,
+            CostPerKilometer = totalDistance > 0 ? Math.Round(totalCosts / totalDistance, 2) : null,
+            CostPerHour = totalUsageHours > 0 ? Math.Round(totalCosts / totalUsageHours, 2) : null,
             TotalRevenue = totalRevenue,
             TotalCosts = totalCosts,
             NetProfit = totalRevenue - totalCosts
@@ -427,6 +442,7 @@ public class VehicleStatisticsService
 
     private async Task<PeriodComparison> CalculatePeriodComparisonAsync(
         Guid vehicleId,
+        VehicleBookingStatistics currentStats,
         DateTime startDate,
         DateTime endDate,
         string accessToken)
@@ -457,20 +473,28 @@ public class VehicleStatisticsService
 
         // Calculate growth percentages
         var tripCountGrowth = previousStats.CompletedBookingsCount > 0
-            ? ((previousStats.CompletedBookingsCount - previousStats.CompletedBookingsCount) / (decimal)previousStats.CompletedBookingsCount) * 100
-            : 0;
+            ? ((currentStats.CompletedBookingsCount - previousStats.CompletedBookingsCount) / (decimal)previousStats.CompletedBookingsCount) * 100
+            : (currentStats.CompletedBookingsCount > 0 ? 100 : 0); // If previous was 0 and current > 0, 100% growth
 
         var distanceGrowth = previousStats.TotalDistance > 0
-            ? ((previousStats.TotalDistance - previousStats.TotalDistance) / previousStats.TotalDistance) * 100
-            : 0;
+            ? ((currentStats.TotalDistance - previousStats.TotalDistance) / previousStats.TotalDistance) * 100
+            : (currentStats.TotalDistance > 0 ? 100 : 0);
 
         var usageHoursGrowth = previousStats.TotalUsageHours > 0
-            ? ((previousStats.TotalUsageHours - previousStats.TotalUsageHours) / previousStats.TotalUsageHours) * 100
+            ? ((currentStats.TotalUsageHours - previousStats.TotalUsageHours) / previousStats.TotalUsageHours) * 100
+            : (currentStats.TotalUsageHours > 0 ? 100 : 0);
+
+        var currentUtilizationRate = (currentStats.EndDate - currentStats.StartDate).TotalDays * 24m > 0
+            ? (currentStats.TotalUsageHours / ((currentStats.EndDate - currentStats.StartDate).TotalDays * 24m)) * 100
             : 0;
 
-        var previousUtilizationRate = (periodDuration.Days * 24m) > 0
-            ? (previousStats.TotalUsageHours / (periodDuration.Days * 24m)) * 100
+        var previousUtilizationRate = (previousStats.EndDate - previousStats.StartDate).TotalDays * 24m > 0
+            ? (previousStats.TotalUsageHours / ((previousStats.EndDate - previousStats.StartDate).TotalDays * 24m)) * 100
             : 0;
+
+        var utilizationRateGrowth = previousUtilizationRate > 0
+            ? ((currentUtilizationRate - previousUtilizationRate) / previousUtilizationRate) * 100
+            : (currentUtilizationRate > 0 ? 100 : 0);
 
         return new PeriodComparison
         {
@@ -481,7 +505,7 @@ public class VehicleStatisticsService
             TripCountGrowth = Math.Round(tripCountGrowth, 2),
             DistanceGrowth = Math.Round(distanceGrowth, 2),
             UsageHoursGrowth = Math.Round(usageHoursGrowth, 2),
-            UtilizationRateGrowth = 0 // TODO: Calculate properly
+            UtilizationRateGrowth = Math.Round(utilizationRateGrowth, 2)
         };
     }
 

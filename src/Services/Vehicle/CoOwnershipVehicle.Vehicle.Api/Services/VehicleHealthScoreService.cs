@@ -304,16 +304,8 @@ public class VehicleHealthScoreService
     /// </summary>
     private Task<ComponentScore> CalculateDamageReportsScore(Domain.Entities.Vehicle vehicle, string accessToken)
     {
-        // In a microservices architecture, damage reports would come from:
-        // 1. Analytics Service (CheckIn photos with PhotoType.Damage)
-        // 2. Incident Service (if exists)
-        // For now, we'll estimate based on available data
-
-        var recentMonths = 6;
-        var cutoffDate = DateTime.UtcNow.AddMonths(-recentMonths);
-
-        // Query CheckIn damage photos would go here (if we had access to Analytics Service)
-        // For now, we'll use a placeholder
+        // TODO: Integrate with a proper Damage/Incident service or Analytics Service (CheckIn photos with PhotoType.Damage)
+        // For now, we'll use a placeholder and return a neutral score if no data.
 
         int damageReportCount = 0; // Placeholder - would come from service call
 
@@ -323,9 +315,10 @@ public class VehicleHealthScoreService
 
         if (damageReportCount == 0)
         {
-            score = DAMAGE_WEIGHT; // Full points
-            description = $"No damage reports in the last {recentMonths} months.";
-            status = "Excellent";
+            // If no damage reports, return a neutral score, not full points, as this is a placeholder.
+            score = DAMAGE_WEIGHT * 0.5m; // Neutral score (e.g., 10 points out of 20)
+            description = $"No damage reports found. (Placeholder: Needs integration with damage reporting system)";
+            status = "Fair";
         }
         else if (damageReportCount <= 2)
         {
