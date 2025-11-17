@@ -225,42 +225,39 @@ public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateV
         var isSystemAdmin = roles.Contains("SystemAdmin");
         var isGroupAdmin = roles.Contains("GroupAdmin");
 
-        // ✅ Quyền hạn kiểm tra trước
+        // Quyền hạn kiểm tra trước
         if (!isSystemAdmin && !isGroupAdmin)
         {
             return Forbid("Insufficient permissions to update vehicle status");
         }
 
-        // ✅ (Tuỳ chọn) — kiểm tra xung đột booking nếu DTO có khoảng thời gian
+        //  (Tuỳ chọn) — kiểm tra xung đột booking nếu DTO có khoảng thời gian
         if (updateDto.From != null && updateDto.To != null)
         {
-            var conflictingBookings = await _context.Bookings
-                .Include(b => b.User)
-                .Where(b => b.VehicleId == id &&
-                            b.Status != Domain.Entities.BookingStatus.Cancelled &&
-                            b.Status != Domain.Entities.BookingStatus.Completed &&
-                            (
-                                (b.StartAt <= updateDto.From && b.EndAt > updateDto.From) ||
-                                (b.StartAt < updateDto.To && b.EndAt >= updateDto.To) ||
-                                (b.StartAt >= updateDto.From && b.EndAt <= updateDto.To)
-                            ))
-                .Select(b => new CoOwnershipVehicle.Shared.Contracts.DTOs.BookingDto
+            // Get access token for Booking Service call
+            var accessToken = GetAccessToken();
+            
+            // Check for conflicting bookings via Booking Service
+            var conflictCheck = await _bookingServiceClient.CheckAvailabilityAsync(
+                id, updateDto.From.Value, updateDto.To.Value, accessToken);
+
+            if (conflictCheck != null && conflictCheck.HasConflicts && conflictCheck.ConflictingBookings.Any())
+            {
+                // Map Vehicle.Api.DTOs.BookingDto to Shared.Contracts.DTOs.BookingDto
+                var conflictingBookings = conflictCheck.ConflictingBookings.Select(b => new CoOwnershipVehicle.Shared.Contracts.DTOs.BookingDto
                 {
                     Id = b.Id,
                     VehicleId = b.VehicleId,
                     UserId = b.UserId,
-                    UserFirstName = b.User.FirstName,
-                    UserLastName = b.User.LastName,
+                    UserFirstName = b.UserFirstName ?? string.Empty,
+                    UserLastName = b.UserLastName ?? string.Empty,
                     StartAt = b.StartAt,
                     EndAt = b.EndAt,
-                    Status = (CoOwnershipVehicle.Domain.Entities.BookingStatus)b.Status,
-                    Notes = b.Notes,
-                    RequiresDamageReview = b.RequiresDamageReview
-                })
-                .ToListAsync();
+                    Status = MapBookingStatus(b.Status),
+                    Notes = null, // Not available in conflict DTO
+                    RequiresDamageReview = false // Not available in conflict DTO
+                }).ToList();
 
-            if (conflictingBookings.Any())
-            {
                 return Conflict(new
                 {
                     message = "Cannot update status due to active or overlapping bookings",
@@ -663,6 +660,21 @@ public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateV
             throw new UnauthorizedAccessException("Missing or invalid authorization header");
         }
         return authHeader.Substring("Bearer ".Length).Trim();
+    }
+
+    private Domain.Entities.BookingStatus MapBookingStatus(DTOs.BookingStatus status)
+    {
+        return status switch
+        {
+            DTOs.BookingStatus.Pending => Domain.Entities.BookingStatus.Pending,
+            DTOs.BookingStatus.PendingApproval => Domain.Entities.BookingStatus.PendingApproval,
+            DTOs.BookingStatus.Confirmed => Domain.Entities.BookingStatus.Confirmed,
+            DTOs.BookingStatus.InProgress => Domain.Entities.BookingStatus.InProgress,
+            DTOs.BookingStatus.Completed => Domain.Entities.BookingStatus.Completed,
+            DTOs.BookingStatus.Cancelled => Domain.Entities.BookingStatus.Cancelled,
+            DTOs.BookingStatus.NoShow => Domain.Entities.BookingStatus.NoShow,
+            _ => Domain.Entities.BookingStatus.Pending
+        };
     }
 
     private IActionResult Forbidden(object value)
