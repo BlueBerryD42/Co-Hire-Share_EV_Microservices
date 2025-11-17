@@ -140,4 +140,20 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<NotificationHub>("/notificationHub");
 
+// Apply pending migrations
+try
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
+        await context.Database.MigrateAsync();
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[ERROR] Failed to apply database migrations: {ex.Message}");
+    Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+    // Don't crash - let the app start and handle migrations later if needed
+}
+
 app.Run();

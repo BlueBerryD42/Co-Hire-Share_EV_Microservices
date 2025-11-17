@@ -12,8 +12,9 @@ public class GroupDbContext : DbContext
     // Group service entities - only what it actually needs
     public DbSet<OwnershipGroup> OwnershipGroups { get; set; }
     public DbSet<GroupMember> GroupMembers { get; set; }
-    public DbSet<User> Users { get; set; } // For member details
-    public DbSet<Vehicle> Vehicles { get; set; } // For group vehicles
+    
+    // Note: User and Vehicle entities are NOT included here.
+    // Group service only stores foreign key IDs (Guid) and fetches related data via HTTP calls or events.
     public DbSet<Document> Documents { get; set; } // For document management
     public DbSet<DocumentSignature> DocumentSignatures { get; set; } // For document signatures
     public DbSet<DocumentDownload> DocumentDownloads { get; set; } // For download tracking
@@ -58,28 +59,9 @@ public class GroupDbContext : DbContext
         builder.Ignore<LedgerEntry>();
         builder.Ignore<AuditLog>();
 
-        // User entity configuration (simplified for Group service)
-        builder.Entity<User>(entity =>
-        {
-            entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Phone).HasMaxLength(20);
-            entity.Property(e => e.KycStatus).HasConversion<int>();
-            entity.Property(e => e.Role).HasConversion<int>();
-            
-            entity.HasIndex(e => e.Email).IsUnique();
-            entity.HasIndex(e => e.Phone);
-            
-            // Ignore navigation properties not relevant to Group service
-            entity.Ignore(e => e.KycDocuments);
-            entity.Ignore(e => e.ExpensesCreated);
-            entity.Ignore(e => e.Payments);
-            entity.Ignore(e => e.Bookings);
-            entity.Ignore(e => e.CheckIns);
-            entity.Ignore(e => e.AuditLogs);
-            entity.Ignore(e => e.InitiatedFundTransactions);
-            entity.Ignore(e => e.ApprovedFundTransactions);
-        });
+        // Ignore cross-service entities - Group service only stores foreign key IDs
+        builder.Ignore<User>();
+        builder.Ignore<Vehicle>();
 
         // OwnershipGroup entity configuration
         builder.Entity<OwnershipGroup>(entity =>
@@ -88,10 +70,8 @@ public class GroupDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasConversion<int>();
 
-            entity.HasOne(e => e.Creator)
-                  .WithMany()
-                  .HasForeignKey(e => e.CreatedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // CreatedBy is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Creator);
 
             entity.HasIndex(e => e.Name);
         });
@@ -107,35 +87,14 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.GroupId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.User)
-                  .WithMany(u => u.GroupMemberships)
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+            // UserId is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.User);
 
             entity.HasIndex(e => new { e.GroupId, e.UserId }).IsUnique();
         });
 
-        // Vehicle entity configuration (simplified for Group service)
-        builder.Entity<Vehicle>(entity =>
-        {
-            entity.Property(e => e.Vin).IsRequired().HasMaxLength(17);
-            entity.Property(e => e.PlateNumber).IsRequired().HasMaxLength(20);
-            entity.Property(e => e.Model).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Color).HasMaxLength(50);
-            entity.Property(e => e.Status).HasConversion<int>();
-
-            entity.HasOne(e => e.Group)
-                  .WithMany(g => g.Vehicles)
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.SetNull);
-
-            entity.HasIndex(e => e.Vin).IsUnique();
-            entity.HasIndex(e => e.PlateNumber).IsUnique();
-
-            // Ignore navigation properties not relevant to Group service
-            entity.Ignore(e => e.Bookings);
-            entity.Ignore(e => e.Expenses);
-        });
+        // Note: Vehicle entity is not configured here - it belongs to Vehicle service.
+        // Group service only stores VehicleId when needed.
 
         // Document entity configuration
         builder.Entity<Document>(entity =>

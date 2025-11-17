@@ -9,12 +9,13 @@ using CoOwnershipVehicle.Vehicle.Api.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using MassTransit;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CoOwnershipVehicle.Vehicle.Api
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
             
@@ -52,7 +53,24 @@ namespace CoOwnershipVehicle.Vehicle.Api
             });
 
             Configure(app);
-            app.Run();
+
+            // Apply pending migrations
+            try
+            {
+                using (var scope = app.Services.CreateScope())
+                {
+                    var context = scope.ServiceProvider.GetRequiredService<VehicleDbContext>();
+                    await context.Database.MigrateAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to apply database migrations: {ex.Message}");
+                Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+                // Don't crash - let the app start and handle migrations later if needed
+            }
+            
+            await app.RunAsync();
         }
 
         public static void ConfigureServices(WebApplicationBuilder builder)

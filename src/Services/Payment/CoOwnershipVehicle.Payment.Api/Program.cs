@@ -143,13 +143,20 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created
-using (var scope = app.Services.CreateScope())
+// Apply pending migrations
+try
 {
-    var context = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
-    
-    // Ensure database is created
-    await context.Database.EnsureCreatedAsync();
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
+        await context.Database.MigrateAsync();
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[ERROR] Failed to apply database migrations: {ex.Message}");
+    Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+    // Don't crash - let the app start and handle migrations later if needed
 }
 
 app.Run();

@@ -239,4 +239,21 @@ app.UseAuthentication(); // Ensure this is before UseAuthorization
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Apply pending migrations
+try
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<GroupDbContext>();
+        await context.Database.MigrateAsync();
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[ERROR] Failed to apply database migrations: {ex.Message}");
+    Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+    // Don't crash - let the app start and handle migrations later if needed
+}
+
 app.Run();

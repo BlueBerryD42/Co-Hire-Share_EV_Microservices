@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Domain.Entities;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace CoOwnershipVehicle.User.Api.Data;
 
@@ -48,6 +50,21 @@ public class UserDbContext : IdentityDbContext<CoOwnershipVehicle.Domain.Entitie
         builder.Ignore<AuditLog>();
         builder.Ignore<GroupFund>();
         builder.Ignore<FundTransaction>();
+        // Automatically trim unrelated domain entities
+        var allowedDomainEntities = new HashSet<Type>
+        {
+            typeof(CoOwnershipVehicle.Domain.Entities.User),
+            typeof(KycDocument)
+        };
+
+        foreach (var entityType in builder.Model.GetEntityTypes().ToList())
+        {
+            if (entityType.ClrType?.Namespace?.StartsWith("CoOwnershipVehicle.Domain") == true &&
+                !allowedDomainEntities.Contains(entityType.ClrType))
+            {
+                builder.Ignore(entityType.ClrType);
+            }
+        }
 
         // Configure Identity tables with custom names
         builder.Entity<CoOwnershipVehicle.Domain.Entities.User>().ToTable("Users");

@@ -169,16 +169,23 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created
-using (var scope = app.Services.CreateScope())
+// Apply migrations and seed data
+try
 {
-    var context = scope.ServiceProvider.GetRequiredService<UserDbContext>();
-    
-    // Ensure database is created
-    await context.Database.EnsureCreatedAsync();
-    
-    // Seed initial data (User service doesn't need UserManager/RoleManager)
-    await CoOwnershipVehicle.User.Api.Data.UserDataSeeder.SeedAsync(context);
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<UserDbContext>();
+        await context.Database.MigrateAsync();
+        
+        // Seed initial data (User service doesn't need UserManager/RoleManager)
+        await CoOwnershipVehicle.User.Api.Data.UserDataSeeder.SeedAsync(context);
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[ERROR] Failed to apply database migrations or seed data: {ex.Message}");
+    Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+    // Don't crash - let the app start and handle migrations later if needed
 }
 
 app.Run();

@@ -165,12 +165,51 @@ public static class EnvironmentHelper
 
     /// <summary>
     /// Gets RabbitMQ connection string.
+    /// Automatically replaces 'localhost' with 'host.docker.internal' when running in Docker.
     /// </summary>
     /// <param name="configuration">Optional configuration object</param>
     /// <returns>RabbitMQ connection string</returns>
     public static string GetRabbitMqConnection(IConfiguration? configuration = null)
     {
-        return GetEnvironmentVariable("RABBITMQ_CONNECTION", configuration) ?? "amqp://guest:guest@localhost:5672/";
+        var connectionString = GetEnvironmentVariable("RABBITMQ_CONNECTION", configuration) ?? "amqp://guest:guest@localhost:5672/";
+        
+        // If running in Docker (detected by DB_SERVER being host.docker.internal), 
+        // replace localhost with host.docker.internal in the RabbitMQ connection string
+        var dbServer = GetEnvironmentVariable("DB_SERVER", configuration);
+        if (dbServer == "host.docker.internal" && connectionString.Contains("localhost"))
+        {
+            connectionString = connectionString.Replace("localhost", "host.docker.internal");
+            // Mask password in log output
+            var maskedConnection = MaskPasswordInConnectionString(connectionString);
+            Console.WriteLine($"[INFO] Auto-adjusted RabbitMQ connection for Docker: {maskedConnection}");
+        }
+        
+        return connectionString;
+    }
+    
+    /// <summary>
+    /// Masks password in connection string for safe logging.
+    /// </summary>
+    private static string MaskPasswordInConnectionString(string connectionString)
+    {
+        try
+        {
+            var uri = new Uri(connectionString);
+            if (!string.IsNullOrEmpty(uri.UserInfo) && uri.UserInfo.Contains(':'))
+            {
+                var parts = uri.UserInfo.Split(':');
+                if (parts.Length == 2)
+                {
+                    var maskedUserInfo = $"{parts[0]}:*****";
+                    return connectionString.Replace(uri.UserInfo, maskedUserInfo);
+                }
+            }
+        }
+        catch
+        {
+            // If parsing fails, return as-is
+        }
+        return connectionString;
     }
 
     /// <summary>

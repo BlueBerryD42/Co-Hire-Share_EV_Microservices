@@ -1,0 +1,13 @@
+.git
+.github
+.vscode
+bin
+obj
+**/bin
+**/obj
+*.user
+*.swp
+*.suo
+*.log
+.vs
+db/*.bak

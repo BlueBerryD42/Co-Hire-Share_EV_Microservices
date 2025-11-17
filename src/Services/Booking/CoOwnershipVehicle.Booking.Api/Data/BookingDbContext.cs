@@ -12,10 +12,9 @@ public class BookingDbContext : DbContext
 
     // Booking service entities - only what it actually needs
     public DbSet<CoOwnershipVehicle.Domain.Entities.Booking> Bookings { get; set; }
-    public DbSet<Vehicle> Vehicles { get; set; } // For booking details
-    public DbSet<User> Users { get; set; } // For user details
-    public DbSet<OwnershipGroup> OwnershipGroups { get; set; } // For group access
-    public DbSet<GroupMember> GroupMembers { get; set; } // For priority calculation
+    
+    // Note: User, Vehicle, OwnershipGroup, GroupMember entities are NOT included here.
+    // Booking service only stores foreign key IDs (Guid) and fetches related data via HTTP calls or events.
     public DbSet<MaintenanceBlock> MaintenanceBlocks { get; set; } // For preventing bookings during maintenance
     public DbSet<CheckIn> CheckIns { get; set; } // Vehicle handover check-ins
     public DbSet<CheckInPhoto> CheckInPhotos { get; set; } // Supporting media for check-ins
@@ -58,78 +57,11 @@ public class BookingDbContext : DbContext
         builder.Ignore<GroupFund>();
         builder.Ignore<FundTransaction>();
 
-        // User entity configuration (simplified for Booking service)
-        builder.Entity<User>(entity =>
-        {
-            entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Phone).HasMaxLength(20);
-            entity.Property(e => e.KycStatus).HasConversion<int>();
-            entity.Property(e => e.Role).HasConversion<int>();
-
-            entity.HasIndex(e => e.Email).IsUnique();
-            entity.HasIndex(e => e.Phone);
-
-            // Ignore navigation properties not relevant to Booking service
-            entity.Ignore(e => e.KycDocuments);
-            entity.Ignore(e => e.ExpensesCreated);
-            entity.Ignore(e => e.Payments);
-            entity.Ignore(e => e.CheckIns);
-            entity.Ignore(e => e.Votes);
-            entity.Ignore(e => e.AuditLogs);
-        });
-
-        // OwnershipGroup entity configuration (simplified for Booking service)
-        builder.Entity<OwnershipGroup>(entity =>
-        {
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.Description).HasMaxLength(1000);
-            entity.Property(e => e.Status).HasConversion<int>();
-
-            entity.HasOne(e => e.Creator)
-                  .WithMany()
-                  .HasForeignKey(e => e.CreatedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasIndex(e => e.Name);
-        });
-
-        // GroupMember entity configuration (simplified for Booking service)
-        builder.Entity<GroupMember>(entity =>
-        {
-            entity.Property(e => e.SharePercentage).HasColumnType("decimal(5,4)");
-            entity.Property(e => e.RoleInGroup).HasConversion<int>();
-
-            entity.HasOne(e => e.Group)
-                  .WithMany(g => g.Members)
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.User)
-                  .WithMany(u => u.GroupMemberships)
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasIndex(e => new { e.GroupId, e.UserId }).IsUnique();
-        });
-
-        // Vehicle entity configuration (simplified for Booking service)
-        builder.Entity<Vehicle>(entity =>
-        {
-            entity.Property(e => e.Vin).IsRequired().HasMaxLength(17);
-            entity.Property(e => e.PlateNumber).IsRequired().HasMaxLength(20);
-            entity.Property(e => e.Model).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Color).HasMaxLength(50);
-            entity.Property(e => e.Status).HasConversion<int>();
-
-            entity.HasOne(e => e.Group)
-                  .WithMany(g => g.Vehicles)
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.SetNull);
-
-            entity.HasIndex(e => e.Vin).IsUnique();
-            entity.HasIndex(e => e.PlateNumber).IsUnique();
-        });
+        // Ignore cross-service entities - Booking service only stores foreign key IDs
+        builder.Ignore<User>();
+        builder.Ignore<OwnershipGroup>();
+        builder.Ignore<GroupMember>();
+        builder.Ignore<Vehicle>();
 
         // Booking entity configuration
         builder.Entity<CoOwnershipVehicle.Domain.Entities.Booking>(entity =>
@@ -144,20 +76,10 @@ public class BookingDbContext : DbContext
             entity.Property(e => e.RecurringBookingId);
             entity.Property(e => e.BookingTemplateId); // Added BookingTemplateId
 
-            entity.HasOne(e => e.Vehicle)
-                  .WithMany(v => v.Bookings)
-                  .HasForeignKey(e => e.VehicleId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.Group)
-                  .WithMany(g => g.Bookings)
-                  .HasForeignKey(e => e.GroupId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.User)
-                  .WithMany(u => u.Bookings)
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // VehicleId, GroupId, UserId are stored but no FK constraints (entities are in other services)
+            entity.Ignore(e => e.Vehicle);
+            entity.Ignore(e => e.Group);
+            entity.Ignore(e => e.User);
 
             entity.HasOne(e => e.RecurringBooking)
                   .WithMany(rb => rb.GeneratedBookings)
@@ -204,20 +126,10 @@ builder.Entity<RecurringBooking>(entity =>
     entity.Property(e => e.CancellationReason).HasMaxLength(200);
     entity.Property(e => e.TimeZoneId).HasMaxLength(100);
 
-    entity.HasOne(e => e.Vehicle)
-          .WithMany(v => v.RecurringBookings)
-          .HasForeignKey(e => e.VehicleId)
-          .OnDelete(DeleteBehavior.Cascade);
-
-    entity.HasOne(e => e.Group)
-          .WithMany(g => g.RecurringBookings)
-          .HasForeignKey(e => e.GroupId)
-          .OnDelete(DeleteBehavior.Cascade);
-
-    entity.HasOne(e => e.User)
-          .WithMany(u => u.RecurringBookings)
-          .HasForeignKey(e => e.UserId)
-          .OnDelete(DeleteBehavior.Restrict);
+    // VehicleId, GroupId, UserId are stored but no FK constraints (entities are in other services)
+    entity.Ignore(e => e.Vehicle);
+    entity.Ignore(e => e.Group);
+    entity.Ignore(e => e.User);
 
     entity.HasIndex(e => e.Status);
     entity.HasIndex(e => e.VehicleId);
@@ -235,15 +147,9 @@ builder.Entity<BookingTemplate>(entity =>
     entity.Property(e => e.Priority).HasConversion<int>();
     entity.Property(e => e.UsageCount).HasDefaultValue(0);
 
-    entity.HasOne(e => e.User)
-        .WithMany()
-        .HasForeignKey(e => e.UserId)
-        .OnDelete(DeleteBehavior.Cascade);
-
-    entity.HasOne(e => e.Vehicle)
-        .WithMany()
-        .HasForeignKey(e => e.VehicleId)
-        .OnDelete(DeleteBehavior.SetNull);
+    // UserId, VehicleId are stored but no FK constraints (entities are in other services)
+    entity.Ignore(e => e.User);
+    entity.Ignore(e => e.Vehicle);
 
     entity.HasIndex(e => e.UserId);
     entity.HasIndex(e => e.VehicleId);
@@ -275,15 +181,9 @@ builder.Entity<CheckIn>(entity =>
           .HasForeignKey(e => e.BookingId)
           .OnDelete(DeleteBehavior.Cascade);
 
-    entity.HasOne(e => e.User)
-          .WithMany()
-          .HasForeignKey(e => e.UserId)
-          .OnDelete(DeleteBehavior.Cascade);
-
-    entity.HasOne(e => e.Vehicle)
-          .WithMany(v => v.CheckIns)
-          .HasForeignKey(e => e.VehicleId)
-          .OnDelete(DeleteBehavior.NoAction);
+    // UserId, VehicleId are stored but no FK constraints (entities are in other services)
+    entity.Ignore(e => e.User);
+    entity.Ignore(e => e.Vehicle);
 
     entity.HasOne(e => e.LateReturnFee)
           .WithOne(l => l.CheckIn)
@@ -327,20 +227,10 @@ builder.Entity<LateReturnFee>(entity =>
           .HasForeignKey(e => e.BookingId)
           .OnDelete(DeleteBehavior.NoAction);
 
-    entity.HasOne(e => e.User)
-          .WithMany()
-          .HasForeignKey(e => e.UserId)
-          .OnDelete(DeleteBehavior.Restrict);
-
-    entity.HasOne(e => e.Vehicle)
-          .WithMany()
-          .HasForeignKey(e => e.VehicleId)
-          .OnDelete(DeleteBehavior.Restrict);
-
-    entity.HasOne<OwnershipGroup>()
-          .WithMany()
-          .HasForeignKey(e => e.GroupId)
-          .OnDelete(DeleteBehavior.Restrict);
+    // UserId, VehicleId, GroupId are stored but no FK constraints (entities are in other services)
+    entity.Ignore(e => e.User);
+    entity.Ignore(e => e.Vehicle);
+    // GroupId is stored but no navigation property
 
     entity.HasIndex(e => e.BookingId);
     entity.HasIndex(e => e.UserId);
