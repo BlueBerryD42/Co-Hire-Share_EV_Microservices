@@ -73,6 +73,8 @@ public class VehicleDbContext : DbContext
             entity.Ignore(e => e.CheckIns);
             entity.Ignore(e => e.Votes);
             entity.Ignore(e => e.AuditLogs);
+            entity.Ignore(e => e.InitiatedFundTransactions);
+            entity.Ignore(e => e.ApprovedFundTransactions);
         });
 
         // OwnershipGroup entity configuration (simplified for Vehicle service)

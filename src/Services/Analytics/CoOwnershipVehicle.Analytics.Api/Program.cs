@@ -158,13 +158,11 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created
+// Apply pending migrations
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AnalyticsDbContext>();
-    
-    // Ensure database is created
-    await context.Database.EnsureCreatedAsync();
+    await context.Database.MigrateAsync();
 }
 
 app.Run();

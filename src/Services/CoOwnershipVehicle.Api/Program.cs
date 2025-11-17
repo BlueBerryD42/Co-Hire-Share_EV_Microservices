@@ -130,16 +130,14 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created and seed data
+// Apply migrations and seed data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
     
-    // Ensure database is created
-    
-    context.Database.EnsureCreated();
+    await context.Database.MigrateAsync();
     
     // Seed initial data
     await DataSeeder.SeedAsync(context, userManager, roleManager);

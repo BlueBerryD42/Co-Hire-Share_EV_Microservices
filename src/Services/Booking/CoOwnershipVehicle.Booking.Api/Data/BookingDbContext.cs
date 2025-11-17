@@ -55,6 +55,8 @@ public class BookingDbContext : DbContext
         builder.Ignore<Vote>();
         builder.Ignore<MaintenanceSchedule>();
         builder.Ignore<MaintenanceRecord>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
 
         // User entity configuration (simplified for Booking service)
         builder.Entity<User>(entity =>
@@ -75,6 +77,8 @@ public class BookingDbContext : DbContext
             entity.Ignore(e => e.CheckIns);
             entity.Ignore(e => e.Votes);
             entity.Ignore(e => e.AuditLogs);
+            entity.Ignore(e => e.InitiatedFundTransactions);
+            entity.Ignore(e => e.ApprovedFundTransactions);
         });
 
         // OwnershipGroup entity configuration (simplified for Booking service)
@@ -90,6 +94,8 @@ public class BookingDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => e.Name);
+            entity.Ignore(e => e.Fund);
+            entity.Ignore(e => e.FundTransactions);
         });
 
         // GroupMember entity configuration (simplified for Booking service)
