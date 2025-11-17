@@ -15,4 +15,6 @@ public interface IBookingService
     Task<BookingDto> ApproveBookingAsync(Guid bookingId, Guid approverId);
     Task<BookingDto> CancelBookingAsync(Guid bookingId, Guid userId, string? reason = null);
     Task<List<BookingDto>> GetPendingApprovalsAsync(Guid userId);
+    Task<BookingDto> UpdateVehicleStatusAsync(Guid bookingId, UpdateVehicleStatusDto request);
+    Task<BookingDto> UpdateTripSummaryAsync(Guid bookingId, UpdateTripSummaryDto request);
 }
