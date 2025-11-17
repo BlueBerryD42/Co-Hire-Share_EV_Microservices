@@ -2,6 +2,7 @@
 using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.DTOs;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
@@ -18,6 +19,8 @@ public class DocumentService : IDocumentService
     private readonly ICertificateGenerationService _certificateService;
     private readonly INotificationService _notificationService;
     private readonly ILogger<DocumentService> _logger;
+    private readonly IUserServiceClient _userServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     private static readonly string[] AllowedExtensions = { ".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png" };
     private static readonly string[] AllowedContentTypes =
@@ -37,7 +40,9 @@ public class DocumentService : IDocumentService
         ISigningTokenService signingTokenService,
         ICertificateGenerationService certificateService,
         INotificationService notificationService,
-        ILogger<DocumentService> logger)
+        ILogger<DocumentService> logger,
+        IUserServiceClient userServiceClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _fileStorage = fileStorage;
@@ -46,6 +51,18 @@ public class DocumentService : IDocumentService
         _certificateService = certificateService;
         _notificationService = notificationService;
         _logger = logger;
+        _userServiceClient = userServiceClient ?? throw new ArgumentNullException(nameof(userServiceClient));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            return string.Empty;
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     public async Task<DocumentUploadResponse> UploadDocumentAsync(DocumentUploadRequest request, Guid userId)
@@ -132,7 +149,9 @@ public class DocumentService : IDocumentService
         _logger.LogInformation("Document {DocumentId} uploaded successfully by user {UserId}",
             document.Id, userId);
 
-        var user = await _context.Users.FindAsync(userId);
+        // Get user info via HTTP call
+        var accessToken = GetAccessToken();
+        var user = await _userServiceClient.GetUserAsync(userId, accessToken);
 
         return new DocumentUploadResponse
         {
@@ -264,11 +283,29 @@ public class DocumentService : IDocumentService
                 : query.OrderBy(d => d.CreatedAt)
         };
 
-        // Apply pagination
+        // Apply pagination - get documents first without user data
         var documents = await query
             .Skip((parameters.Page - 1) * parameters.PageSize)
             .Take(parameters.PageSize)
-            .Select(d => new DocumentListItemResponse
+            .ToListAsync();
+
+        // Fetch user data via HTTP for all needed users
+        var accessToken = GetAccessToken();
+        var userIds = documents
+            .SelectMany(d => new[] { d.UploadedBy, d.DeletedBy })
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var users = await _userServiceClient.GetUsersAsync(userIds, accessToken);
+
+        // Map to DTOs with user data
+        var documentItems = documents.Select(d =>
+        {
+            var uploader = d.UploadedBy.HasValue ? users.GetValueOrDefault(d.UploadedBy.Value) : null;
+            var deleter = d.DeletedBy.HasValue ? users.GetValueOrDefault(d.DeletedBy.Value) : null;
+
+            return new DocumentListItemResponse
             {
                 Id = d.Id,
                 GroupId = d.GroupId,
@@ -281,27 +318,19 @@ public class DocumentService : IDocumentService
                 SignatureCount = d.Signatures.Count,
                 SignedCount = d.Signatures.Count(s => s.SignedAt != null),
                 UploaderId = d.UploadedBy ?? Guid.Empty,
-                UploaderName = _context.Users
-                    .Where(u => u.Id == d.UploadedBy)
-                    .Select(u => u.Email)
-                    .FirstOrDefault() ?? "Unknown",
+                UploaderName = uploader?.Email ?? "Unknown",
                 DownloadCount = d.Downloads.Count,
                 // Soft delete fields
                 IsDeleted = d.IsDeleted,
                 DeletedAt = d.DeletedAt,
                 DeletedBy = d.DeletedBy,
-                DeletedByName = d.DeletedBy.HasValue
-                    ? _context.Users
-                        .Where(u => u.Id == d.DeletedBy)
-                        .Select(u => u.FirstName + " " + u.LastName)
-                        .FirstOrDefault()
-                    : null
-            })
-            .ToListAsync();
+                DeletedByName = deleter != null ? $"{deleter.FirstName} {deleter.LastName}" : null
+            };
+        }).ToList();
 
         return new PaginatedDocumentResponse
         {
-            Items = documents,
+            Items = documentItems,
             TotalCount = totalCount,
             Page = parameters.Page,
             PageSize = parameters.PageSize
@@ -312,7 +341,6 @@ public class DocumentService : IDocumentService
     {
         var document = await _context.Documents
             .Include(d => d.Signatures)
-            .ThenInclude(s => s.Signer)
             .FirstOrDefaultAsync(d => d.Id == documentId);
 
         if (document == null)
@@ -330,6 +358,11 @@ public class DocumentService : IDocumentService
 
         var secureUrl = await _fileStorage.GetSecureUrlAsync(document.StorageKey);
 
+        // Fetch user data for signers via HTTP
+        var accessToken = GetAccessToken();
+        var signerIds = document.Signatures.Select(s => s.SignerId).Distinct().ToList();
+        var signers = await _userServiceClient.GetUsersAsync(signerIds, accessToken);
+
         return new DocumentDetailResponse
         {
             Id = document.Id,
@@ -346,14 +379,18 @@ public class DocumentService : IDocumentService
             PageCount = document.PageCount,
             Author = document.Author,
             IsVirusScanned = document.IsVirusScanned,
-            Signatures = document.Signatures.Select(s => new DocumentSignatureResponse
+            Signatures = document.Signatures.Select(s =>
             {
-                Id = s.Id,
-                SignerId = s.SignerId,
-                SignerName = s.Signer?.Email ?? "Unknown",
-                SignedAt = s.SignedAt,
-                SignatureOrder = s.SignatureOrder,
-                Status = s.Status
+                var signer = signers.GetValueOrDefault(s.SignerId);
+                return new DocumentSignatureResponse
+                {
+                    Id = s.Id,
+                    SignerId = s.SignerId,
+                    SignerName = signer?.Email ?? "Unknown",
+                    SignedAt = s.SignedAt,
+                    SignatureOrder = s.SignatureOrder,
+                    Status = s.Status
+                };
             }).ToList()
         };
     }
@@ -415,19 +452,28 @@ public class DocumentService : IDocumentService
         // Send notification to group admins
         try
         {
-            var groupAdmins = await _context.GroupMembers
+            var groupAdminMembers = await _context.GroupMembers
                 .Where(gm => gm.GroupId == document.GroupId &&
                             gm.RoleInGroup == GroupRole.Admin)
-                .Include(gm => gm.User)
-                .Select(gm => gm.User)
                 .ToListAsync();
 
-            var deletingUser = await _context.Users.FindAsync(userId);
+            // Fetch user data via HTTP
+            var accessToken = GetAccessToken();
+            var adminUserIds = groupAdminMembers.Select(gm => gm.UserId).ToList();
+            adminUserIds.Add(userId);
+            var users = await _userServiceClient.GetUsersAsync(adminUserIds.Distinct().ToList(), accessToken);
+
+            var groupAdmins = groupAdminMembers
+                .Select(gm => users.GetValueOrDefault(gm.UserId))
+                .Where(u => u != null)
+                .ToList();
+
+            var deletingUser = users.GetValueOrDefault(userId);
 
             if (groupAdmins.Any() && deletingUser != null)
             {
                 await _notificationService.SendDocumentDeletedNotificationAsync(
-                    groupAdmins, document, deletingUser);
+                    groupAdmins!, document, deletingUser);
 
                 _logger.LogInformation(
                     "Delete notification sent to {AdminCount} group admins for document {DocumentId}",
@@ -481,19 +527,28 @@ public class DocumentService : IDocumentService
         // Send notification to group admins
         try
         {
-            var groupAdmins = await _context.GroupMembers
+            var groupAdminMembers = await _context.GroupMembers
                 .Where(gm => gm.GroupId == document.GroupId &&
                             gm.RoleInGroup == GroupRole.Admin)
-                .Include(gm => gm.User)
-                .Select(gm => gm.User)
                 .ToListAsync();
 
-            var restoringUser = await _context.Users.FindAsync(userId);
+            // Fetch user data via HTTP
+            var accessToken = GetAccessToken();
+            var adminUserIds = groupAdminMembers.Select(gm => gm.UserId).ToList();
+            adminUserIds.Add(userId);
+            var users = await _userServiceClient.GetUsersAsync(adminUserIds.Distinct().ToList(), accessToken);
+
+            var groupAdmins = groupAdminMembers
+                .Select(gm => users.GetValueOrDefault(gm.UserId))
+                .Where(u => u != null)
+                .ToList();
+
+            var restoringUser = users.GetValueOrDefault(userId);
 
             if (groupAdmins.Any() && restoringUser != null)
             {
                 await _notificationService.SendDocumentRestoredNotificationAsync(
-                    groupAdmins, document, restoringUser);
+                    groupAdmins!, document, restoringUser);
 
                 _logger.LogInformation(
                     "Restore notification sent to {AdminCount} group admins for document {DocumentId}",
@@ -713,11 +768,16 @@ public class DocumentService : IDocumentService
 
         var downloads = await _context.DocumentDownloads
             .Where(d => d.DocumentId == documentId)
-            .Include(d => d.User)
             .OrderByDescending(d => d.DownloadedAt)
             .ToListAsync();
 
+        // Fetch user data via HTTP
+        var accessToken = GetAccessToken();
+        var downloadUserIds = downloads.Select(d => d.UserId).Distinct().ToList();
+        var users = await _userServiceClient.GetUsersAsync(downloadUserIds, accessToken);
+
         var lastDownload = downloads.FirstOrDefault();
+        var lastDownloader = lastDownload != null ? users.GetValueOrDefault(lastDownload.UserId) : null;
 
         return new DownloadTrackingInfo
         {
@@ -725,16 +785,20 @@ public class DocumentService : IDocumentService
             FileName = document.FileName,
             TotalDownloads = downloads.Count,
             LastDownloadedAt = lastDownload?.DownloadedAt,
-            LastDownloadedBy = lastDownload?.User?.Email,
+            LastDownloadedBy = lastDownloader?.Email,
             RecentDownloads = downloads
                 .Take(10)
-                .Select(d => new DownloadHistoryItem
+                .Select(d =>
                 {
-                    Id = d.Id,
-                    UserId = d.UserId,
-                    UserName = d.User?.Email ?? "Unknown",
-                    DownloadedAt = d.DownloadedAt,
-                    IpAddress = d.IpAddress
+                    var user = users.GetValueOrDefault(d.UserId);
+                    return new DownloadHistoryItem
+                    {
+                        Id = d.Id,
+                        UserId = d.UserId,
+                        UserName = user?.Email ?? "Unknown",
+                        DownloadedAt = d.DownloadedAt,
+                        IpAddress = d.IpAddress
+                    };
                 })
                 .ToList()
         };
@@ -810,10 +874,14 @@ public class DocumentService : IDocumentService
         var signers = new List<SignerInfo>();
         var tokenExpiresAt = DateTime.UtcNow.AddDays(request.TokenExpirationDays);
 
+        // Fetch all signer user data via HTTP
+        var accessToken = GetAccessToken();
+        var signerUsers = await _userServiceClient.GetUsersAsync(request.SignerIds, accessToken);
+
         for (int i = 0; i < request.SignerIds.Count; i++)
         {
             var signerId = request.SignerIds[i];
-            var signerUser = await _context.Users.FindAsync(signerId);
+            var signerUser = signerUsers.GetValueOrDefault(signerId);
 
             if (signerUser == null)
             {
@@ -1549,7 +1617,6 @@ public class DocumentService : IDocumentService
         // Get document and verify permissions
         var document = await _context.Documents
             .Include(d => d.Versions)
-                .ThenInclude(v => v.Uploader)
             .FirstOrDefaultAsync(d => d.Id == documentId);
 
         if (document == null)
@@ -1568,22 +1635,35 @@ public class DocumentService : IDocumentService
             throw new UnauthorizedAccessException("You must be a group member to view document versions");
         }
 
+        // Fetch user data for all version uploaders via HTTP
+        var accessToken = GetAccessToken();
+        var uploaderIds = document.Versions
+            .Where(v => v.UploadedBy.HasValue)
+            .Select(v => v.UploadedBy!.Value)
+            .Distinct()
+            .ToList();
+        var uploaders = await _userServiceClient.GetUsersAsync(uploaderIds, accessToken);
+
         var versions = document.Versions
             .OrderByDescending(v => v.VersionNumber)
-            .Select(v => new DocumentVersionResponse
+            .Select(v =>
             {
-                Id = v.Id,
-                DocumentId = v.DocumentId,
-                VersionNumber = v.VersionNumber,
-                FileName = v.FileName,
-                FileSize = v.FileSize,
-                ContentType = v.ContentType,
-                FileHash = v.FileHash,
-                UploadedBy = v.UploadedBy,
-                UploaderName = $"{v.Uploader.FirstName} {v.Uploader.LastName}",
-                UploadedAt = v.UploadedAt,
-                ChangeDescription = v.ChangeDescription,
-                IsCurrent = v.IsCurrent
+                var uploader = v.UploadedBy.HasValue ? uploaders.GetValueOrDefault(v.UploadedBy.Value) : null;
+                return new DocumentVersionResponse
+                {
+                    Id = v.Id,
+                    DocumentId = v.DocumentId,
+                    VersionNumber = v.VersionNumber,
+                    FileName = v.FileName,
+                    FileSize = v.FileSize,
+                    ContentType = v.ContentType,
+                    FileHash = v.FileHash,
+                    UploadedBy = v.UploadedBy,
+                    UploaderName = uploader != null ? $"{uploader.FirstName} {uploader.LastName}" : "Unknown",
+                    UploadedAt = v.UploadedAt,
+                    ChangeDescription = v.ChangeDescription,
+                    IsCurrent = v.IsCurrent
+                };
             })
             .ToList();
 
@@ -1591,7 +1671,11 @@ public class DocumentService : IDocumentService
         // This handles backwards compatibility for documents uploaded before version tracking
         if (!versions.Any(v => v.VersionNumber == 0) && versions.Any())
         {
-            var uploader = await _context.Users.FindAsync(document.UploadedBy);
+            // Get uploader name via HTTP
+            var accessToken = GetAccessToken();
+            var uploader = document.UploadedBy.HasValue 
+                ? await _userServiceClient.GetUserAsync(document.UploadedBy.Value, accessToken)
+                : null;
             var uploaderName = uploader != null ? $"{uploader.FirstName} {uploader.LastName}" : "Unknown";
 
             var version0 = new DocumentVersionResponse

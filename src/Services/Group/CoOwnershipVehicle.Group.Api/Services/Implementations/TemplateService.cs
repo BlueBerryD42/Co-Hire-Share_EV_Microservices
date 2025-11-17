@@ -31,8 +31,9 @@ public class TemplateService : ITemplateService
     {
         _logger.LogInformation("Creating new template '{Name}' by user {UserId}", request.Name, userId);
 
-        // Verify user is system admin
-        var user = await _context.Users.FindAsync(userId);
+        // Verify user is system admin via HTTP
+        var accessToken = GetAccessToken();
+        var user = await _userServiceClient.GetUserAsync(userId, accessToken);
 
         _logger.LogInformation("User lookup result - UserId: {UserId}, Found: {Found}, Role: {Role}",
             userId,
@@ -172,8 +173,9 @@ public class TemplateService : ITemplateService
     {
         _logger.LogInformation("Updating template {TemplateId} by user {UserId}", templateId, userId);
 
-        // Verify user is system admin
-        var user = await _context.Users.FindAsync(userId);
+        // Verify user is system admin via HTTP
+        var accessToken = GetAccessToken();
+        var user = await _userServiceClient.GetUserAsync(userId, accessToken);
         if (user == null || user.Role != UserRole.SystemAdmin)
         {
             throw new UnauthorizedAccessException("Only system administrators can update templates");
@@ -207,8 +209,9 @@ public class TemplateService : ITemplateService
     {
         _logger.LogInformation("Deleting template {TemplateId} by user {UserId}", templateId, userId);
 
-        // Verify user is system admin
-        var user = await _context.Users.FindAsync(userId);
+        // Verify user is system admin via HTTP
+        var accessToken = GetAccessToken();
+        var user = await _userServiceClient.GetUserAsync(userId, accessToken);
         if (user == null || user.Role != UserRole.SystemAdmin)
         {
             throw new UnauthorizedAccessException("Only system administrators can delete templates");
