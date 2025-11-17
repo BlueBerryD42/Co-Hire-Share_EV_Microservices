@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using CoOwnershipVehicle.Booking.Api.Contracts;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -70,8 +71,10 @@ public class CheckInController : ControllerBase
 
     private Guid GetCurrentUserId()
     {
-        var sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? User.FindFirst("sub")?.Value;
-        if (Guid.TryParse(sub, out var userId))
+        var userIdValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                          ?? User.FindFirst("sub")?.Value;
+        if (Guid.TryParse(userIdValue, out var userId))
         {
             return userId;
         }

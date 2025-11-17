@@ -200,12 +200,6 @@ public class BookingService : IBookingService
         var booking = await _bookingRepository.GetBookingWithDetailsAsync(bookingId)
                       ?? throw new ArgumentException("Booking not found");
 
-        var isOwner = booking.UserId == userId;
-        if (!isOwner)
-        {
-            throw new UnauthorizedAccessException("Cannot cancel this booking");
-        }
-
         booking.Status = Domain.Entities.BookingStatus.Cancelled;
         booking.UpdatedAt = DateTime.UtcNow;
         booking.Notes = !string.IsNullOrEmpty(reason)
