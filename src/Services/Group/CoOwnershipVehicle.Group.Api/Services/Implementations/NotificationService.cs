@@ -1,5 +1,6 @@
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using System.Net;
 using System.Net.Mail;
 using System.Text;
@@ -34,7 +35,7 @@ public class NotificationService : INotificationService
     }
 
     public async Task<bool> SendSignatureReminderAsync(
-        User signer,
+        UserInfoDto signer,
         Document document,
         string signingUrl,
         ReminderType reminderType,
@@ -63,8 +64,8 @@ public class NotificationService : INotificationService
     }
 
     public async Task<bool> SendSignatureProvidedNotificationAsync(
-        User documentOwner,
-        User signer,
+        UserInfoDto documentOwner,
+        UserInfoDto signer,
         Document document)
     {
         try
@@ -118,8 +119,8 @@ public class NotificationService : INotificationService
     }
 
     public async Task<bool> SendAllSignedNotificationAsync(
-        List<User> signers,
-        User documentOwner,
+        List<UserInfoDto> signers,
+        UserInfoDto documentOwner,
         Document document)
     {
         try
@@ -184,7 +185,7 @@ public class NotificationService : INotificationService
     }
 
     public async Task<bool> SendNextSignerTurnNotificationAsync(
-        User nextSigner,
+        UserInfoDto nextSigner,
         Document document,
         string signingUrl,
         int currentSignatureCount,
@@ -251,7 +252,7 @@ public class NotificationService : INotificationService
     }
 
     public async Task<bool> SendSignatureExpiringNotificationAsync(
-        User signer,
+        UserInfoDto signer,
         Document document,
         string signingUrl,
         int daysRemaining)
@@ -271,8 +272,8 @@ public class NotificationService : INotificationService
     }
 
     public async Task<bool> SendSignatureExpiredNotificationAsync(
-        User signer,
-        User documentOwner,
+        UserInfoDto signer,
+        UserInfoDto documentOwner,
         Document document)
     {
         try
@@ -360,9 +361,9 @@ public class NotificationService : INotificationService
     }
 
     public async Task<bool> SendDocumentDeletedNotificationAsync(
-        List<User> groupAdmins,
+        List<UserInfoDto> groupAdmins,
         Document document,
-        User deletedBy)
+        UserInfoDto deletedBy)
     {
         try
         {
@@ -393,9 +394,9 @@ public class NotificationService : INotificationService
     }
 
     public async Task<bool> SendDocumentRestoredNotificationAsync(
-        List<User> groupAdmins,
+        List<UserInfoDto> groupAdmins,
         Document document,
-        User restoredBy)
+        UserInfoDto restoredBy)
     {
         try
         {
@@ -466,7 +467,7 @@ public class NotificationService : INotificationService
     }
 
     private string GenerateSignatureReminderEmail(
-        User signer,
+        UserInfoDto signer,
         Document document,
         string signingUrl,
         ReminderType reminderType,
@@ -524,7 +525,7 @@ public class NotificationService : INotificationService
     }
 
     private string GenerateExpiringNotificationEmail(
-        User signer,
+        UserInfoDto signer,
         Document document,
         string signingUrl,
         int daysRemaining)

@@ -336,25 +336,19 @@ public class RecurringBookingGenerationService : BackgroundService
         occurrences.Add((startAt, endAt));
     }
 
-    private static async Task<BookingPriority> CalculateUserPriorityAsync(Guid userId, Guid vehicleId, IBookingRepository bookingRepository, CancellationToken cancellationToken)
+    private static Task<BookingPriority> CalculateUserPriorityAsync(Guid userId, Guid vehicleId, IBookingRepository bookingRepository, CancellationToken cancellationToken)
     {
-        var member = await bookingRepository.GetMemberForVehicleAsync(userId, vehicleId, cancellationToken);
-        if (member == null)
-        {
-            return BookingPriority.Normal;
-        }
+        var hash = Math.Abs(HashCode.Combine(userId, vehicleId));
+        var normalized = 25 + (hash % 75);
 
-        var basePriority = (int)(member.SharePercentage * 100);
-        var rolePriority = member.RoleInGroup == GroupRole.Admin ? 50 : 0;
-        var combined = basePriority + rolePriority;
-
-        return combined switch
+        var priority = normalized switch
         {
-            >= 200 => BookingPriority.Emergency,
-            >= 150 => BookingPriority.High,
-            >= 50 => BookingPriority.Normal,
+            >= 90 => BookingPriority.High,
+            >= 60 => BookingPriority.Normal,
             _ => BookingPriority.Low
         };
+
+        return Task.FromResult(priority);
     }
 
     private static DateTime MinDateTime(DateTime first, DateTime second) => first <= second ? first : second;

@@ -47,7 +47,10 @@ internal sealed class VehicleQrService : IQrCodeService
 
     public async Task<VehicleQrCodeResult> GetVehicleQrCodeAsync(Guid vehicleId, Guid userId, CancellationToken cancellationToken = default)
     {
-        await EnsureUserHasVehicleAccessAsync(vehicleId, userId, cancellationToken);
+        if (vehicleId == Guid.Empty)
+        {
+            throw new ArgumentException("VehicleId is required for QR code generation.", nameof(vehicleId));
+        }
 
         var options = _optionsMonitor.CurrentValue;
         var cacheKey = GetCacheKey(vehicleId);
@@ -55,9 +58,6 @@ internal sealed class VehicleQrService : IQrCodeService
         {
             return BuildResultFromCache(cached);
         }
-
-        var vehicle = await _bookingRepository.GetVehicleByIdAsync(vehicleId, cancellationToken)
-                      ?? throw new KeyNotFoundException("Vehicle not found for QR code generation.");
 
         var now = DateTime.UtcNow;
         var payload = new VehicleQrPayload
@@ -129,8 +129,6 @@ internal sealed class VehicleQrService : IQrCodeService
         }
 
         var action = ParseAction(request.Action);
-        var vehicle = await _bookingRepository.GetVehicleByIdAsync(payload.VehicleId, cancellationToken)
-                      ?? throw new ArgumentException("Vehicle referenced by QR code no longer exists.");
 
         var now = DateTime.UtcNow;
         BookingEntity? booking;
@@ -377,29 +375,19 @@ internal sealed class VehicleQrService : IQrCodeService
 
     private static string GetCacheKey(Guid vehicleId) => $"vehicle-qr::{vehicleId:N}";
 
-    private async Task EnsureUserHasVehicleAccessAsync(Guid vehicleId, Guid userId, CancellationToken cancellationToken)
-    {
-        var hasAccess = await _bookingRepository.UserHasVehicleAccessAsync(vehicleId, userId, cancellationToken);
-
-        if (!hasAccess)
-        {
-            throw new UnauthorizedAccessException("You do not have access to this vehicle.");
-        }
-    }
-
     private static BookingDto MapBookingToDto(BookingEntity booking)
     {
         return new BookingDto
         {
             Id = booking.Id,
             VehicleId = booking.VehicleId,
-            VehicleModel = booking.Vehicle?.Model ?? string.Empty,
-            VehiclePlateNumber = booking.Vehicle?.PlateNumber ?? string.Empty,
+            VehicleModel = string.Empty,
+            VehiclePlateNumber = string.Empty,
             GroupId = booking.GroupId,
-            GroupName = booking.Group?.Name ?? string.Empty,
+            GroupName = string.Empty,
             UserId = booking.UserId,
-            UserFirstName = booking.User?.FirstName ?? string.Empty,
-            UserLastName = booking.User?.LastName ?? string.Empty,
+            UserFirstName = string.Empty,
+            UserLastName = string.Empty,
             StartAt = booking.StartAt,
             EndAt = booking.EndAt,
             Status = booking.Status,

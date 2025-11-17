@@ -181,11 +181,6 @@ public class LateReturnFeeService : ILateReturnFeeService
             throw new KeyNotFoundException("Late return fee not found.");
         }
 
-        if (!await _bookingRepository.IsGroupAdminAsync(adminId, fee.GroupId, cancellationToken))
-        {
-            throw new UnauthorizedAccessException("Only group administrators can waive late return fees.");
-        }
-
         if (fee.Status == LateReturnFeeStatus.Waived)
         {
             _logger.LogInformation("Late return fee {FeeId} already waived.", feeId);

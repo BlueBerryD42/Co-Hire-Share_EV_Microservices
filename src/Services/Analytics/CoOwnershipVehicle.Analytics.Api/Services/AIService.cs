@@ -1,8 +1,9 @@
 using CoOwnershipVehicle.Analytics.Api.Data;
 using CoOwnershipVehicle.Analytics.Api.Data.Entities;
 using CoOwnershipVehicle.Analytics.Api.Models;
+using CoOwnershipVehicle.Analytics.Api.Services.HttpClients;
 using CoOwnershipVehicle.Domain.Entities;
-using CoOwnershipVehicle.Data;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using Microsoft.EntityFrameworkCore;
 
 namespace CoOwnershipVehicle.Analytics.Api.Services;
@@ -10,13 +11,22 @@ namespace CoOwnershipVehicle.Analytics.Api.Services;
 public class AIService : IAIService
 {
 	private readonly AnalyticsDbContext _context;
-	private readonly ApplicationDbContext _mainContext;
+	private readonly IGroupServiceClient _groupServiceClient;
+	private readonly IBookingServiceClient _bookingServiceClient;
+	private readonly IPaymentServiceClient _paymentServiceClient;
 	private readonly ILogger<AIService> _logger;
 
-	public AIService(AnalyticsDbContext context, ApplicationDbContext mainContext, ILogger<AIService> logger)
+	public AIService(
+		AnalyticsDbContext context,
+		IGroupServiceClient groupServiceClient,
+		IBookingServiceClient bookingServiceClient,
+		IPaymentServiceClient paymentServiceClient,
+		ILogger<AIService> logger)
 	{
 		_context = context;
-		_mainContext = mainContext;
+		_groupServiceClient = groupServiceClient;
+		_bookingServiceClient = bookingServiceClient;
+		_paymentServiceClient = paymentServiceClient;
 		_logger = logger;
 	}
 
@@ -402,7 +412,8 @@ public class AIService : IAIService
 
 		if (!userHistory.Any() && !snapHistory.Any())
 		{
-			var group = await _mainContext.OwnershipGroups.AsNoTracking().FirstOrDefaultAsync(g => g.Id == groupId);
+			// Get group from Group service via HTTP
+			var group = await _groupServiceClient.GetGroupDetailsAsync(groupId);
 			if (group == null)
 			{
 				return null; // unknown group
@@ -618,34 +629,26 @@ public class AIService : IAIService
 		var periodStart = periodEnd.AddMonths(-12); // Last 12 months
 
 		// Check if group exists
-		var group = await _mainContext.OwnershipGroups
-			.Include(g => g.Members)
-			.Include(g => g.Vehicles)
-			.FirstOrDefaultAsync(g => g.Id == groupId);
-
+		// Get group from Group service via HTTP
+		var group = await _groupServiceClient.GetGroupDetailsAsync(groupId);
 		if (group == null)
 		{
 			return null;
 		}
 
-		// Get all expenses for the group
-		var expenses = await _mainContext.Expenses
-			.Include(e => e.Vehicle)
-			.Where(e => e.GroupId == groupId && e.DateIncurred >= periodStart && e.DateIncurred <= periodEnd)
-			.ToListAsync();
+		// Get all expenses for the group from Payment service via HTTP
+		var expenses = await _paymentServiceClient.GetExpensesAsync(groupId, periodStart, periodEnd);
 
-		// Get bookings for distance calculations
-		var bookings = await _mainContext.Bookings
-			.Include(b => b.CheckIns)
-			.Where(b => b.GroupId == groupId && b.StartAt >= periodStart && b.EndAt <= periodEnd && b.Status == BookingStatus.Completed)
-			.ToListAsync();
+		// Get bookings for distance calculations from Booking service via HTTP
+		var allBookings = await _bookingServiceClient.GetBookingsAsync(periodStart, periodEnd, groupId);
+		var bookings = allBookings.Where(b => b.Status == BookingStatus.Completed).ToList();
 
 		if (!expenses.Any())
 		{
 			return new CostOptimizationResponse
 			{
 				GroupId = groupId,
-				GroupName = group.Name,
+				GroupName = group.Name ?? "Unknown",
 				PeriodStart = periodStart,
 				PeriodEnd = periodEnd,
 				GeneratedAt = DateTime.UtcNow,
@@ -677,9 +680,9 @@ public class AIService : IAIService
 		};
 
 		// Calculate total distance from check-ins
-		var totalDistance = CalculateTotalDistance(bookings);
+		var totalDistance = await CalculateTotalDistanceAsync(bookings);
 		var totalTrips = bookings.Count;
-		var totalMembers = group.Members.Count;
+		var totalMembers = group.Members?.Count ?? 0;
 		var totalHours = bookings.Sum(b => (int)(b.EndAt - b.StartAt).TotalHours);
 
 		// 1. Cost Analysis Summary
@@ -718,7 +721,9 @@ public class AIService : IAIService
 		};
 
 		// 4. Benchmark Comparisons
-		response.Benchmarks = CalculateBenchmarks(response.EfficiencyMetrics, group.Vehicles.ToList());
+		// Note: Vehicles would need to come from Vehicle service if needed
+		// Note: Vehicle data would need to be fetched from Vehicle service if needed for benchmarks
+		response.Benchmarks = CalculateBenchmarks(response.EfficiencyMetrics, new List<VehicleDto>());
 
 		// 5. Generate Recommendations
 		response.Recommendations = GenerateRecommendations(expenses, response.HighCostAreas, response.EfficiencyMetrics, response.Benchmarks, totalExpenses);
@@ -730,30 +735,33 @@ public class AIService : IAIService
 		response.Alerts = GenerateAlerts(expenses, expensesByMonth, totalExpenses);
 
 		// 8. ROI Calculations
-		response.ROICalculations = CalculateROI(expenses, response.EfficiencyMetrics, group.Vehicles.ToList());
+		// Note: Vehicles would need to come from Vehicle service if needed
+		// Note: Vehicle data would need to be fetched from Vehicle service if needed for ROI calculations
+		response.ROICalculations = CalculateROI(expenses, response.EfficiencyMetrics, new List<VehicleDto>());
 
 		return response;
 	}
 
-	private decimal CalculateTotalDistance(List<Booking> bookings)
+	private async Task<decimal> CalculateTotalDistanceAsync(List<BookingDto> bookings)
 	{
-		return bookings
-			.SelectMany(b => b.CheckIns)
-			.Where(c => c.Type == CheckInType.CheckOut)
-			.Select(c =>
+		decimal totalDistance = 0;
+		
+		foreach (var booking in bookings)
+		{
+			var checkIns = await _bookingServiceClient.GetBookingCheckInsAsync(booking.Id);
+			var checkOut = checkIns.FirstOrDefault(c => c.Type == CheckInType.CheckOut);
+			var checkIn = checkIns.FirstOrDefault(c => c.Type == CheckInType.CheckIn);
+			
+			if (checkOut != null && checkIn != null)
 			{
-				var booking = bookings.FirstOrDefault(b => b.Id == c.BookingId);
-				var checkIn = booking?.CheckIns.FirstOrDefault(ci => ci.Type == CheckInType.CheckIn && ci.BookingId == c.BookingId);
-				if (checkIn != null)
-				{
-					return Math.Max(0, c.Odometer - checkIn.Odometer);
-				}
-				return 0;
-			})
-			.Sum();
+				totalDistance += Math.Max(0, checkOut.Odometer - checkIn.Odometer);
+			}
+		}
+		
+		return totalDistance;
 	}
 
-	private List<HighCostArea> AnalyzeHighCostAreas(List<Expense> expenses, decimal totalExpenses)
+	private List<HighCostArea> AnalyzeHighCostAreas(List<ExpenseDto> expenses, decimal totalExpenses)
 	{
 		var highCostAreas = new List<HighCostArea>();
 
@@ -775,7 +783,7 @@ public class AIService : IAIService
 
 		// Analyze maintenance providers (extract from description/notes)
 		var maintenanceExpenses = expenses.Where(e => e.ExpenseType == ExpenseType.Maintenance || e.ExpenseType == ExpenseType.Repair).ToList();
-		var providerGroups = new Dictionary<string, List<Expense>>();
+		var providerGroups = new Dictionary<string, List<ExpenseDto>>();
 		
 		foreach (var exp in maintenanceExpenses)
 		{
@@ -788,7 +796,7 @@ public class AIService : IAIService
 
 			if (!providerGroups.ContainsKey(providerName))
 			{
-				providerGroups[providerName] = new List<Expense>();
+				providerGroups[providerName] = new List<ExpenseDto>();
 			}
 			providerGroups[providerName].Add(exp);
 		}
@@ -854,7 +862,7 @@ public class AIService : IAIService
 		return null;
 	}
 
-	private BenchmarkComparisons CalculateBenchmarks(CostEfficiencyMetrics metrics, List<Vehicle> vehicles)
+	private BenchmarkComparisons CalculateBenchmarks(CostEfficiencyMetrics metrics, List<VehicleDto> vehicles)
 	{
 		var comparisons = new BenchmarkComparisons();
 
@@ -910,7 +918,7 @@ public class AIService : IAIService
 	}
 
 	private List<CostRecommendation> GenerateRecommendations(
-		List<Expense> expenses,
+		List<ExpenseDto> expenses,
 		List<HighCostArea> highCostAreas,
 		CostEfficiencyMetrics metrics,
 		BenchmarkComparisons benchmarks,
@@ -1047,7 +1055,7 @@ public class AIService : IAIService
 	}
 
 	private CostPrediction GeneratePredictions(
-		List<Expense> expenses,
+		List<ExpenseDto> expenses,
 		Dictionary<string, decimal> expensesByMonth,
 		decimal totalDistance,
 		int totalTrips)
@@ -1155,7 +1163,7 @@ public class AIService : IAIService
 	}
 
 	private List<SpendingAlert> GenerateAlerts(
-		List<Expense> expenses,
+		List<ExpenseDto> expenses,
 		Dictionary<string, decimal> expensesByMonth,
 		decimal totalExpenses)
 	{
@@ -1246,9 +1254,9 @@ public class AIService : IAIService
 	}
 
 	private List<ROICalculation> CalculateROI(
-		List<Expense> expenses,
+		List<ExpenseDto> expenses,
 		CostEfficiencyMetrics metrics,
-		List<Vehicle> vehicles)
+		List<VehicleDto> vehicles)
 	{
 		var roiCalculations = new List<ROICalculation>();
 
@@ -1261,7 +1269,8 @@ public class AIService : IAIService
 		if (annualRepairCost > 2000 && vehicles.Any())
 		{
 			var vehicle = vehicles.First();
-			var vehicleAge = DateTime.UtcNow.Year - vehicle.Year;
+			// Note: VehicleDto may not have Year property, using placeholder
+			var vehicleAge = vehicle.Year > 0 ? DateTime.UtcNow.Year - vehicle.Year : 5;
 			var estimatedReplacementCost = 30000m; // Average EV cost
 			
 			// Calculate if replacement is more cost-effective

@@ -1,9 +1,11 @@
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.Services;
+using CoOwnershipVehicle.Group.Api.Services.Interfaces;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using FluentAssertions;
 using MassTransit;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -30,37 +32,36 @@ public class FundServiceTests : IDisposable
         _context = new GroupDbContext(options);
         _publishEndpointMock = new Mock<IPublishEndpoint>();
         _loggerMock = new Mock<ILogger<FundService>>();
-        _fundService = new FundService(_context, _publishEndpointMock.Object, _loggerMock.Object);
         _testUserId = Guid.NewGuid();
         _testAdminId = Guid.NewGuid();
         _testGroupId = Guid.NewGuid();
+
+        // Mock IUserServiceClient
+        var userServiceClientMock = new Mock<IUserServiceClient>();
+        userServiceClientMock.Setup(x => x.GetUserAsync(_testUserId, It.IsAny<string>()))
+            .ReturnsAsync(new UserInfoDto { Id = _testUserId, Email = "test@example.com", FirstName = "Test", LastName = "User" });
+        userServiceClientMock.Setup(x => x.GetUserAsync(_testAdminId, It.IsAny<string>()))
+            .ReturnsAsync(new UserInfoDto { Id = _testAdminId, Email = "admin@example.com", FirstName = "Admin", LastName = "User" });
+
+        // Mock IHttpContextAccessor
+        var httpContextAccessorMock = new Mock<IHttpContextAccessor>();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Authorization"] = "Bearer test-token";
+        httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+
+        _fundService = new FundService(
+            _context, 
+            _publishEndpointMock.Object, 
+            _loggerMock.Object,
+            userServiceClientMock.Object,
+            httpContextAccessorMock.Object);
 
         SeedTestData();
     }
 
     private void SeedTestData()
     {
-        var user = new User
-        {
-            Id = _testUserId,
-            Email = "test@example.com",
-            FirstName = "Test",
-            LastName = "User",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        _context.Users.Add(user);
-
-        var admin = new User
-        {
-            Id = _testAdminId,
-            Email = "admin@example.com",
-            FirstName = "Admin",
-            LastName = "User",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        _context.Users.Add(admin);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
 
         var group = new OwnershipGroup
         {

@@ -71,6 +71,9 @@ services:
         APP_DLL: CoOwnershipVehicle.Group.Api.dll
     ports:
       - "61603:8080"
+    environment:
+      <<: *common-env
+      SIGNATURE_REMINDER_BASE_URL: "http://localhost:61600"  # Use API Gateway for external access
     networks:
       - coownership
 

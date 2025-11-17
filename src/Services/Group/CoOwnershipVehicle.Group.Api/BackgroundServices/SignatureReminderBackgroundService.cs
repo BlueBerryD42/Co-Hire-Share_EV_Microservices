@@ -1,7 +1,9 @@
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace CoOwnershipVehicle.Group.Api.BackgroundServices;
 
@@ -9,6 +11,7 @@ public class SignatureReminderBackgroundService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SignatureReminderBackgroundService> _logger;
+    private readonly IConfiguration _configuration;
     private readonly TimeSpan _runInterval;
 
     public SignatureReminderBackgroundService(
@@ -18,6 +21,7 @@ public class SignatureReminderBackgroundService : BackgroundService
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _configuration = configuration;
 
         // Default to run daily at 9 AM, configurable via appsettings
         var intervalHours = configuration.GetValue<int>("SignatureReminders:IntervalHours", 24);
@@ -85,7 +89,6 @@ public class SignatureReminderBackgroundService : BackgroundService
         // Find all pending signatures with due dates
         var pendingSignatures = await context.DocumentSignatures
             .Include(s => s.Document)
-            .Include(s => s.Signer)
             .Where(s => s.Status == SignatureStatus.SentForSigning &&
                        s.DueDate.HasValue &&
                        s.DueDate.Value > now) // Not yet expired
@@ -161,7 +164,6 @@ public class SignatureReminderBackgroundService : BackgroundService
         // Find signatures that are overdue but not yet marked as expired
         var overdueSignatures = await context.DocumentSignatures
             .Include(s => s.Document)
-            .Include(s => s.Signer)
             .Where(s => s.Status == SignatureStatus.SentForSigning &&
                        s.DueDate.HasValue &&
                        s.DueDate.Value < now &&
@@ -199,11 +201,18 @@ public class SignatureReminderBackgroundService : BackgroundService
         // Find signatures that have expired
         var expiredSignatures = await context.DocumentSignatures
             .Include(s => s.Document)
-            .Include(s => s.Signer)
             .Where(s => s.Status == SignatureStatus.SentForSigning &&
                        s.DueDate.HasValue &&
                        s.DueDate.Value < now)
             .ToListAsync(cancellationToken);
+
+        // Get user service client for fetching user data
+        using var scope = _serviceProvider.CreateScope();
+        var userServiceClient = scope.ServiceProvider.GetRequiredService<IUserServiceClient>();
+        // For background services, we'll use an empty token or service token
+        // Note: This assumes the User Service endpoint allows internal calls
+        // In production, use a service account token
+        var accessToken = _configuration["ServiceTokens:Internal"] ?? string.Empty;
 
         foreach (var signature in expiredSignatures)
         {
@@ -212,15 +221,24 @@ public class SignatureReminderBackgroundService : BackgroundService
                 // Mark as expired
                 signature.Status = SignatureStatus.Expired;
 
-                // Get document owner
+                // Get document owner and signer via HTTP
                 var document = signature.Document;
-                var documentOwner = await context.Users
-                    .FirstOrDefaultAsync(u => u.Id == document.UploadedBy, cancellationToken);
+                var userIds = new List<Guid> { signature.SignerId };
+                if (document.UploadedBy.HasValue)
+                {
+                    userIds.Add(document.UploadedBy.Value);
+                }
 
-                if (documentOwner != null)
+                var users = await userServiceClient.GetUsersAsync(userIds, accessToken);
+                var signer = users.GetValueOrDefault(signature.SignerId);
+                var documentOwner = document.UploadedBy.HasValue 
+                    ? users.GetValueOrDefault(document.UploadedBy.Value) 
+                    : null;
+
+                if (signer != null && documentOwner != null)
                 {
                     await notificationService.SendSignatureExpiredNotificationAsync(
-                        signature.Signer,
+                        signer,
                         documentOwner,
                         document);
                 }
@@ -257,11 +275,25 @@ public class SignatureReminderBackgroundService : BackgroundService
         ReminderType reminderType,
         CancellationToken cancellationToken)
     {
-        var baseUrl = "https://localhost:61603"; // TODO: Get from configuration
+        // Get base URL from configuration, fallback to default Group Service port
+        var baseUrl = _configuration["SignatureReminders:BaseUrl"] 
+            ?? "https://localhost:61603"; // Default to Group Service port from launchSettings.json
         var signingUrl = $"{baseUrl}/api/document/{signature.DocumentId}/sign?token={signature.SigningToken}";
 
+        // Get signer user data via HTTP
+        using var scope = _serviceProvider.CreateScope();
+        var userServiceClient = scope.ServiceProvider.GetRequiredService<IUserServiceClient>();
+        var accessToken = _configuration["ServiceTokens:Internal"] ?? string.Empty;
+        var signer = await userServiceClient.GetUserAsync(signature.SignerId, accessToken);
+
+        if (signer == null)
+        {
+            _logger.LogWarning("Signer {SignerId} not found for signature {SignatureId}", signature.SignerId, signature.Id);
+            return;
+        }
+
         var success = await notificationService.SendSignatureReminderAsync(
-            signature.Signer,
+            signer,
             signature.Document,
             signingUrl,
             reminderType);
