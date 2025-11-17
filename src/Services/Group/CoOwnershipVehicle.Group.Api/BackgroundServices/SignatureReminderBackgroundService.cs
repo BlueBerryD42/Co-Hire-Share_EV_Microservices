@@ -257,7 +257,7 @@ public class SignatureReminderBackgroundService : BackgroundService
         ReminderType reminderType,
         CancellationToken cancellationToken)
     {
-        var baseUrl = "https://localhost:61600"; // TODO: Get from configuration
+        var baseUrl = "https://localhost:61603"; // TODO: Get from configuration
         var signingUrl = $"{baseUrl}/api/document/{signature.DocumentId}/sign?token={signature.SigningToken}";
 
         var success = await notificationService.SendSignatureReminderAsync(

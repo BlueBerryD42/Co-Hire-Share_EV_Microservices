@@ -27,15 +27,16 @@ public abstract class IntegrationTestBase : IDisposable
         HttpClient = new HttpClient();
         ServiceClients = new Dictionary<string, ServiceClientHelper>
         {
-            { "apiGateway", new ServiceClientHelper(new HttpClient(), "https://localhost:7000") },
-            { "auth", new ServiceClientHelper(new HttpClient(), "https://localhost:5002") },
-            { "user", new ServiceClientHelper(new HttpClient(), "https://localhost:5008") },
-            { "booking", new ServiceClientHelper(new HttpClient(), "https://localhost:5003") },
-            { "vehicle", new ServiceClientHelper(new HttpClient(), "https://localhost:5009") },
-            { "payment", new ServiceClientHelper(new HttpClient(), "https://localhost:5007") },
-            { "group", new ServiceClientHelper(new HttpClient(), "https://localhost:5004") },
-            { "analytics", new ServiceClientHelper(new HttpClient(), "https://localhost:5001") },
-            { "admin", new ServiceClientHelper(new HttpClient(), "https://localhost:61610") }
+            { "apiGateway", new ServiceClientHelper(new HttpClient(), "https://localhost:61600") },
+            { "auth", new ServiceClientHelper(new HttpClient(), "https://localhost:61601") },
+            { "user", new ServiceClientHelper(new HttpClient(), "https://localhost:61602") },
+            { "booking", new ServiceClientHelper(new HttpClient(), "https://localhost:61606") },
+            { "vehicle", new ServiceClientHelper(new HttpClient(), "https://localhost:61604") },
+            { "payment", new ServiceClientHelper(new HttpClient(), "https://localhost:61605") },
+            { "group", new ServiceClientHelper(new HttpClient(), "https://localhost:61603") },
+            { "analytics", new ServiceClientHelper(new HttpClient(), "https://localhost:61608") },
+            { "admin", new ServiceClientHelper(new HttpClient(), "https://localhost:61607") },
+            { "notification", new ServiceClientHelper(new HttpClient(), "https://localhost:61609") }
         };
     }
 
