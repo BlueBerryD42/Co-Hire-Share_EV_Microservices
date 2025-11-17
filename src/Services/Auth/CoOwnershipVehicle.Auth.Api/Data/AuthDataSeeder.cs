@@ -48,24 +48,23 @@ public static class AuthDataSeeder
         var adminEmail = "admin@coev.com";
         if (await userManager.FindByEmailAsync(adminEmail) == null)
         {
+            // Auth DB no longer stores profile fields - only authentication data
             var admin = new User
             {
                 Id = Guid.NewGuid(),
                 UserName = adminEmail,
                 Email = adminEmail,
-                FirstName = "System",
-                LastName = "Administrator",
-                EmailConfirmed = true,
-                Role = UserRole.SystemAdmin,
-                KycStatus = KycStatus.Approved,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                EmailConfirmed = true
+                // Profile fields (FirstName, LastName, Role, KycStatus, etc.) are NOT stored in Auth DB
+                // They should be created in User service database via UserRegisteredEvent
             };
 
             var result = await userManager.CreateAsync(admin, "Admin123!");
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(admin, "SystemAdmin");
+                // Note: Profile data should be created in User service via UserRegisteredEvent
+                // For seed data, you may need to manually create profile in User DB or publish event
             }
         }
 
@@ -73,24 +72,22 @@ public static class AuthDataSeeder
         var staffEmail = "staff@coev.com";
         if (await userManager.FindByEmailAsync(staffEmail) == null)
         {
+            // Auth DB no longer stores profile fields - only authentication data
             var staff = new User
             {
                 Id = Guid.NewGuid(),
                 UserName = staffEmail,
                 Email = staffEmail,
-                FirstName = "Staff",
-                LastName = "Member",
-                EmailConfirmed = true,
-                Role = UserRole.Staff,
-                KycStatus = KycStatus.Approved,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                EmailConfirmed = true
+                // Profile fields (FirstName, LastName, Role, KycStatus, etc.) are NOT stored in Auth DB
+                // They should be created in User service database via UserRegisteredEvent
             };
 
             var result = await userManager.CreateAsync(staff, "Staff123!");
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(staff, "Staff");
+                // Note: Profile data should be created in User service via UserRegisteredEvent
             }
         }
 
@@ -106,24 +103,22 @@ public static class AuthDataSeeder
         {
             if (await userManager.FindByEmailAsync(owner.Email) == null)
             {
+                // Auth DB no longer stores profile fields - only authentication data
                 var user = new User
                 {
                     Id = Guid.NewGuid(),
                     UserName = owner.Email,
                     Email = owner.Email,
-                    FirstName = owner.FirstName,
-                    LastName = owner.LastName,
-                    EmailConfirmed = true,
-                    Role = UserRole.CoOwner,
-                    KycStatus = KycStatus.Approved,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    EmailConfirmed = true
+                    // Profile fields (FirstName, LastName, Role, KycStatus, etc.) are NOT stored in Auth DB
+                    // They should be created in User service database via UserRegisteredEvent
                 };
 
                 var result = await userManager.CreateAsync(user, "User123!");
                 if (result.Succeeded)
                 {
                     await userManager.AddToRoleAsync(user, "CoOwner");
+                    // Note: Profile data should be created in User service via UserRegisteredEvent
                 }
             }
         }
