@@ -170,12 +170,12 @@ try
 
     await pingTask;
 
-    programLogger.LogInformation("✅ Successfully connected to Redis");
+    programLogger.LogInformation(" Successfully connected to Redis");
 }
 catch (Exception ex)
 {
     var programLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
-    programLogger.LogError(ex, "❌ Failed to connect to Redis. Falling back to in-memory mode.");
+    programLogger.LogError(ex, "Failed to connect to Redis. Falling back to in-memory mode.");
     redisConnection = null;
 }
 
