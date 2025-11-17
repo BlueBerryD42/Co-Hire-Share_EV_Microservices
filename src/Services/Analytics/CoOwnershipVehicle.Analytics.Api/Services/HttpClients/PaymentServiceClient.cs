@@ -32,6 +32,40 @@ public class PaymentServiceClient : IPaymentServiceClient
         }
     }
 
+    public async Task<List<PaymentDto>> GetPaymentsAsync(DateTime? from = null, DateTime? to = null)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var queryParams = new List<string>();
+            
+            if (from.HasValue)
+                queryParams.Add($"from={from.Value:yyyy-MM-ddTHH:mm:ssZ}");
+            if (to.HasValue)
+                queryParams.Add($"to={to.Value:yyyy-MM-ddTHH:mm:ssZ}");
+
+            var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
+            var response = await _httpClient.GetAsync($"api/Payment/payments{queryString}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var payments = JsonSerializer.Deserialize<List<PaymentDto>>(content, _jsonOptions) ?? new List<PaymentDto>();
+                return payments;
+            }
+            else
+            {
+                _logger.LogWarning("Failed to get payments. Status: {StatusCode}", response.StatusCode);
+                return new List<PaymentDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Payment service to get payments");
+            return new List<PaymentDto>();
+        }
+    }
+
     public async Task<List<ExpenseDto>> GetExpensesAsync(Guid? groupId = null, DateTime? from = null, DateTime? to = null)
     {
         try

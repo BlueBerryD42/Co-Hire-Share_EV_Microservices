@@ -159,7 +159,7 @@ public class AnalyticsService : IAnalyticsService
                     TotalBookings = userBookings.Count,
                     CompletedBookings = completedBookings,
                     TotalUsageHours = totalHours,
-                    AverageBookingDuration = userBookings.Any() ? userBookings.Average(b => (b.EndAt - b.StartAt).TotalHours) : 0
+                    AverageBookingDuration = userBookings.Any() ? (decimal)userBookings.Average(b => (b.EndAt - b.StartAt).TotalHours) : 0
                 });
             }
             
@@ -613,6 +613,7 @@ public class AnalyticsService : IAnalyticsService
             // Calculate usage by cost (from expenses)
             var totalCost = expenses.Sum(e => e.Amount);
             // Note: Payments would need Payment service endpoint to get payments by user
+            var memberCost = 0m; // Placeholder - would need Payment service endpoint to get member-specific costs
             var costPercentage = 0m; // Placeholder - would need Payment service endpoint
 
             // Calculate overall usage percentage (average of all metrics)
@@ -623,7 +624,7 @@ public class AnalyticsService : IAnalyticsService
             var metrics = new MemberUsageMetricsDto
             {
                 MemberId = member.UserId,
-                MemberName = $"{member.UserFirstName} {member.UserLastName}",
+                MemberName = member.UserName, // Use UserName property instead of UserFirstName/UserLastName
                 OwnershipPercentage = ownershipPercentage,
                 ByTrips = new UsageMetricsDto
                 {
@@ -856,7 +857,7 @@ public class AnalyticsService : IAnalyticsService
             comparisonItems.Add(new MemberComparisonItemDto
             {
                 MemberId = member.UserId,
-                MemberName = $"{member.UserFirstName} {member.UserLastName}",
+                MemberName = member.UserName,
                 OwnershipPercentage = ownershipPercentage,
                 TotalTrips = memberTrips,
                 TotalDistance = memberDistance,
@@ -967,7 +968,7 @@ public class AnalyticsService : IAnalyticsService
             var percentage = totalTrips > 0 ? (decimal)memberTrips / totalTrips * 100 : 0;
             result.UsageDistributionByMember.Add(new ChartDataPointDto
             {
-                Label = $"{member.UserFirstName} {member.UserLastName}",
+                Label = member.UserName,
                 Value = memberTrips,
                 Percentage = percentage
             });

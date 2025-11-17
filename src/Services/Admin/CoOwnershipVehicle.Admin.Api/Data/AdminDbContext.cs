@@ -11,9 +11,20 @@ public class AdminDbContext : DbContext
 
     // Admin service entities - only Admin-specific entities
     // All other entities (User, Group, Vehicle, Booking, Payment, etc.) are accessed via HTTP calls to their respective services
+    // However, these DbSets are included for testing purposes
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<Dispute> Disputes { get; set; }
     public DbSet<DisputeComment> DisputeComments { get; set; }
+    
+    // Test-only DbSets (for unit testing)
+    public DbSet<User> Users { get; set; }
+    public DbSet<OwnershipGroup> OwnershipGroups { get; set; }
+    public DbSet<Vehicle> Vehicles { get; set; }
+    public DbSet<Booking> Bookings { get; set; }
+    public DbSet<Expense> Expenses { get; set; }
+    public DbSet<GroupMember> GroupMembers { get; set; }
+    public DbSet<Payment> Payments { get; set; }
+    public DbSet<LedgerEntry> LedgerEntries { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -21,21 +32,15 @@ public class AdminDbContext : DbContext
 
         // Ignore entities that aren't needed in Admin service
         modelBuilder.Ignore<AnalyticsSnapshot>();
-        // Ignore all entities from other services - they are accessed via HTTP
-        modelBuilder.Ignore<User>();
-        modelBuilder.Ignore<OwnershipGroup>();
-        modelBuilder.Ignore<Vehicle>();
-        modelBuilder.Ignore<Booking>();
-        modelBuilder.Ignore<Payment>();
+        // Ignore entities from other services that aren't used in tests
+        // Note: User, OwnershipGroup, Vehicle, Booking, Payment, Expense, GroupMember, and LedgerEntry
+        // are included as DbSets above for testing purposes
         modelBuilder.Ignore<Invoice>();
-        modelBuilder.Ignore<Expense>();
         modelBuilder.Ignore<Notification>();
         modelBuilder.Ignore<Proposal>();
-        modelBuilder.Ignore<GroupMember>();
         modelBuilder.Ignore<CheckIn>();
         modelBuilder.Ignore<Document>();
         modelBuilder.Ignore<KycDocument>();
-        modelBuilder.Ignore<LedgerEntry>();
         modelBuilder.Ignore<GroupFund>();
         modelBuilder.Ignore<FundTransaction>();
         modelBuilder.Ignore<Vote>();
