@@ -272,15 +272,14 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created and seeded
+// Apply migrations and seed data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
 
-    // Ensure database is created
-    await context.Database.EnsureCreatedAsync();
+    await context.Database.MigrateAsync();
 
     // Seed initial data
     await CoOwnershipVehicle.Auth.Api.Data.AuthDataSeeder.SeedAsync(context, userManager, roleManager);

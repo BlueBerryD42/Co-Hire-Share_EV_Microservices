@@ -1,0 +1,171 @@
+name: co-ownership-vehicle
+
+x-common-environment: &common-env
+  ASPNETCORE_ENVIRONMENT: Development
+  DB_SERVER: host.docker.internal
+  RABBITMQ_CONNECTION: amqp://guest:guest@host.docker.internal:5673/
+
+x-dotnet-service: &dotnet-service
+  env_file:
+    - .env
+  environment:
+    <<: *common-env
+
+services:
+  api-gateway:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Infrastructure/ApiGateway/CoOwnershipVehicle.ApiGateway/CoOwnershipVehicle.ApiGateway.csproj
+        APP_DLL: CoOwnershipVehicle.ApiGateway.dll
+    depends_on:
+      - auth-api
+      - user-api
+      - group-api
+      - vehicle-api
+      - payment-api
+      - booking-api
+      - admin-api
+      - analytics-api
+      - notification-api
+      - coownership-api
+    ports:
+      - "61610:8080"
+    networks:
+      - coownership
+
+  auth-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/Auth/CoOwnershipVehicle.Auth.Api/CoOwnershipVehicle.Auth.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Auth.Api.dll
+    ports:
+      - "61601:8080"
+    networks:
+      - coownership
+
+  user-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/User/CoOwnershipVehicle.User.Api/CoOwnershipVehicle.User.Api.csproj
+        APP_DLL: CoOwnershipVehicle.User.Api.dll
+    ports:
+      - "61602:8080"
+    networks:
+      - coownership
+
+  group-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/Group/CoOwnershipVehicle.Group.Api/CoOwnershipVehicle.Group.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Group.Api.dll
+    ports:
+      - "61603:8080"
+    networks:
+      - coownership
+
+  vehicle-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/Vehicle/CoOwnershipVehicle.Vehicle.Api/CoOwnershipVehicle.Vehicle.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Vehicle.Api.dll
+    ports:
+      - "61604:8080"
+    networks:
+      - coownership
+
+  payment-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/Payment/CoOwnershipVehicle.Payment.Api/CoOwnershipVehicle.Payment.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Payment.Api.dll
+    ports:
+      - "61605:8080"
+    networks:
+      - coownership
+
+  booking-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/Booking/CoOwnershipVehicle.Booking.Api/CoOwnershipVehicle.Booking.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Booking.Api.dll
+    ports:
+      - "61606:8080"
+    networks:
+      - coownership
+
+  admin-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/Admin/CoOwnershipVehicle.Admin.Api/CoOwnershipVehicle.Admin.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Admin.Api.dll
+    ports:
+      - "61607:8080"
+    networks:
+      - coownership
+
+  analytics-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/Analytics/CoOwnershipVehicle.Analytics.Api/CoOwnershipVehicle.Analytics.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Analytics.Api.dll
+    ports:
+      - "61608:8080"
+    networks:
+      - coownership
+
+  notification-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/Notification/CoOwnershipVehicle.Notification.Api/CoOwnershipVehicle.Notification.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Notification.Api.dll
+    ports:
+      - "61609:8080"
+    networks:
+      - coownership
+
+  coownership-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: src/Services/CoOwnershipVehicle.Api/CoOwnershipVehicle.Api.csproj
+        APP_DLL: CoOwnershipVehicle.Api.dll
+    ports:
+      - "61710:8080"
+    networks:
+      - coownership
+
+networks:
+  coownership:
+    driver: bridge

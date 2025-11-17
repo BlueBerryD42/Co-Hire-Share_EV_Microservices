@@ -181,18 +181,18 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created (before starting the server)
+// Apply pending migrations (before starting the server)
 try
 {
     using (var scope = app.Services.CreateScope())
     {
         var context = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
-        await context.Database.EnsureCreatedAsync();
+        await context.Database.MigrateAsync();
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"[ERROR] Failed to ensure database is created: {ex.Message}");
+    Console.WriteLine($"[ERROR] Failed to apply database migrations: {ex.Message}");
     // Don't crash - let the app start and handle migrations later if needed
 }
 

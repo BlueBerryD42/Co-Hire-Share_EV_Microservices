@@ -140,4 +140,11 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<NotificationHub>("/notificationHub");
 
+// Apply pending migrations
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
+    await context.Database.MigrateAsync();
+}
+
 app.Run();

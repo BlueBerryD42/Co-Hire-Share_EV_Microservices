@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Domain.Entities;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace CoOwnershipVehicle.User.Api.Data;
 
@@ -18,34 +20,21 @@ public class UserDbContext : IdentityDbContext<CoOwnershipVehicle.Domain.Entitie
     {
         base.OnModelCreating(builder);
 
-        // Ignore all entities that are not part of the User service
-        builder.Ignore<OwnershipGroup>();
-        builder.Ignore<GroupMember>();
-        builder.Ignore<Vehicle>();
-        builder.Ignore<Expense>();
-        builder.Ignore<Invoice>();
-        builder.Ignore<Payment>();
-        builder.Ignore<Booking>();
-        builder.Ignore<CheckIn>();
-        builder.Ignore<Notification>();
-        builder.Ignore<NotificationTemplate>();
-        builder.Ignore<AnalyticsSnapshot>();
-        builder.Ignore<Document>();
-        builder.Ignore<DocumentTag>();
-        builder.Ignore<DocumentTagMapping>();
-        builder.Ignore<DocumentSignature>();
-        builder.Ignore<DocumentDownload>();
-        builder.Ignore<DocumentVersion>();
-        builder.Ignore<DocumentTemplate>();
-        builder.Ignore<DocumentShare>();
-        builder.Ignore<DocumentShareAccess>();
-        builder.Ignore<SigningCertificate>();
-        builder.Ignore<SignatureReminder>();
-        builder.Ignore<SavedDocumentSearch>();
-        builder.Ignore<LedgerEntry>();
-        builder.Ignore<Proposal>();
-        builder.Ignore<Vote>();
-        builder.Ignore<AuditLog>();
+        // Automatically trim unrelated domain entities
+        var allowedDomainEntities = new HashSet<Type>
+        {
+            typeof(CoOwnershipVehicle.Domain.Entities.User),
+            typeof(KycDocument)
+        };
+
+        foreach (var entityType in builder.Model.GetEntityTypes().ToList())
+        {
+            if (entityType.ClrType?.Namespace?.StartsWith("CoOwnershipVehicle.Domain") == true &&
+                !allowedDomainEntities.Contains(entityType.ClrType))
+            {
+                builder.Ignore(entityType.ClrType);
+            }
+        }
 
         // Configure Identity tables with custom names
         builder.Entity<CoOwnershipVehicle.Domain.Entities.User>().ToTable("Users");

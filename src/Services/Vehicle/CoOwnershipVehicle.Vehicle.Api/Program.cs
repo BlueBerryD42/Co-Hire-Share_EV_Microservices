@@ -9,6 +9,7 @@ using CoOwnershipVehicle.Vehicle.Api.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using MassTransit;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CoOwnershipVehicle.Vehicle.Api
 {
@@ -52,6 +53,12 @@ namespace CoOwnershipVehicle.Vehicle.Api
             });
 
             Configure(app);
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<VehicleDbContext>();
+                context.Database.Migrate();
+            }
             app.Run();
         }
 

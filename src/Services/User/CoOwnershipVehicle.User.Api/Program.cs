@@ -169,13 +169,11 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created
+// Apply migrations and seed data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<UserDbContext>();
-    
-    // Ensure database is created
-    await context.Database.EnsureCreatedAsync();
+    await context.Database.MigrateAsync();
     
     // Seed initial data (User service doesn't need UserManager/RoleManager)
     await CoOwnershipVehicle.User.Api.Data.UserDataSeeder.SeedAsync(context);

@@ -45,6 +45,8 @@ public class PaymentDbContext : DbContext
         builder.Ignore<Proposal>();
         builder.Ignore<AuditLog>();
         builder.Ignore<Vote>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
 
         // User entity configuration (simplified for Payment service)
         builder.Entity<User>(entity =>
@@ -64,6 +66,8 @@ public class PaymentDbContext : DbContext
             entity.Ignore(e => e.CheckIns);
             entity.Ignore(e => e.Votes);
             entity.Ignore(e => e.AuditLogs);
+            entity.Ignore(e => e.InitiatedFundTransactions);
+            entity.Ignore(e => e.ApprovedFundTransactions);
         });
 
         // OwnershipGroup entity configuration (simplified for Payment service)

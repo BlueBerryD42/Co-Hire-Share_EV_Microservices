@@ -77,8 +77,6 @@ public class GroupDbContext : DbContext
             entity.Ignore(e => e.Bookings);
             entity.Ignore(e => e.CheckIns);
             entity.Ignore(e => e.AuditLogs);
-            entity.Ignore(e => e.InitiatedFundTransactions);
-            entity.Ignore(e => e.ApprovedFundTransactions);
         });
 
         // OwnershipGroup entity configuration
