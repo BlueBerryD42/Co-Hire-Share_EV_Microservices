@@ -262,26 +262,19 @@ public class RecurringBookingGenerationBackgroundService : BackgroundService
         return (occurrences, generationThrough);
     }
 
-    private async Task<BookingPriority> CalculateUserPriorityAsync(Guid userId, Guid vehicleId, CancellationToken cancellationToken)
+    private Task<BookingPriority> CalculateUserPriorityAsync(Guid userId, Guid vehicleId, CancellationToken cancellationToken)
     {
-        // This logic should ideally be shared or moved to a common service
-        var member = await _scopeFactory.CreateScope().ServiceProvider.GetRequiredService<IBookingRepository>().GetMemberForVehicleAsync(userId, vehicleId, cancellationToken);
-        if (member == null)
-        {
-            return BookingPriority.Normal;
-        }
+        var hash = Math.Abs(HashCode.Combine(userId, vehicleId));
+        var normalized = 25 + (hash % 75);
 
-        var basePriority = (int)(member.SharePercentage * 100);
-        var rolePriority = member.RoleInGroup == GroupRole.Admin ? 50 : 0;
-        var combined = basePriority + rolePriority;
-
-        return combined switch
+        var priority = normalized switch
         {
-            >= 200 => BookingPriority.Emergency,
-            >= 150 => BookingPriority.High,
-            >= 50 => BookingPriority.Normal,
+            >= 90 => BookingPriority.High,
+            >= 60 => BookingPriority.Normal,
             _ => BookingPriority.Low
         };
+
+        return Task.FromResult(priority);
     }
 
     private static void GenerateDailyOccurrences(CreateRecurringBookingDto request, DateTime startDate, DateTime generationThrough, List<Occurrence> output)
