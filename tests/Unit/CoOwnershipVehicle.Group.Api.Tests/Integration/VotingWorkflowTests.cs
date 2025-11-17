@@ -41,29 +41,7 @@ public class VotingWorkflowTests : IDisposable
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        _context.Users.Add(creator);
-
-        var member1 = new User
-        {
-            Id = _member1Id,
-            Email = "member1@example.com",
-            FirstName = "Member",
-            LastName = "One",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        _context.Users.Add(member1);
-
-        var member2 = new User
-        {
-            Id = _member2Id,
-            Email = "member2@example.com",
-            FirstName = "Member",
-            LastName = "Two",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        _context.Users.Add(member2);
+        // Note: Users are no longer stored in GroupDbContext - they're fetched via HTTP
 
         var group = new OwnershipGroup
         {

@@ -63,6 +63,40 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
+    /// Get basic user information by ID (any authenticated user)
+    /// This endpoint allows users to get basic info (name, email) for other users,
+    /// typically used for displaying member names in groups, proposals, etc.
+    /// </summary>
+    [HttpGet("basic/{userId:guid}")]
+    public async Task<IActionResult> GetBasicUserInfo(Guid userId)
+    {
+        try
+        {
+            var profile = await _userService.GetUserProfileAsync(userId);
+            
+            if (profile == null)
+                return NotFound(new { message = "User not found" });
+
+            // Return only basic information (no sensitive data like KYC documents)
+            var basicInfo = new
+            {
+                Id = profile.Id,
+                Email = profile.Email,
+                FirstName = profile.FirstName,
+                LastName = profile.LastName,
+                Phone = profile.Phone
+            };
+
+            return Ok(basicInfo);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting basic user info {UserId}", userId);
+            return StatusCode(500, new { message = "An error occurred while retrieving user information" });
+        }
+    }
+
+    /// <summary>
     /// Get user profile by ID (admin/staff only)
     /// </summary>
     [HttpGet("profile/{userId:guid}")]

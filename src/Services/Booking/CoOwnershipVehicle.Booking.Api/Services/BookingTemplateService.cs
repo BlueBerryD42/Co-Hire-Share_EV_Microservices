@@ -49,15 +49,6 @@ public class BookingTemplateService : IBookingTemplateService
             throw new ArgumentException("PreferredStartTime must fall within a 24-hour range.", nameof(request.PreferredStartTime));
         }
 
-        if (request.VehicleId.HasValue)
-        {
-            var hasAccess = await _bookingRepository.UserHasVehicleAccessAsync(request.VehicleId.Value, userId);
-            if (!hasAccess)
-            {
-                throw new UnauthorizedAccessException("You do not have access to the specified vehicle.");
-            }
-        }
-
         var template = new BookingTemplate
         {
             Id = Guid.NewGuid(),
@@ -117,19 +108,9 @@ public class BookingTemplateService : IBookingTemplateService
             throw new InvalidOperationException("VehicleId must be specified in the template or request.");
         }
 
-        var hasAccess = await _bookingRepository.UserHasVehicleAccessAsync(vehicleId.Value, userId);
-        if (!hasAccess)
+        if (request.GroupId == Guid.Empty)
         {
-            throw new UnauthorizedAccessException("You do not have access to the specified vehicle.");
-        }
-
-        // Get vehicle to ensure it exists and to get GroupId
-        var vehicle = await _bookingRepository.GetVehicleByIdAsync(vehicleId.Value)
-                      ?? throw new InvalidOperationException($"Vehicle with ID {vehicleId} not found.");
-
-        if (vehicle.GroupId == null)
-        {
-            throw new InvalidOperationException($"Vehicle with ID {vehicleId} is not associated with a group.");
+            throw new InvalidOperationException("GroupId must be specified when creating a booking from a template.");
         }
 
         var startAtUtc = NormalizeToUtc(request.StartDateTime);
@@ -152,7 +133,7 @@ public class BookingTemplateService : IBookingTemplateService
         {
             Id = Guid.NewGuid(),
             VehicleId = vehicleId.Value,
-            GroupId = vehicle.GroupId.Value, // Use GroupId from the vehicle
+            GroupId = request.GroupId,
             UserId = userId,
             StartAt = startAtUtc,
             EndAt = endAtUtc,
@@ -212,12 +193,6 @@ public class BookingTemplateService : IBookingTemplateService
 
         if (request.VehicleId.HasValue)
         {
-            var hasAccess = await _bookingRepository.UserHasVehicleAccessAsync(request.VehicleId.Value, userId);
-            if (!hasAccess)
-            {
-                throw new UnauthorizedAccessException("You do not have access to the specified vehicle.");
-            }
-
             template.VehicleId = request.VehicleId;
         }
 

@@ -69,4 +69,7 @@ public class CreateBookingFromTemplateRequest
     public DateTime StartDateTime { get; set; }
 
     public Guid? VehicleId { get; set; }
+
+    [Required]
+    public Guid GroupId { get; set; }
 }

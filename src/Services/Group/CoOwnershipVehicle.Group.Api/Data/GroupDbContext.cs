@@ -147,10 +147,8 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.DocumentId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.Signer)
-                  .WithMany()
-                  .HasForeignKey(e => e.SignerId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // SignerId is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Signer);
 
             // Add indexes
             entity.HasIndex(e => e.DocumentId);
@@ -174,10 +172,8 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.DocumentId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.User)
-                  .WithMany()
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // UserId is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.User);
 
             // Add indexes
             entity.HasIndex(e => e.DocumentId);
@@ -222,10 +218,8 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.DocumentId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.Uploader)
-                  .WithMany()
-                  .HasForeignKey(e => e.UploadedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // UploadedBy is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Uploader);
 
             // Add indexes
             entity.HasIndex(e => e.DocumentId);
@@ -268,10 +262,8 @@ public class GroupDbContext : DbContext
             entity.Property(e => e.Version).HasDefaultValue(1);
             entity.Property(e => e.PreviewImageUrl).HasMaxLength(500);
 
-            entity.HasOne(e => e.Creator)
-                  .WithMany()
-                  .HasForeignKey(e => e.CreatedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // CreatedBy is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Creator);
 
             entity.HasIndex(e => e.Name);
             entity.HasIndex(e => e.Category);
@@ -296,10 +288,8 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.DocumentId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.Sharer)
-                  .WithMany()
-                  .HasForeignKey(e => e.SharedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // SharedBy is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Sharer);
 
             entity.HasIndex(e => e.ShareToken).IsUnique();
             entity.HasIndex(e => e.DocumentId);
@@ -340,10 +330,8 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.GroupId)
                   .OnDelete(DeleteBehavior.NoAction);
 
-            entity.HasOne(e => e.Creator)
-                  .WithMany()
-                  .HasForeignKey(e => e.CreatedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // CreatedBy is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Creator);
 
             entity.HasIndex(e => e.Name);
             entity.HasIndex(e => e.GroupId);
@@ -365,10 +353,8 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.TagId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.TaggerUser)
-                  .WithMany()
-                  .HasForeignKey(e => e.TaggedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // TaggedBy is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.TaggerUser);
 
             entity.HasIndex(e => e.DocumentId);
             entity.HasIndex(e => e.TagId);
@@ -384,10 +370,8 @@ public class GroupDbContext : DbContext
             entity.Property(e => e.UsageCount).HasDefaultValue(0);
             entity.Property(e => e.IsDefault).HasDefaultValue(false);
 
-            entity.HasOne(e => e.User)
-                  .WithMany()
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+            // UserId is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.User);
 
             entity.HasOne(e => e.Group)
                   .WithMany()
@@ -425,10 +409,8 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.GroupId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.Creator)
-                  .WithMany()
-                  .HasForeignKey(e => e.CreatedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // CreatedBy is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Creator);
 
             entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.CreatedBy);
@@ -450,10 +432,8 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.ProposalId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.Voter)
-                  .WithMany(u => u.Votes)
-                  .HasForeignKey(e => e.VoterId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // VoterId is stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Voter);
 
             entity.HasIndex(e => e.ProposalId);
             entity.HasIndex(e => e.VoterId);
@@ -493,15 +473,9 @@ public class GroupDbContext : DbContext
                   .HasForeignKey(e => e.GroupId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.Initiator)
-                  .WithMany(u => u.InitiatedFundTransactions)
-                  .HasForeignKey(e => e.InitiatedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(e => e.Approver)
-                  .WithMany(u => u.ApprovedFundTransactions)
-                  .HasForeignKey(e => e.ApprovedBy)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // InitiatedBy and ApprovedBy are stored but no FK constraint (User is in another service)
+            entity.Ignore(e => e.Initiator);
+            entity.Ignore(e => e.Approver);
 
             entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.InitiatedBy);

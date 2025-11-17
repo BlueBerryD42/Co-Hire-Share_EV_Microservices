@@ -78,6 +78,7 @@ public class DamageReportsController : ControllerBase
     /// Update the status of a damage report (admin only).
     /// </summary>
     [HttpPut("{reportId:guid}/status")]
+    [Authorize(Roles = "SystemAdmin,GroupAdmin")]
     [ProducesResponseType(typeof(DamageReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]

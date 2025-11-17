@@ -5,11 +5,11 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using CoOwnershipVehicle.Analytics.Api.Data;
 using CoOwnershipVehicle.Analytics.Api.Services;
+using CoOwnershipVehicle.Analytics.Api.Services.HttpClients;
 using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using CoOwnershipVehicle.Analytics.Api.Consumers;
-using CoOwnershipVehicle.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,12 +77,47 @@ EnvironmentHelper.LogFinalConnectionDetails("Analytics Service", dbParams.Databa
 builder.Services.AddDbContext<AnalyticsDbContext>(options =>
     options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CoOwnershipVehicle.Analytics.Api")));
 
-// Add ApplicationDbContext for accessing shared entities (bookings, expenses, etc.)
-// Note: In a proper microservices architecture, this would be replaced with HTTP calls or event-based communication
-var mainDbConnectionString = EnvironmentHelper.GetEnvironmentVariable("DB_CONNECTION_STRING", builder.Configuration) 
-    ?? EnvironmentHelper.GetDatabaseConnectionParams(builder.Configuration).GetConnectionString();
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(mainDbConnectionString));
+// Add HttpContextAccessor for HTTP clients
+builder.Services.AddHttpContextAccessor();
+
+// Configure HTTP clients for inter-service communication
+var serviceUrls = builder.Configuration.GetSection("ServiceUrls");
+var userServiceUrl = serviceUrls["User"] ?? EnvironmentHelper.GetEnvironmentVariable("USER_SERVICE_URL", builder.Configuration) ?? "https://localhost:61602";
+var groupServiceUrl = serviceUrls["Group"] ?? EnvironmentHelper.GetEnvironmentVariable("GROUP_SERVICE_URL", builder.Configuration) ?? "https://localhost:61603";
+var vehicleServiceUrl = serviceUrls["Vehicle"] ?? EnvironmentHelper.GetEnvironmentVariable("VEHICLE_SERVICE_URL", builder.Configuration) ?? "https://localhost:61604";
+var bookingServiceUrl = serviceUrls["Booking"] ?? EnvironmentHelper.GetEnvironmentVariable("BOOKING_SERVICE_URL", builder.Configuration) ?? "https://localhost:61606";
+var paymentServiceUrl = serviceUrls["Payment"] ?? EnvironmentHelper.GetEnvironmentVariable("PAYMENT_SERVICE_URL", builder.Configuration) ?? "https://localhost:61605";
+
+// Register HTTP clients
+builder.Services.AddHttpClient<IUserServiceClient, UserServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(userServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient<IGroupServiceClient, GroupServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(groupServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient<IVehicleServiceClient, VehicleServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(vehicleServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(bookingServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient<IPaymentServiceClient, PaymentServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(paymentServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
 // JWT Authentication
 var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);

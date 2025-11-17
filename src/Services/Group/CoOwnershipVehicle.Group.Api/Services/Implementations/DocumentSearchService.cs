@@ -2,6 +2,8 @@ using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Group.Api.Data;
 using CoOwnershipVehicle.Group.Api.DTOs;
 using CoOwnershipVehicle.Group.Api.Services.Interfaces;
+using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using System.IO.Compression;
 using System.Text.Json;
@@ -14,15 +16,31 @@ public class DocumentSearchService : IDocumentSearchService
     private readonly GroupDbContext _context;
     private readonly IFileStorageService _fileStorage;
     private readonly ILogger<DocumentSearchService> _logger;
+    private readonly IUserServiceClient _userServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public DocumentSearchService(
         GroupDbContext context,
         IFileStorageService fileStorage,
-        ILogger<DocumentSearchService> logger)
+        ILogger<DocumentSearchService> logger,
+        IUserServiceClient userServiceClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _fileStorage = fileStorage;
         _logger = logger;
+        _userServiceClient = userServiceClient ?? throw new ArgumentNullException(nameof(userServiceClient));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            return string.Empty;
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     public async Task<AdvancedDocumentSearchResponse> SearchDocumentsAsync(
@@ -166,11 +184,26 @@ public class DocumentSearchService : IDocumentSearchService
                 : query.OrderBy(d => d.CreatedAt)
         };
 
-        // Pagination
-        var results = await query
+        // Pagination - get documents first
+        var documents = await query
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(d => new DocumentSearchResult
+            .ToListAsync();
+
+        // Fetch user data via HTTP for all uploaders
+        var accessToken = GetAccessToken();
+        var uploaderIds = documents
+            .Where(d => d.UploadedBy.HasValue)
+            .Select(d => d.UploadedBy!.Value)
+            .Distinct()
+            .ToList();
+        var users = await _userServiceClient.GetUsersAsync(uploaderIds, accessToken);
+
+        // Map to results with user data
+        var results = documents.Select(d =>
+        {
+            var uploader = d.UploadedBy.HasValue ? users.GetValueOrDefault(d.UploadedBy.Value) : null;
+            return new DocumentSearchResult
             {
                 Id = d.Id,
                 GroupId = d.GroupId,
@@ -180,17 +213,14 @@ public class DocumentSearchService : IDocumentSearchService
                 SignatureStatus = d.SignatureStatus,
                 Description = d.Description,
                 CreatedAt = d.CreatedAt,
-                UploaderName = _context.Users
-                    .Where(u => u.Id == d.UploadedBy)
-                    .Select(u => u.Email)
-                    .FirstOrDefault() ?? "Unknown",
+                UploaderName = uploader?.Email ?? "Unknown",
                 UploaderId = d.UploadedBy,
                 Tags = d.TagMappings.Select(tm => tm.Tag.Name).ToList(),
                 TemplateName = d.Template != null ? d.Template.Name : null,
                 IsDeleted = d.IsDeleted,
                 DeletedAt = d.DeletedAt
-            })
-            .ToListAsync();
+            };
+        }).ToList();
 
         // Build facets (for filter UI)
         var facets = await BuildSearchFacetsAsync(request.GroupId);
@@ -238,10 +268,24 @@ public class DocumentSearchService : IDocumentSearchService
             query = query.Where(d => userGroupIds.Contains(d.GroupId));
         }
 
-        var results = await query
+        var documents = await query
             .OrderByDescending(d => d.CreatedAt)
             .Take(request.Count)
-            .Select(d => new DocumentSearchResult
+            .ToListAsync();
+
+        // Fetch user data via HTTP
+        var accessToken = GetAccessToken();
+        var uploaderIds = documents
+            .Where(d => d.UploadedBy.HasValue)
+            .Select(d => d.UploadedBy!.Value)
+            .Distinct()
+            .ToList();
+        var users = await _userServiceClient.GetUsersAsync(uploaderIds, accessToken);
+
+        var results = documents.Select(d =>
+        {
+            var uploader = d.UploadedBy.HasValue ? users.GetValueOrDefault(d.UploadedBy.Value) : null;
+            return new DocumentSearchResult
             {
                 Id = d.Id,
                 GroupId = d.GroupId,
@@ -251,15 +295,12 @@ public class DocumentSearchService : IDocumentSearchService
                 SignatureStatus = d.SignatureStatus,
                 Description = d.Description,
                 CreatedAt = d.CreatedAt,
-                UploaderName = _context.Users
-                    .Where(u => u.Id == d.UploadedBy)
-                    .Select(u => u.Email)
-                    .FirstOrDefault() ?? "Unknown",
+                UploaderName = uploader?.Email ?? "Unknown",
                 UploaderId = d.UploadedBy,
                 Tags = d.TagMappings.Select(tm => tm.Tag.Name).ToList(),
                 TemplateName = d.Template != null ? d.Template.Name : null
-            })
-            .ToListAsync();
+            };
+        }).ToList();
 
         return results;
     }
@@ -267,8 +308,9 @@ public class DocumentSearchService : IDocumentSearchService
     public async Task<List<DocumentSearchResult>> GetSharedWithMeAsync(
         Guid userId, int page = 1, int pageSize = 20)
     {
-        // Get all shares where the user's email matches
-        var user = await _context.Users.FindAsync(userId);
+        // Get user info via HTTP
+        var accessToken = GetAccessToken();
+        var user = await _userServiceClient.GetUserAsync(userId, accessToken);
         if (user == null)
         {
             throw new KeyNotFoundException("User not found");
@@ -284,7 +326,20 @@ public class DocumentSearchService : IDocumentSearchService
             .OrderByDescending(s => s.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(s => new DocumentSearchResult
+            .ToListAsync();
+
+        // Fetch user data for document uploaders via HTTP
+        var uploaderIds = shares
+            .Where(s => s.Document.UploadedBy.HasValue)
+            .Select(s => s.Document.UploadedBy!.Value)
+            .Distinct()
+            .ToList();
+        var uploaders = await _userServiceClient.GetUsersAsync(uploaderIds, accessToken);
+
+        var results = shares.Select(s =>
+        {
+            var uploader = s.Document.UploadedBy.HasValue ? uploaders.GetValueOrDefault(s.Document.UploadedBy.Value) : null;
+            return new DocumentSearchResult
             {
                 Id = s.Document.Id,
                 GroupId = s.Document.GroupId,
@@ -294,17 +349,14 @@ public class DocumentSearchService : IDocumentSearchService
                 SignatureStatus = s.Document.SignatureStatus,
                 Description = s.Document.Description,
                 CreatedAt = s.Document.CreatedAt,
-                UploaderName = _context.Users
-                    .Where(u => u.Id == s.Document.UploadedBy)
-                    .Select(u => u.Email)
-                    .FirstOrDefault() ?? "Unknown",
+                UploaderName = uploader?.Email ?? "Unknown",
                 UploaderId = s.Document.UploadedBy,
                 Tags = s.Document.TagMappings.Select(tm => tm.Tag.Name).ToList(),
                 TemplateName = s.Document.Template != null ? s.Document.Template.Name : null
-            })
-            .ToListAsync();
+            };
+        }).ToList();
 
-        return shares;
+        return results;
     }
 
     #region Tag Management
@@ -957,12 +1009,7 @@ public class DocumentSearchService : IDocumentSearchService
                 .GroupBy(name => name)
                 .ToDictionary(g => g.Key, g => g.Count()),
 
-            Uploaders = documents
-                .Where(d => d.UploadedBy.HasValue)
-                .GroupBy(d => d.UploadedBy!.Value)
-                .ToDictionary(
-                    g => _context.Users.Find(g.Key)?.Email ?? "Unknown",
-                    g => g.Count()),
+            Uploaders = await BuildUploadersFacetAsync(documents),
 
             Templates = documents
                 .Where(d => d.Template != null)
@@ -971,6 +1018,34 @@ public class DocumentSearchService : IDocumentSearchService
         };
 
         return facets;
+    }
+
+    private async Task<Dictionary<string, int>> BuildUploadersFacetAsync(List<Document> documents)
+    {
+        var uploaderIds = documents
+            .Where(d => d.UploadedBy.HasValue)
+            .Select(d => d.UploadedBy!.Value)
+            .Distinct()
+            .ToList();
+
+        if (!uploaderIds.Any())
+        {
+            return new Dictionary<string, int>();
+        }
+
+        var accessToken = GetAccessToken();
+        var users = await _userServiceClient.GetUsersAsync(uploaderIds, accessToken);
+
+        return documents
+            .Where(d => d.UploadedBy.HasValue)
+            .GroupBy(d => d.UploadedBy!.Value)
+            .ToDictionary(
+                g =>
+                {
+                    var user = users.GetValueOrDefault(g.Key);
+                    return user?.Email ?? "Unknown";
+                },
+                g => g.Count());
     }
 
     #endregion
