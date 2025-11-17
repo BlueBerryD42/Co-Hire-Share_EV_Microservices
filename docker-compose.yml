@@ -3,7 +3,6 @@ name: co-ownership-vehicle
 x-common-environment: &common-env
   ASPNETCORE_ENVIRONMENT: Development
   DB_SERVER: host.docker.internal
-  RABBITMQ_CONNECTION: amqp://guest:guest@host.docker.internal:5673/
 
 x-dotnet-service: &dotnet-service
   env_file:
