@@ -1,4 +1,5 @@
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
+using CoOwnershipVehicle.Domain.Entities;
 
 namespace CoOwnershipVehicle.Admin.Api.Services;
 
@@ -27,6 +28,11 @@ public interface IAdminService
     Task<GroupAuditResponseDto> GetGroupAuditTrailAsync(Guid groupId, GroupAuditRequestDto request);
     Task<bool> InterveneInGroupAsync(Guid groupId, GroupInterventionDto request, Guid adminUserId);
         Task<GroupHealthDto> GetGroupHealthAsync(Guid groupId);
+
+    // Vehicle Management Methods
+    Task<VehicleListResponseDto> GetVehiclesAsync(VehicleListRequestDto request);
+    Task<VehicleSummaryDto> GetVehicleDetailsAsync(Guid vehicleId);
+    Task<bool> UpdateVehicleStatusAsync(Guid vehicleId, VehicleStatus status, Guid adminUserId);
 
         // Dispute Management Methods
         Task<Guid> CreateDisputeAsync(CreateDisputeDto request, Guid adminUserId);

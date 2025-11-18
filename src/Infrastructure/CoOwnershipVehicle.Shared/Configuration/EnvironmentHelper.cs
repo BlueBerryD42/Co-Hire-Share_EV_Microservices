@@ -265,6 +265,7 @@ public static class EnvironmentHelper
         // Service-specific database names
         var dbAuth = GetEnvironmentVariable("DB_AUTH", configuration);
         var dbUser = GetEnvironmentVariable("DB_USER_SERVICE", configuration);
+        var dbAdmin = GetEnvironmentVariable("DB_ADMIN", configuration);
         var dbGroup = GetEnvironmentVariable("DB_GROUP", configuration);
         var dbVehicle = GetEnvironmentVariable("DB_VEHICLE", configuration);
         var dbPayment = GetEnvironmentVariable("DB_PAYMENT", configuration);
@@ -274,6 +275,7 @@ public static class EnvironmentHelper
 
         Console.WriteLine($"[DEBUG] DB_AUTH: {dbAuth ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] DB_USER_SERVICE: {dbUser ?? "NOT SET"}");
+        Console.WriteLine($"[DEBUG] DB_ADMIN: {dbAdmin ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] DB_GROUP: {dbGroup ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] DB_VEHICLE: {dbVehicle ?? "NOT SET"}");
         Console.WriteLine($"[DEBUG] DB_PAYMENT: {dbPayment ?? "NOT SET"}");

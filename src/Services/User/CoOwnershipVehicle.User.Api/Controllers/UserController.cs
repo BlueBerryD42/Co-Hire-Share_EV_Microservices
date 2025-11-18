@@ -175,6 +175,25 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
+    /// Get paginated list of users (admin/staff only)
+    /// </summary>
+    [HttpGet("users")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> GetUsers([FromQuery] UserListRequestDto request)
+    {
+        try
+        {
+            var result = await _userService.GetUsersAsync(request);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving users list");
+            return StatusCode(500, new { message = "An error occurred while retrieving users" });
+        }
+    }
+
+    /// <summary>
     /// Get user profile by ID (admin/staff only)
     /// </summary>
     [HttpGet("profile/{userId:guid}")]

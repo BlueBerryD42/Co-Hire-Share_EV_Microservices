@@ -85,6 +85,25 @@ public class BookingController : ControllerBase
     }
 
     /// <summary>
+    /// Get all bookings (admin/staff only)
+    /// </summary>
+    [HttpGet("all")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> GetAllBookings([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null, [FromQuery] Guid? userId = null, [FromQuery] Guid? groupId = null)
+    {
+        try
+        {
+            var bookings = await _bookingService.GetAllBookingsAsync(from, to, userId, groupId);
+            return Ok(bookings);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all bookings");
+            return StatusCode(500, new { message = "An error occurred while retrieving bookings" });
+        }
+    }
+
+    /// <summary>
     /// Get historical bookings with associated check-in records
     /// </summary>
     [HttpGet("my-bookings/history")]
@@ -277,7 +296,7 @@ public class BookingController : ControllerBase
     /// Update the recorded vehicle status for a booking.
     /// </summary>
     [HttpPatch("{id:guid}/vehicle-status")]
-    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto dto)
+    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] CoOwnershipVehicle.Booking.Api.DTOs.UpdateVehicleStatusDto dto)
     {
         try
         {

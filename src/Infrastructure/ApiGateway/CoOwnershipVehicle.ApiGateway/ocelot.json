@@ -10,16 +10,10 @@
         }
       ],
       "UpstreamPathTemplate": "/api/Auth/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
-      "DownstreamPathTemplate": "/api/User/{everything}",
+      "DownstreamPathTemplate": "/api/user/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
@@ -27,14 +21,8 @@
           "Port": 8080
         }
       ],
-      "UpstreamPathTemplate": "/api/User/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamPathTemplate": "/api/user/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/group/{everything}",
@@ -46,13 +34,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/group/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/document/{everything}",
@@ -64,13 +46,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/document/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/fund/{everything}",
@@ -82,13 +58,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/fund/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/proposal/{everything}",
@@ -100,16 +70,10 @@
         }
       ],
       "UpstreamPathTemplate": "/api/proposal/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
-      "DownstreamPathTemplate": "/api/vehicle/{everything}",
+      "DownstreamPathTemplate": "/api/Vehicle/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
@@ -118,16 +82,10 @@
         }
       ],
       "UpstreamPathTemplate": "/api/vehicle/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
-      "DownstreamPathTemplate": "/api/maintenance/{everything}",
+      "DownstreamPathTemplate": "/api/Maintenance/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
@@ -136,13 +94,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/maintenance/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/payment/{everything}",
@@ -154,13 +106,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/payment/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/Booking/{everything}",
@@ -172,13 +118,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/Booking/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/CheckIn/{everything}",
@@ -190,16 +130,10 @@
         }
       ],
       "UpstreamPathTemplate": "/api/CheckIn/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
-      "DownstreamPathTemplate": "/api/admin/{everything}",
+      "DownstreamPathTemplate": "/api/Admin/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
@@ -208,13 +142,8 @@
         }
       ],
       "UpstreamPathTemplate": "/api/admin/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"],
+      "Priority": 1
     },
     {
       "DownstreamPathTemplate": "/api/analytics/{everything}",
@@ -226,13 +155,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/analytics/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/ai/{everything}",
@@ -244,13 +167,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/ai/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
       "DownstreamPathTemplate": "/api/notification/{everything}",
@@ -262,13 +179,7 @@
         }
       ],
       "UpstreamPathTemplate": "/api/notification/{everything}",
-      "UpstreamHttpMethod": [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "PATCH"
-      ]
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     }
   ],
   "GlobalConfiguration": {

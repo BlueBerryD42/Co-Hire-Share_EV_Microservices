@@ -20,8 +20,8 @@ public class AdminService : IAdminService
     private readonly TimeSpan _cacheExpiry = TimeSpan.FromMinutes(5);
 
     public AdminService(
-        AdminDbContext context,
-        IMemoryCache cache,
+        AdminDbContext context, 
+        IMemoryCache cache, 
         ILogger<AdminService> logger,
         IUserServiceClient userServiceClient,
         IGroupServiceClient groupServiceClient,
@@ -102,29 +102,28 @@ public class AdminService : IAdminService
     {
         var baseKey = $"dashboard_metrics_{request.Period}_{request.IncludeGrowthMetrics}_{request.IncludeAlerts}";
 
-        // Get counts from services via HTTP
+        // Get counts from HTTP clients
         var users = await _userServiceClient.GetUsersAsync();
         var groups = await _groupServiceClient.GetGroupsAsync();
         var vehicles = await _vehicleServiceClient.GetVehiclesAsync();
         var bookings = await _bookingServiceClient.GetBookingsAsync();
         var payments = await _paymentServiceClient.GetPaymentsAsync();
-        var expenses = await _paymentServiceClient.GetExpensesAsync();
 
         var userCount = users.Count;
         var groupCount = groups.Count;
         var vehicleCount = vehicles.Count;
         var bookingCount = bookings.Count;
         var paymentCount = payments.Count;
-        var expenseCount = expenses.Count;
+        var expenseCount = 0; // Expenses will be fetched separately if needed
 
-        // Use current time as approximation for latest updates (since we don't have direct access)
+        // Use current timestamp for cache invalidation since we can't easily get latest update times via HTTP
         var now = DateTime.UtcNow;
-        var latestUserUpdate = users.Any() ? users.Max(u => u.CreatedAt) : now;
-        var latestGroupUpdate = groups.Any() ? groups.Max(g => g.CreatedAt) : now;
-        var latestVehicleUpdate = vehicles.Any() ? vehicles.Max(v => v.CreatedAt) : now;
-        var latestBookingUpdate = bookings.Any() ? bookings.Max(b => b.CreatedAt) : now;
-        var latestPaymentUpdate = payments.Any() ? payments.Max(p => p.CreatedAt) : now;
-        var latestExpenseUpdate = expenses.Any() ? expenses.Max(e => e.DateIncurred) : now;
+        var latestUserUpdate = users.OrderByDescending(u => u.CreatedAt).FirstOrDefault()?.CreatedAt ?? now;
+        var latestGroupUpdate = groups.OrderByDescending(g => g.CreatedAt).FirstOrDefault()?.CreatedAt ?? now;
+        var latestVehicleUpdate = vehicles.OrderByDescending(v => v.CreatedAt).FirstOrDefault()?.CreatedAt ?? now;
+        var latestBookingUpdate = bookings.OrderByDescending(b => b.CreatedAt).FirstOrDefault()?.CreatedAt ?? now;
+        var latestPaymentUpdate = payments.OrderByDescending(p => p.CreatedAt).FirstOrDefault()?.CreatedAt ?? now;
+        var latestExpenseUpdate = now; // Expenses fetched separately
 
         return string.Join('_',
             baseKey,
@@ -170,13 +169,13 @@ public class AdminService : IAdminService
     {
         var now = DateTime.UtcNow;
         
-        // Get users from User service via HTTP
         var users = await _userServiceClient.GetUsersAsync();
         var totalUsers = users.Count;
-        // Note: Lockout status is managed by Auth service, not available in UserProfileDto
-        // For now, consider all users as active (lockout status would need to be fetched from Auth service)
-        var activeUsers = totalUsers; // All users are considered active (lockout handled by Auth service)
-        var inactiveUsers = 0; // Lockout status not available in UserProfileDto
+        
+        // Note: UserProfileDto may not have LockoutEnd, so we'll approximate based on available data
+        var activeUsers = totalUsers; // Assume all are active unless we have more info
+        var inactiveUsers = 0; // Would need LockoutEnd from User service
+        
         var pendingKyc = users.Count(u => u.KycStatus == KycStatus.Pending);
         var approvedKyc = users.Count(u => u.KycStatus == KycStatus.Approved);
         var rejectedKyc = users.Count(u => u.KycStatus == KycStatus.Rejected);
@@ -186,8 +185,8 @@ public class AdminService : IAdminService
 
     private async Task<(int Current, int Previous, int ThisMonth, int ThisWeek)> GetPeriodUserCountsAsync(DateTime periodStart, DateTime previousPeriodStart, DateTime now)
     {
-        // Get users from User service via HTTP
         var users = await _userServiceClient.GetUsersAsync();
+        
         var newUsersThisPeriod = users.Count(u => u.CreatedAt >= periodStart);
         var newUsersPreviousPeriod = users.Count(u => u.CreatedAt >= previousPeriodStart && u.CreatedAt < periodStart);
         var newUsersThisMonth = users.Count(u => u.CreatedAt >= now.AddDays(-30));
@@ -202,7 +201,6 @@ public class AdminService : IAdminService
         var periodStart = GetPeriodStart(now, period);
         var previousPeriodStart = GetPeriodStart(periodStart.AddDays(-1), period);
 
-        // Get groups from Group service via HTTP
         var groups = await _groupServiceClient.GetGroupsAsync();
         var totalGroups = groups.Count;
         var activeGroups = groups.Count(g => g.Status == GroupStatus.Active);
@@ -232,7 +230,6 @@ public class AdminService : IAdminService
         var periodStart = GetPeriodStart(now, period);
         var previousPeriodStart = GetPeriodStart(periodStart.AddDays(-1), period);
 
-        // Get vehicles from Vehicle service via HTTP
         var vehicles = await _vehicleServiceClient.GetVehiclesAsync();
         var totalVehicles = vehicles.Count;
         var availableVehicles = vehicles.Count(v => v.Status == VehicleStatus.Available);
@@ -264,7 +261,6 @@ public class AdminService : IAdminService
         var periodStart = GetPeriodStart(now, period);
         var previousPeriodStart = GetPeriodStart(periodStart.AddDays(-1), period);
 
-        // Get bookings from Booking service via HTTP
         var bookings = await _bookingServiceClient.GetBookingsAsync();
         var totalBookings = bookings.Count;
         var pendingBookings = bookings.Count(b => b.Status == BookingStatus.Pending);
@@ -318,29 +314,14 @@ public class AdminService : IAdminService
 
     private async Task<(decimal Total, decimal Monthly, decimal Weekly, decimal Daily, decimal ThisPeriod, decimal PreviousPeriod)> GetRevenueDataAsync(DateTime now, DateTime periodStart, DateTime previousPeriodStart)
     {
-        // Get payments from Payment service via HTTP
         var allPayments = await _paymentServiceClient.GetPaymentsAsync(status: PaymentStatus.Completed);
+        
         var totalRevenue = allPayments.Sum(p => p.Amount);
-
-        var monthlyRevenue = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= now.AddDays(-30))
-            .Sum(p => p.Amount);
-
-        var weeklyRevenue = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= now.AddDays(-7))
-            .Sum(p => p.Amount);
-
-        var dailyRevenue = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= now.AddDays(-1))
-            .Sum(p => p.Amount);
-
-        var revenueThisPeriod = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= periodStart)
-            .Sum(p => p.Amount);
-
-        var revenuePreviousPeriod = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= previousPeriodStart && p.PaidAt.Value < periodStart)
-            .Sum(p => p.Amount);
+        var monthlyRevenue = allPayments.Where(p => p.PaidAt >= now.AddDays(-30)).Sum(p => p.Amount);
+        var weeklyRevenue = allPayments.Where(p => p.PaidAt >= now.AddDays(-7)).Sum(p => p.Amount);
+        var dailyRevenue = allPayments.Where(p => p.PaidAt >= now.AddDays(-1)).Sum(p => p.Amount);
+        var revenueThisPeriod = allPayments.Where(p => p.PaidAt >= periodStart).Sum(p => p.Amount);
+        var revenuePreviousPeriod = allPayments.Where(p => p.PaidAt >= previousPeriodStart && p.PaidAt < periodStart).Sum(p => p.Amount);
 
         return (totalRevenue, monthlyRevenue, weeklyRevenue, dailyRevenue, revenueThisPeriod, revenuePreviousPeriod);
     }
@@ -349,23 +330,21 @@ public class AdminService : IAdminService
     {
         var now = DateTime.UtcNow;
         
-        // Check database connection
+        // Check database connection (Admin DB only)
         var databaseConnected = await _context.Database.CanConnectAsync();
         
-        // Count pending approvals from services via HTTP
+        // Count pending approvals via HTTP clients
         var bookings = await _bookingServiceClient.GetBookingsAsync();
-        var pendingBookings = bookings.Count(b => b.Status == BookingStatus.PendingApproval);
-        
         var users = await _userServiceClient.GetUsersAsync();
-        var pendingKyc = users.Count(u => u.KycStatus == KycStatus.InReview);
-        var pendingApprovals = pendingBookings + pendingKyc;
+        var pendingApprovals = bookings.Count(b => b.Status == BookingStatus.PendingApproval) +
+                              users.Count(u => u.KycStatus == KycStatus.InReview);
         
         // Count overdue maintenance (vehicles that haven't been serviced in 6 months)
         var vehicles = await _vehicleServiceClient.GetVehiclesAsync();
         var overdueMaintenance = vehicles.Count(v => 
             v.LastServiceDate == null || v.LastServiceDate < now.AddMonths(-6));
         
-        // Count disputes from Admin database (disputes are stored in Admin service)
+        // Count disputes (from Admin DB)
         var disputes = await _context.Disputes.CountAsync(d => d.Status == DisputeStatus.Open || d.Status == DisputeStatus.UnderReview);
         
         // Count system errors (this would come from your logging system)
@@ -385,19 +364,25 @@ public class AdminService : IAdminService
 
     public async Task<List<ActivityFeedItemDto>> GetRecentActivityAsync(int count = 20)
     {
-        return await _context.AuditLogs
+        var auditLogs = await _context.AuditLogs
             .OrderByDescending(a => a.Timestamp)
             .Take(count)
-            .Select(a => new ActivityFeedItemDto
-            {
-                Id = a.Id,
-                Entity = a.Entity,
-                Action = a.Action,
-                UserName = a.User.FirstName + " " + a.User.LastName,
-                Timestamp = a.Timestamp,
-                Details = a.Details
-            })
             .ToListAsync();
+
+        // Fetch user names via User service
+        var userIds = auditLogs.Select(a => a.PerformedBy).Distinct().ToList();
+        var users = await _userServiceClient.GetUsersAsync();
+        var userMap = users.Where(u => userIds.Contains(u.Id)).ToDictionary(u => u.Id, u => $"{u.FirstName} {u.LastName}");
+
+        return auditLogs.Select(a => new ActivityFeedItemDto
+        {
+            Id = a.Id,
+            Entity = a.Entity,
+            Action = a.Action,
+            UserName = userMap.GetValueOrDefault(a.PerformedBy, "Unknown"),
+            Timestamp = a.Timestamp,
+            Details = a.Details
+        }).ToList();
     }
 
     public async Task<List<AlertDto>> GetAlertsAsync()
@@ -405,10 +390,9 @@ public class AdminService : IAdminService
         var alerts = new List<AlertDto>();
         var now = DateTime.UtcNow;
 
-        // Overdue maintenance alerts - get from Vehicle service
+        // Overdue maintenance alerts
         var vehicles = await _vehicleServiceClient.GetVehiclesAsync();
-        var overdueMaintenance = vehicles.Count(v => 
-            v.LastServiceDate == null || v.LastServiceDate < now.AddMonths(-6));
+        var overdueMaintenance = vehicles.Count(v => v.LastServiceDate == null || v.LastServiceDate < now.AddMonths(-6));
 
         if (overdueMaintenance > 0)
         {
@@ -423,7 +407,7 @@ public class AdminService : IAdminService
             });
         }
 
-        // Pending KYC alerts - get from User service
+        // Pending KYC alerts
         var users = await _userServiceClient.GetUsersAsync();
         var pendingKyc = users.Count(u => u.KycStatus == KycStatus.Pending);
         if (pendingKyc > 0)
@@ -439,7 +423,7 @@ public class AdminService : IAdminService
             });
         }
 
-        // Pending booking approvals - get from Booking service
+        // Pending booking approvals
         var bookings = await _bookingServiceClient.GetBookingsAsync();
         var pendingBookings = bookings.Count(b => b.Status == BookingStatus.PendingApproval);
         if (pendingBookings > 0)
@@ -477,58 +461,44 @@ public class AdminService : IAdminService
     public async Task<FinancialOverviewDto> GetFinancialOverviewAsync()
     {
         var now = DateTime.UtcNow;
-        
-        // Get payments from Payment service via HTTP
-        var allPayments = await _paymentServiceClient.GetPaymentsAsync(status: PaymentStatus.Completed);
-        var allTimeRevenue = allPayments.Sum(p => p.Amount);
-        
         var yearStart = new DateTime(now.Year, 1, 1);
         var rollingMonthStart = now.AddDays(-30);
         var weekStart = now.AddDays(-7);
         var dayStart = now.AddDays(-1);
 
-        var yearRevenue = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= yearStart)
-            .Sum(p => p.Amount);
-        var monthRevenue = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= rollingMonthStart)
-            .Sum(p => p.Amount);
-        var weekRevenue = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= weekStart)
-            .Sum(p => p.Amount);
-        var dayRevenue = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= dayStart)
-            .Sum(p => p.Amount);
+        // Get payments via HTTP client
+        var allPayments = await _paymentServiceClient.GetPaymentsAsync(status: PaymentStatus.Completed);
+        var allTimeRevenue = allPayments.Sum(p => p.Amount);
+        var yearRevenue = allPayments.Where(p => p.PaidAt >= yearStart).Sum(p => p.Amount);
+        var monthRevenue = allPayments.Where(p => p.PaidAt >= rollingMonthStart).Sum(p => p.Amount);
+        var weekRevenue = allPayments.Where(p => p.PaidAt >= weekStart).Sum(p => p.Amount);
+        var dayRevenue = allPayments.Where(p => p.PaidAt >= dayStart).Sum(p => p.Amount);
 
-        // Revenue by source - categorize payments by description/notes
+        // Revenue by source - simplified (would need Payment service to provide more details)
         var revenueBySource = new List<KeyValuePair<string, decimal>>();
         revenueBySource.Add(new KeyValuePair<string, decimal>("Payments", allTimeRevenue));
-        // Note: Ledger entries would need to come from Payment service if available
-        // For now, we'll categorize based on payment descriptions
-        var fees = allPayments.Where(p => p.Notes?.Contains("fee", StringComparison.OrdinalIgnoreCase) == true).Sum(p => p.Amount);
-        revenueBySource.Add(new KeyValuePair<string, decimal>("Fees", fees));
+        // Note: Ledger entries not available via HTTP - would need Payment service to expose this
 
-        // Get expenses from Payment service
+        // Get expenses via HTTP client
         var allExpenses = await _paymentServiceClient.GetExpensesAsync();
         var totalExpenses = allExpenses.Sum(e => e.Amount);
 
-        // Total fund balances - would need to come from Payment service if available
-        // For now, use a placeholder
+        // Total fund balances - not available via HTTP (would need Payment service endpoint)
         var totalFundBalances = 0m;
 
-        var totalPayments = allPayments.Count;
-        var successPayments = allPayments.Count;
-        var failedPayments = await _paymentServiceClient.GetPaymentsAsync(status: PaymentStatus.Failed);
-        var failedPaymentsCount = failedPayments.Count;
-        var failedPaymentsAmount = failedPayments.Sum(p => p.Amount);
-        var pendingPaymentsList = await _paymentServiceClient.GetPaymentsAsync(status: PaymentStatus.Pending);
-        var pendingPayments = pendingPaymentsList.Count;
+        // Payment statistics
+        var allPaymentsAllStatuses = await _paymentServiceClient.GetPaymentsAsync();
+        var totalPayments = allPaymentsAllStatuses.Count;
+        var successPayments = allPaymentsAllStatuses.Count(p => p.Status == PaymentStatus.Completed);
+        var failedPaymentsCount = allPaymentsAllStatuses.Count(p => p.Status == PaymentStatus.Failed);
+        var failedPaymentsAmount = allPaymentsAllStatuses.Where(p => p.Status == PaymentStatus.Failed).Sum(p => p.Amount);
+        var pendingPayments = allPaymentsAllStatuses.Count(p => p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Processing);
         var successRate = totalPayments == 0 ? 0 : (double)successPayments / totalPayments * 100d;
 
         // Revenue trend (last 30 days)
         var trendStart = now.AddDays(-30).Date;
         var revenueTrend = allPayments
-            .Where(p => p.PaidAt.HasValue && p.PaidAt.Value >= trendStart)
+            .Where(p => p.PaidAt >= trendStart)
             .GroupBy(p => p.PaidAt!.Value.Date)
             .Select(g => new TimeSeriesPointDto<decimal> { Date = g.Key, Value = g.Sum(p => p.Amount) })
             .OrderBy(x => x.Date)
@@ -544,7 +514,7 @@ public class AdminService : IAdminService
             .Join(groups, g => g.GroupId, og => og.Id, (g, og) => new GroupSpendSummaryDto { GroupId = g.GroupId, GroupName = og.Name, TotalExpenses = g.Total })
             .ToList();
 
-        // Financial health score (simple composite)
+        // Financial health score (simplified)
         var groupsCount = groups.Count;
         var negativeGroups = await GetNegativeBalanceGroupsAsync();
         var healthScore = Math.Max(0, 100 - (int)(negativeGroups.Count * 100.0 / Math.Max(1, groupsCount)) - (int)Math.Min(50, failedPaymentsCount));
@@ -563,7 +533,7 @@ public class AdminService : IAdminService
             FailedPaymentsCount = failedPaymentsCount,
             FailedPaymentsAmount = failedPaymentsAmount,
             PendingPaymentsCount = pendingPayments,
-            RevenueTrend = revenueTrend.OrderBy(x => x.Date).ToList(),
+            RevenueTrend = revenueTrend,
             TopSpendingGroups = topGroups,
             FinancialHealthScore = healthScore
         };
@@ -571,25 +541,9 @@ public class AdminService : IAdminService
 
     public async Task<FinancialGroupBreakdownDto> GetFinancialByGroupsAsync()
     {
-        // Get groups from Group service via HTTP
         var groups = await _groupServiceClient.GetGroupsAsync();
-        var groupList = groups.Select(g => new { g.Id, g.Name }).ToList();
-        
-        // Get expenses from Payment service via HTTP
-        var allExpenses = await _paymentServiceClient.GetExpensesAsync();
-        var expenses = allExpenses.Select(e => new { e.GroupId, ExpenseType = e.ExpenseType, e.Amount, DateIncurred = e.DateIncurred }).ToList();
-        
-        // Get payments from Payment service via HTTP
-        var allPayments = await _paymentServiceClient.GetPaymentsAsync();
-        var payments = allPayments.Select(p => new { p.Id, InvoiceId = p.InvoiceId, p.Status }).ToList();
-        
-        // Note: Invoice and expense mapping would need to come from Payment service
-        // For now, we'll work with what we have
-        var expenseIdToGroup = expenses.ToDictionary(e => e.GroupId, e => e.GroupId);
-        
-        // Latest ledger balance per group - would need Payment service endpoint
-        // For now, use placeholder
-        var balances = new List<(Guid GroupId, decimal Balance)>();
+        var expenses = await _paymentServiceClient.GetExpensesAsync();
+        var payments = await _paymentServiceClient.GetPaymentsAsync();
 
         var items = new List<GroupFinancialItemDto>();
         foreach (var g in groups)
@@ -598,12 +552,12 @@ public class AdminService : IAdminService
             var byType = gExpenses
                 .GroupBy(e => e.ExpenseType)
                 .ToDictionary(k => k.Key.ToString(), v => v.Sum(x => x.Amount));
-            var balanceTuple = balances.FirstOrDefault(b => b.GroupId == g.Id);
-            var balance = balanceTuple != default ? balanceTuple.Balance : 0m;
+            
+            // Fund balance not available via HTTP - would need Payment service endpoint
+            var balance = 0m;
 
-            // Note: Invoice mapping would need Payment service endpoint
-            // For now, match payments to expenses by group
-            var groupPayments = payments.Where(p => p.InvoiceId != Guid.Empty).ToList();
+            // Payment compliance - simplified (would need invoice mapping from Payment service)
+            var groupPayments = payments.Where(p => gExpenses.Any(e => e.GroupId == g.Id)).ToList();
             var total = groupPayments.Count;
             var completed = groupPayments.Count(p => p.Status == PaymentStatus.Completed);
             var compliance = total == 0 ? 100d : (double)completed / total * 100d;
@@ -625,7 +579,6 @@ public class AdminService : IAdminService
 
     public async Task<PaymentStatisticsDto> GetPaymentStatisticsAsync()
     {
-        // Get payments from Payment service via HTTP
         var all = await _paymentServiceClient.GetPaymentsAsync();
         var total = all.Count;
         var success = all.Count(p => p.Status == PaymentStatus.Completed);
@@ -669,9 +622,8 @@ public class AdminService : IAdminService
 
     public async Task<ExpenseAnalysisDto> GetExpenseAnalysisAsync()
     {
-        // Get expenses from Payment service via HTTP
-        var allExpenses = await _paymentServiceClient.GetExpensesAsync();
-        var expenseRows = allExpenses.Select(e => new { ExpenseType = e.ExpenseType, e.Amount, CreatedAt = e.DateIncurred, e.GroupId }).ToList();
+        var expenses = await _paymentServiceClient.GetExpensesAsync();
+        var expenseRows = expenses.Select(e => new { e.ExpenseType, e.Amount, CreatedAt = e.DateIncurred, e.GroupId }).ToList();
 
         var byType = expenseRows
             .GroupBy(e => e.ExpenseType)
@@ -685,7 +637,6 @@ public class AdminService : IAdminService
             .OrderBy(x => x.Date)
             .ToList();
 
-        // Get vehicles from Vehicle service via HTTP
         var vehicles = await _vehicleServiceClient.GetVehiclesAsync();
         var vehicleCount = vehicles.Count;
         var avgPerVehicle = vehicleCount == 0 ? 0 : expenseRows.Sum(e => e.Amount) / vehicleCount;
@@ -711,15 +662,15 @@ public class AdminService : IAdminService
 
     public async Task<FinancialAnomaliesDto> GetFinancialAnomaliesAsync()
     {
-        // Get payments from Payment service via HTTP
         var allPayments = await _paymentServiceClient.GetPaymentsAsync(status: PaymentStatus.Completed);
-        var amounts = allPayments.Select(p => (double)p.Amount).ToList();
+        var completed = allPayments.ToList();
+        var amounts = completed.Select(p => (double)p.Amount).ToList();
         var mean = amounts.Count == 0 ? 0 : amounts.Average();
         var std = amounts.Count <= 1 ? 0 : Math.Sqrt(amounts.Sum(a => Math.Pow(a - mean, 2)) / (amounts.Count - 1));
         var anomalies = new List<PaymentAnomalyDto>();
         if (std > 0)
         {
-            foreach (var p in allPayments)
+            foreach (var p in completed)
             {
                 var z = ((double)p.Amount - mean) / std;
                 if (Math.Abs(z) >= 3)
@@ -730,9 +681,9 @@ public class AdminService : IAdminService
         }
 
         var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
-        var failedPayments = await _paymentServiceClient.GetPaymentsAsync(status: PaymentStatus.Failed);
-        var suspicious = failedPayments
-            .Where(p => p.CreatedAt >= sevenDaysAgo)
+        var allPaymentsAllStatuses = await _paymentServiceClient.GetPaymentsAsync();
+        var suspicious = allPaymentsAllStatuses
+            .Where(p => p.Status == PaymentStatus.Failed && p.CreatedAt >= sevenDaysAgo)
             .GroupBy(p => p.PayerId)
             .Select(g => new SuspiciousPatternDto { PayerId = g.Key, FailedCount7Days = g.Count() })
             .Where(x => x.FailedCount7Days >= 3)
@@ -782,88 +733,15 @@ public class AdminService : IAdminService
 
     private async Task<List<GroupNegativeBalanceDto>> GetNegativeBalanceGroupsAsync()
     {
-        // Note: Ledger entries would need to come from Payment service
-        // For now, return empty list as we don't have access to ledger entries
-        // This would need a Payment service endpoint to get group balances
+        // Note: Ledger entries not available via HTTP - would need Payment service to expose group balances
+        // For now, return empty list - this functionality would need to be implemented in Payment service
+        var groups = await _groupServiceClient.GetGroupsAsync();
         return new List<GroupNegativeBalanceDto>();
     }
 
-    private async Task<(KycStatus Status, string Reason)> DetermineOverallKycStatusAsync(Guid userId, KycDocumentDto? updatedDocument = null)
-    {
-        // Get KYC documents from User service via HTTP
-        // Note: GetUserKycDocumentsAsync may not exist, using GetPendingKycDocumentsAsync and filtering
-        var allPendingDocs = await _userServiceClient.GetPendingKycDocumentsAsync();
-        var documents = allPendingDocs
-            .Where(d => d.UserId == userId && (updatedDocument == null || d.Id != updatedDocument.Id))
-            .ToList();
-
-        if (updatedDocument != null)
-        {
-            documents.Add(updatedDocument);
-        }
-
-        if (!documents.Any())
-        {
-            return (KycStatus.Pending, "No KYC documents uploaded");
-        }
-
-        if (documents.Any(d => d.Status == KycDocumentStatus.Rejected))
-        {
-            return (KycStatus.Rejected, "One or more documents rejected");
-        }
-
-        if (documents.Any(d => d.Status == KycDocumentStatus.RequiresUpdate))
-        {
-            return (KycStatus.Pending, "Documents require updates");
-        }
-
-        if (documents.Any(d => d.Status == KycDocumentStatus.Pending || d.Status == KycDocumentStatus.UnderReview))
-        {
-            return (KycStatus.InReview, "Documents under review");
-        }
-
-        if (documents.All(d => d.Status == KycDocumentStatus.Approved) && documents.Count() >= 2)
-        {
-            return (KycStatus.Approved, "All documents approved");
-        }
-
-        return (KycStatus.InReview, "Awaiting additional documents");
-    }
-
-    private void ApplyUserKycStatusChange(User user, KycStatus newStatus, Guid adminUserId, string? reason)
-    {
-        var now = DateTime.UtcNow;
-        var oldStatus = user.KycStatus;
-
-        if (oldStatus == newStatus && string.IsNullOrWhiteSpace(reason))
-        {
-            return;
-        }
-
-        if (oldStatus != newStatus)
-        {
-            user.KycStatus = newStatus;
-            user.UpdatedAt = now;
-        }
-
-        var baseDetail = oldStatus == newStatus
-            ? $"KYC status confirmed as {newStatus}."
-            : $"KYC status changed from {oldStatus} to {newStatus}.";
-
-        var details = string.IsNullOrWhiteSpace(reason) ? baseDetail : $"{baseDetail} Reason: {reason}";
-
-        _context.AuditLogs.Add(new AuditLog
-        {
-            Entity = "User",
-            EntityId = user.Id,
-            Action = "KycStatusUpdated",
-            Details = details,
-            PerformedBy = adminUserId,
-            Timestamp = now,
-            IpAddress = "Admin API",
-            UserAgent = "Admin API"
-        });
-    }
+    // Note: DetermineOverallKycStatusAsync and ApplyUserKycStatusChange are no longer used
+    // KYC status is now managed via User service HTTP calls
+    // These methods are kept for reference but should be removed if not needed
 
     private DateTime GetPeriodStart(DateTime date, TimePeriod period)
     {
@@ -887,59 +765,64 @@ public class AdminService : IAdminService
     // User Management Methods
     public async Task<UserListResponseDto> GetUsersAsync(UserListRequestDto request)
     {
-        // Get users from User service via HTTP
-        var users = await _userServiceClient.GetUsersAsync(request);
+        _logger.LogInformation("GetUsersAsync called with request: Page={Page}, PageSize={PageSize}, Search={Search}, Role={Role}, KycStatus={KycStatus}", 
+            request.Page, request.PageSize, request.Search, request.Role, request.KycStatus);
         
-        // Apply filtering and sorting in memory (since we're getting all users)
-        var query = users.AsQueryable();
-
-        // Apply search filter
+        // Get ALL users from User service first (without pagination), then filter and paginate in Admin service
+        // This ensures we have all data to filter properly
+        // Note: User service will handle its own filtering, we just need to get all pages
+        var requestWithoutPagination = new UserListRequestDto
+        {
+            // Don't pass filters to User service - let it return all users, we'll filter here
+            Page = 1,
+            PageSize = 10000 // Get all users
+        };
+        
+        var allUsers = await _userServiceClient.GetUsersAsync(requestWithoutPagination);
+        
+        _logger.LogInformation("Received {Count} users from UserServiceClient", allUsers.Count);
+        
+        // Apply filters in memory
+        var filtered = allUsers.AsEnumerable();
+        
         if (!string.IsNullOrEmpty(request.Search))
         {
             var searchTerm = request.Search.ToLower();
-            query = query.Where(u => 
-                (u.FirstName != null && u.FirstName.ToLower().Contains(searchTerm)) ||
-                (u.LastName != null && u.LastName.ToLower().Contains(searchTerm)) ||
-                (u.Email != null && u.Email.ToLower().Contains(searchTerm)) ||
+            filtered = filtered.Where(u => 
+                (u.FirstName?.ToLower().Contains(searchTerm) ?? false) ||
+                (u.LastName?.ToLower().Contains(searchTerm) ?? false) ||
+                (u.Email?.ToLower().Contains(searchTerm) ?? false) ||
                 (u.Phone != null && u.Phone.Contains(searchTerm)));
         }
 
-        // Apply role filter
         if (request.Role.HasValue)
         {
-            query = query.Where(u => u.Role == request.Role.Value);
+            filtered = filtered.Where(u => u.Role == request.Role.Value);
         }
 
-        // Apply KYC status filter
         if (request.KycStatus.HasValue)
         {
-            query = query.Where(u => u.KycStatus == request.KycStatus.Value);
+            filtered = filtered.Where(u => u.KycStatus == request.KycStatus.Value);
         }
 
-        // Apply account status filter
-        // Note: Lockout status is managed by Auth service and not available in UserProfileDto
-        // Account status filtering would require integration with Auth service
-        if (request.AccountStatus.HasValue)
-        {
-            // For now, skip account status filtering as LockoutEnd is not available in UserProfileDto
-            // This would need to be implemented via Auth service integration
-        }
+        // Account status filter - note: UserProfileDto may not have LockoutEnd, so this may not work perfectly
+        // Would need User service to expose account status or LockoutEnd
 
         // Apply sorting
-        query = request.SortBy?.ToLower() switch
+        filtered = request.SortBy?.ToLower() switch
         {
-            "email" => request.SortDirection == "asc" ? query.OrderBy(u => u.Email) : query.OrderByDescending(u => u.Email),
-            "firstname" => request.SortDirection == "asc" ? query.OrderBy(u => u.FirstName) : query.OrderByDescending(u => u.FirstName),
-            "lastname" => request.SortDirection == "asc" ? query.OrderBy(u => u.LastName) : query.OrderByDescending(u => u.LastName),
-            "role" => request.SortDirection == "asc" ? query.OrderBy(u => u.Role) : query.OrderByDescending(u => u.Role),
-            "kycstatus" => request.SortDirection == "asc" ? query.OrderBy(u => u.KycStatus) : query.OrderByDescending(u => u.KycStatus),
-            _ => request.SortDirection == "asc" ? query.OrderBy(u => u.CreatedAt) : query.OrderByDescending(u => u.CreatedAt)
+            "email" => request.SortDirection == "asc" ? filtered.OrderBy(u => u.Email) : filtered.OrderByDescending(u => u.Email),
+            "firstname" => request.SortDirection == "asc" ? filtered.OrderBy(u => u.FirstName) : filtered.OrderByDescending(u => u.FirstName),
+            "lastname" => request.SortDirection == "asc" ? filtered.OrderBy(u => u.LastName) : filtered.OrderByDescending(u => u.LastName),
+            "role" => request.SortDirection == "asc" ? filtered.OrderBy(u => u.Role) : filtered.OrderByDescending(u => u.Role),
+            "kycstatus" => request.SortDirection == "asc" ? filtered.OrderBy(u => u.KycStatus) : filtered.OrderByDescending(u => u.KycStatus),
+            _ => request.SortDirection == "asc" ? filtered.OrderBy(u => u.CreatedAt) : filtered.OrderByDescending(u => u.CreatedAt)
         };
 
-        var totalCount = query.Count();
+        var totalCount = filtered.Count();
         var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
 
-        var userList = query
+        var users = filtered
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(u => new UserSummaryDto
@@ -951,7 +834,7 @@ public class AdminService : IAdminService
                 Phone = u.Phone,
                 Role = u.Role,
                 KycStatus = u.KycStatus,
-                AccountStatus = UserAccountStatus.Active, // Lockout status managed by Auth service, not available in UserProfileDto
+                AccountStatus = UserAccountStatus.Active, // Would need User service to provide this
                 CreatedAt = u.CreatedAt,
                 LastLoginAt = null // This would need to be tracked separately
             })
@@ -959,7 +842,7 @@ public class AdminService : IAdminService
 
         return new UserListResponseDto
         {
-            Users = userList,
+            Users = users,
             TotalCount = totalCount,
             Page = request.Page,
             PageSize = request.PageSize,
@@ -969,21 +852,22 @@ public class AdminService : IAdminService
 
     public async Task<UserDetailsDto> GetUserDetailsAsync(Guid userId)
     {
-        // Get user from User service via HTTP
-        var user = await _userServiceClient.GetUserProfileAsync(userId);
-        if (user == null)
+        // Get user profile via HTTP client
+        var userProfile = await _userServiceClient.GetUserProfileAsync(userId);
+        if (userProfile == null)
             throw new ArgumentException("User not found");
 
-        // Get KYC documents from User service
-        var kycDocuments = await _userServiceClient.GetPendingKycDocumentsAsync();
-        var userKycDocs = kycDocuments.Where(d => d.UserId == userId).ToList();
-
-        // Get group memberships - would need Group service endpoint for user's groups
+        // Get group memberships via Group service (would need Group service endpoint for user's groups)
         var groups = await _groupServiceClient.GetGroupsAsync();
-        var groupMemberships = new List<GroupMembershipDto>(); // Placeholder - would need Group service endpoint
+        var groupMemberships = new List<GroupMembershipDto>(); // Would need Group service to provide user's group memberships
 
         var statistics = await GetUserStatisticsAsync(userId);
 
+        // Get KYC documents via User service
+        var kycDocuments = await _userServiceClient.GetPendingKycDocumentsAsync();
+        var userKycDocs = kycDocuments.Where(d => d.UserId == userId).ToList();
+
+        // Get recent activity from Admin audit logs (Admin-specific)
         var recentActivity = await _context.AuditLogs
             .Where(a => a.PerformedBy == userId)
             .OrderByDescending(a => a.Timestamp)
@@ -1000,233 +884,194 @@ public class AdminService : IAdminService
 
         return new UserDetailsDto
         {
-            Id = user.Id,
-            Email = user.Email,
-            FirstName = user.FirstName,
-            LastName = user.LastName,
-            Phone = user.Phone,
-            Address = user.Address,
-            City = user.City,
-            Country = user.Country,
-            PostalCode = user.PostalCode,
-            DateOfBirth = user.DateOfBirth,
-            Role = user.Role,
-            KycStatus = user.KycStatus,
-            AccountStatus = UserAccountStatus.Active, // Lockout status managed by Auth service, not available in UserProfileDto
-            CreatedAt = user.CreatedAt,
-            UpdatedAt = user.UpdatedAt,
+            Id = userProfile.Id,
+            Email = userProfile.Email,
+            FirstName = userProfile.FirstName,
+            LastName = userProfile.LastName,
+            Phone = userProfile.Phone,
+            Address = null, // Would need User service to expose full profile
+            City = null,
+            Country = null,
+            PostalCode = null,
+            DateOfBirth = null,
+            Role = userProfile.Role,
+            KycStatus = userProfile.KycStatus,
+            AccountStatus = UserAccountStatus.Active, // Would need User service to provide this
+            CreatedAt = userProfile.CreatedAt,
+            UpdatedAt = userProfile.CreatedAt, // Would need User service to expose UpdatedAt
             LastLoginAt = null, // This would need to be tracked separately
             GroupMemberships = groupMemberships,
             Statistics = statistics,
-            KycDocuments = kycDocuments,
+            KycDocuments = userKycDocs,
             RecentActivity = recentActivity
         };
     }
 
     public async Task<bool> UpdateUserStatusAsync(Guid userId, UpdateUserStatusDto request, Guid adminUserId)
     {
-        // Get user from User service to verify it exists
-        var user = await _userServiceClient.GetUserProfileAsync(userId);
-        if (user == null)
-            return false;
-
-        // Note: User lockout/status is managed by Auth service, not User service
-        // This method should call Auth service to update lockout status
-        // For now, we'll just log the action since we don't have Auth service client
+        // TODO: This method needs User service endpoint PUT /api/User/users/{userId}/status
+        // For now, this operation cannot be performed via HTTP - User service needs to expose this endpoint
+        // The User service should handle the status update and return success/failure
         
-        var oldStatus = UserAccountStatus.Active; // Default since lockout info not available
+        _logger.LogWarning("UpdateUserStatusAsync called but User service endpoint not available. UserId: {UserId}, Status: {Status}", userId, request.Status);
         
-        // TODO: Call Auth service to update user lockout status
-        // This would require an IAuthServiceClient to be injected
-        // For now, we'll just create an audit log
-
+        // Create audit log in Admin DB
         var now = DateTime.UtcNow;
-        
-        // Create audit log
         var auditLog = new AuditLog
         {
             Entity = "User",
             EntityId = userId,
             Action = "StatusUpdated",
-            Details = $"Status change requested from {oldStatus} to {request.Status}. Reason: {request.Reason ?? "No reason provided"}. Note: Actual lockout update requires Auth service integration.",
+            Details = $"Status update requested: {request.Status}. Reason: {request.Reason ?? "No reason provided"}. NOTE: User service endpoint needed.",
             PerformedBy = adminUserId,
             Timestamp = now,
-            IpAddress = "127.0.0.1", // This should be passed from the controller
+            IpAddress = "Admin API",
             UserAgent = "Admin API"
         };
 
         _context.AuditLogs.Add(auditLog);
         await _context.SaveChangesAsync();
 
+        // TODO: Call User service endpoint when available
         // TODO: Publish UserStatusChangedEvent
         // TODO: Send notification to user
 
-        return true;
+        return false; // Return false until User service endpoint is implemented
     }
 
     public async Task<bool> UpdateUserRoleAsync(Guid userId, UpdateUserRoleDto request, Guid adminUserId)
     {
-        // Get user from User service via HTTP
-        var user = await _userServiceClient.GetUserProfileAsync(userId);
-        if (user == null)
-            return false;
-
-        var oldRole = user.Role;
-        // Note: Role update should be done via User service endpoint
-        // For now, we'll just log the action
-        // TODO: Add UpdateUserRoleAsync to IUserServiceClient
-
-        // Create audit log
+        // TODO: This method needs User service endpoint PUT /api/User/users/{userId}/role
+        // For now, this operation cannot be performed via HTTP - User service needs to expose this endpoint
+        // The User service should handle the role update and return success/failure
+        
+        _logger.LogWarning("UpdateUserRoleAsync called but User service endpoint not available. UserId: {UserId}, Role: {Role}", userId, request.Role);
+        
+        // Create audit log in Admin DB
+        var now = DateTime.UtcNow;
         var auditLog = new AuditLog
         {
             Entity = "User",
             EntityId = userId,
             Action = "RoleUpdated",
-            Details = $"Role changed from {oldRole} to {request.Role}. Reason: {request.Reason ?? "No reason provided"}",
+            Details = $"Role update requested: {request.Role}. Reason: {request.Reason ?? "No reason provided"}. NOTE: User service endpoint needed.",
             PerformedBy = adminUserId,
-            Timestamp = DateTime.UtcNow,
-            IpAddress = "127.0.0.1", // This should be passed from the controller
+            Timestamp = now,
+            IpAddress = "Admin API",
             UserAgent = "Admin API"
         };
 
         _context.AuditLogs.Add(auditLog);
         await _context.SaveChangesAsync();
 
+        // TODO: Call User service endpoint when available
         // TODO: Publish RoleChangedEvent
 
-        return true;
+        return false; // Return false until User service endpoint is implemented
     }
 
     public async Task<List<PendingKycUserDto>> GetPendingKycUsersAsync()
     {
-        // Get pending KYC documents from User service via HTTP
-        var pendingDocuments = await _userServiceClient.GetPendingKycDocumentsAsync();
+        // Get pending KYC documents via User service
+        var kycDocuments = await _userServiceClient.GetPendingKycDocumentsAsync();
         
-        // Group by user and create DTOs
-        var usersDict = new Dictionary<Guid, PendingKycUserDto>();
-        
-        foreach (var doc in pendingDocuments)
-        {
-            if (!usersDict.ContainsKey(doc.UserId))
+        // Get users with pending KYC
+        var allUsers = await _userServiceClient.GetUsersAsync();
+        var pendingUsers = allUsers.Where(u => u.KycStatus == KycStatus.Pending || u.KycStatus == KycStatus.InReview)
+            .OrderBy(u => u.CreatedAt)
+            .Select(u => new PendingKycUserDto
             {
-                // Get user profile to get user details
-                var user = await _userServiceClient.GetUserProfileAsync(doc.UserId);
-                if (user != null)
-                {
-                    usersDict[doc.UserId] = new PendingKycUserDto
-                    {
-                        Id = user.Id,
-                        Email = user.Email,
-                        FirstName = user.FirstName,
-                        LastName = user.LastName,
-                        KycStatus = user.KycStatus,
-                        SubmittedAt = user.CreatedAt,
-                        Documents = new List<KycDocumentDto>()
-                    };
-                }
-            }
-            
-            if (usersDict.ContainsKey(doc.UserId))
-            {
-                usersDict[doc.UserId].Documents.Add(doc);
-            }
-        }
-        
-        return usersDict.Values.OrderBy(u => u.SubmittedAt).ToList();
+                Id = u.Id,
+                Email = u.Email,
+                FirstName = u.FirstName,
+                LastName = u.LastName,
+                KycStatus = u.KycStatus,
+                SubmittedAt = u.CreatedAt,
+                Documents = kycDocuments.Where(d => d.UserId == u.Id).ToList()
+            })
+            .ToList();
+
+        return pendingUsers;
     }
 
     public async Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto request, Guid adminUserId)
     {
-        // Get reviewer from User service
-        var reviewer = await _userServiceClient.GetUserProfileAsync(adminUserId);
-        if (reviewer == null)
-            throw new ArgumentException("Reviewer not found");
+        // Review KYC document via User service
+        var reviewedDocument = await _userServiceClient.ReviewKycDocumentAsync(documentId, request);
 
-        // Review document via User service
-        // Note: ReviewKycDocumentAsync doesn't take adminUserId parameter, it should be handled by the User service
-        var document = await _userServiceClient.ReviewKycDocumentAsync(documentId, request);
-        
+        // Create audit log in Admin DB
         var now = DateTime.UtcNow;
-        
-        // Create audit log
         _context.AuditLogs.Add(new AuditLog
         {
             Entity = "KycDocument",
             EntityId = documentId,
             Action = "Reviewed",
-            Details = $"KYC document {document.DocumentType} reviewed with status {request.Status}.",
+            Details = $"KYC document {reviewedDocument.DocumentType} reviewed with status {request.Status}.",
             PerformedBy = adminUserId,
             Timestamp = now,
             IpAddress = "Admin API",
             UserAgent = "Admin API"
         });
 
-        // Get user to determine overall KYC status
-        var user = await _userServiceClient.GetUserProfileAsync(document.UserId);
-        if (user == null)
-            throw new ArgumentException("User not found");
-
-        // Note: DetermineOverallKycStatusAsync and ApplyUserKycStatusChange would need to be updated
-        // to work with UserProfileDto instead of User entity, or call User service endpoints
-        // For now, we'll update KYC status via User service
-        await _userServiceClient.UpdateKycStatusAsync(document.UserId, document.Status == KycDocumentStatus.Approved ? KycStatus.Approved : KycStatus.Rejected, request.ReviewNotes);
-
         await _context.SaveChangesAsync();
 
-        return document;
+        return reviewedDocument;
     }
 
     public async Task<bool> UpdateUserKycStatusAsync(Guid userId, UpdateUserKycStatusDto request, Guid adminUserId)
     {
-        // Get user from User service to verify it exists
-        var user = await _userServiceClient.GetUserProfileAsync(userId);
-        if (user == null)
-            return false;
-
         // Update KYC status via User service
-        await _userServiceClient.UpdateKycStatusAsync(userId, request.Status, request.Reason);
+        var success = await _userServiceClient.UpdateKycStatusAsync(userId, request.Status, request.Reason);
         
-        // Create audit log
-        var now = DateTime.UtcNow;
-        _context.AuditLogs.Add(new AuditLog
+        if (success)
         {
-            Entity = "User",
-            EntityId = userId,
-            Action = "KycStatusUpdated",
-            Details = $"KYC status changed to {request.Status}. Reason: {request.Reason ?? "No reason provided"}",
-            PerformedBy = adminUserId,
-            Timestamp = now,
-            IpAddress = "Admin API",
-            UserAgent = "Admin API"
-        });
+            // Create audit log in Admin DB
+            var now = DateTime.UtcNow;
+            _context.AuditLogs.Add(new AuditLog
+            {
+                Entity = "User",
+                EntityId = userId,
+                Action = "KycStatusUpdated",
+                Details = $"KYC status updated to {request.Status}. Reason: {request.Reason ?? "No reason provided"}",
+                PerformedBy = adminUserId,
+                Timestamp = now,
+                IpAddress = "Admin API",
+                UserAgent = "Admin API"
+            });
+            await _context.SaveChangesAsync();
+        }
         
-        await _context.SaveChangesAsync();
-        return true;
+        return success;
     }
 
-    // Note: This method is no longer used since lockout status is managed by Auth service
-    // Lockout information is not available in UserProfileDto
-    // If needed, this would require integration with Auth service
+    private UserAccountStatus GetUserAccountStatus(User user)
+    {
+        var now = DateTime.UtcNow;
+        if (user.LockoutEnd == null || user.LockoutEnd < now)
+            return UserAccountStatus.Active;
+        
+        // For simplicity, we'll treat all locked accounts as suspended
+        // In a real implementation, you might have a separate field to distinguish between suspended and banned
+        return UserAccountStatus.Suspended;
+    }
 
     private async Task<UserStatisticsDto> GetUserStatisticsAsync(Guid userId)
     {
-        // Get bookings from Booking service via HTTP
-        var allBookings = await _bookingServiceClient.GetBookingsAsync();
-        var userBookings = allBookings.Where(b => b.UserId == userId).ToList();
-        var totalBookings = userBookings.Count;
-        var completedBookings = userBookings.Count(b => b.Status == BookingStatus.Completed);
-        var cancelledBookings = userBookings.Count(b => b.Status == BookingStatus.Cancelled);
+        // Get bookings via Booking service
+        var bookings = await _bookingServiceClient.GetBookingsAsync(userId: userId);
+        var totalBookings = bookings.Count;
+        var completedBookings = bookings.Count(b => b.Status == BookingStatus.Completed);
+        var cancelledBookings = bookings.Count(b => b.Status == BookingStatus.Cancelled);
         
-        // Get payments from Payment service via HTTP
-        var allPayments = await _paymentServiceClient.GetPaymentsAsync();
-        var userPayments = allPayments.Where(p => p.PayerId == userId && p.Status == PaymentStatus.Completed).ToList();
+        // Get payments via Payment service
+        var payments = await _paymentServiceClient.GetPaymentsAsync();
+        var userPayments = payments.Where(p => p.PayerId == userId && p.Status == PaymentStatus.Completed);
         var totalPayments = userPayments.Sum(p => p.Amount);
         
-        // Get group memberships from Group service via HTTP
+        // Get group memberships via Group service (would need Group service endpoint for user's groups)
         var groups = await _groupServiceClient.GetGroupsAsync();
-        var groupMemberships = groups.SelectMany(g => g.Members ?? new List<GroupMemberDto>())
-            .Count(gm => gm.UserId == userId);
-        var activeGroupMemberships = groupMemberships; // All memberships are considered active
+        var groupMemberships = 0; // Would need Group service to provide user's group count
+        var activeGroupMemberships = 0;
 
         return new UserStatisticsDto
         {
@@ -1242,49 +1087,41 @@ public class AdminService : IAdminService
     // Group Management Methods
     public async Task<GroupListResponseDto> GetGroupsAsync(GroupListRequestDto request)
     {
-        // Get groups from Group service via HTTP
-        var allGroups = await _groupServiceClient.GetGroupsAsync();
-        var query = allGroups.AsQueryable();
-
-        // Apply search filter
+        // Get groups via HTTP client - note: filtering/sorting done in memory (may need Group service to support server-side filtering)
+        var allGroups = await _groupServiceClient.GetGroupsAsync(request);
+        
+        // Apply filters in memory (ideally Group service should support these filters)
+        var filtered = allGroups.AsEnumerable();
+        
         if (!string.IsNullOrEmpty(request.Search))
         {
             var searchTerm = request.Search.ToLower();
-            query = query.Where(g => g.Name.ToLower().Contains(searchTerm) ||
-                                   (g.Description != null && g.Description.ToLower().Contains(searchTerm)));
+            filtered = filtered.Where(g => 
+                (g.Name?.ToLower().Contains(searchTerm) ?? false) ||
+                (g.Description != null && g.Description.ToLower().Contains(searchTerm)));
         }
 
-        // Apply status filter
         if (request.Status.HasValue)
         {
-            query = query.Where(g => g.Status == request.Status.Value);
+            filtered = filtered.Where(g => g.Status == request.Status.Value);
         }
 
-        // Apply member count filters
-        if (request.MinMemberCount.HasValue || request.MaxMemberCount.HasValue)
-        {
-            var minCount = request.MinMemberCount ?? 0;
-            var maxCount = request.MaxMemberCount ?? int.MaxValue;
-            var filteredGroups = query.ToList().Where(g => {
-                var memberCount = g.Members != null ? g.Members.Count : 0;
-                return memberCount >= minCount && memberCount <= maxCount;
-            }).AsQueryable();
-            query = filteredGroups;
-        }
+        // Member count filters - would need Group service to expose member count
+        // Note: GroupDto may not have MemberCount, so this filter may not work
 
         // Apply sorting
-        query = request.SortBy?.ToLower() switch
+        filtered = request.SortBy?.ToLower() switch
         {
-            "name" => request.SortDirection == "asc" ? query.OrderBy(g => g.Name) : query.OrderByDescending(g => g.Name),
-            "membercount" => request.SortDirection == "asc" ? query.OrderBy(g => g.Members != null ? g.Members.Count : 0) : query.OrderByDescending(g => g.Members != null ? g.Members.Count : 0),
-            "activityscore" => request.SortDirection == "asc" ? query.OrderBy(g => 0) : query.OrderByDescending(g => 0), // Activity score calculation would need group details
-            _ => request.SortDirection == "asc" ? query.OrderBy(g => g.CreatedAt) : query.OrderByDescending(g => g.CreatedAt)
+            "name" => request.SortDirection == "asc" ? filtered.OrderBy(g => g.Name) : filtered.OrderByDescending(g => g.Name),
+            "membercount" => request.SortDirection == "asc" ? filtered.OrderBy(g => 0) : filtered.OrderByDescending(g => 0), // Would need member count
+            "activityscore" => request.SortDirection == "asc" ? filtered.OrderBy(g => 0) : filtered.OrderByDescending(g => 0), // Would need activity score
+            _ => request.SortDirection == "asc" ? filtered.OrderBy(g => g.CreatedAt) : filtered.OrderByDescending(g => g.CreatedAt)
         };
 
-        var totalCount = query.Count();
+        var totalCount = filtered.Count();
         var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
 
-        var groups = query
+        var groups = filtered
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(g => new GroupSummaryDto
@@ -1293,12 +1130,12 @@ public class AdminService : IAdminService
                 Name = g.Name,
                 Description = g.Description,
                 Status = g.Status,
-                MemberCount = g.Members != null ? g.Members.Count : 0,
-                VehicleCount = g.Vehicles != null ? g.Vehicles.Count : 0,
+                MemberCount = 0, // Would need Group service to provide this
+                VehicleCount = 0, // Would need Vehicle service to provide this
                 CreatedAt = g.CreatedAt,
-                ActivityScore = 0, // Would need to calculate from group details
-                HealthStatus = GroupHealthStatus.Healthy, // Would need to calculate from group details
-                CreatorName = "Unknown" // Would need to get from user service
+                ActivityScore = 0, // Would need to calculate from Group service data
+                HealthStatus = GroupHealthStatus.Healthy, // Would need to calculate from Group service data
+                CreatorName = null // Would need Group service to provide creator name
             })
             .ToList();
 
@@ -1314,64 +1151,50 @@ public class AdminService : IAdminService
 
     public async Task<GroupDetailsDto> GetGroupDetailsAsync(Guid groupId)
     {
-        // Get group from Group service via HTTP
+        // Get group details via HTTP client
         var group = await _groupServiceClient.GetGroupDetailsAsync(groupId);
-        
         if (group == null)
             throw new ArgumentException("Group not found");
 
-        // GroupDetailsDto from Group service should already have the correct structure
-        // Map to GroupMemberDetailsDto if needed, or use directly if compatible
-        var members = group.Members?.Select(m => new GroupMemberDetailsDto
-        {
-            UserId = m.UserId,
-            UserName = m.UserName ?? "Unknown",
-            Email = m.Email ?? "",
-            Role = m.Role,
-            SharePercentage = m.SharePercentage,
-            JoinedAt = m.JoinedAt,
-            IsActive = true, // All members are considered active
-            TotalBookings = 0, // This would need to be calculated separately
-            TotalPayments = 0 // This would need to be calculated separately
-        }).ToList() ?? new List<GroupMemberDetailsDto>();
-
-        var vehicles = group.Vehicles?.Select(v => new GroupVehicleDto
+        // Get vehicles for this group via Vehicle service
+        var vehicles = await _vehicleServiceClient.GetVehiclesAsync();
+        var groupVehicles = vehicles.Where(v => v.GroupId == groupId).Select(v => new GroupVehicleDto
         {
             Id = v.Id,
-            Vin = v.Vin ?? "",
-            PlateNumber = v.PlateNumber ?? "",
-            Model = v.Model ?? "",
+            Vin = v.Vin,
+            PlateNumber = v.PlateNumber,
+            Model = v.Model,
             Year = v.Year,
             Color = v.Color,
             Status = v.Status,
             LastServiceDate = v.LastServiceDate,
             Odometer = v.Odometer,
-            TotalBookings = 0, // This would need to be calculated separately
-            TotalRevenue = 0 // This would need to be calculated separately
-        }).ToList() ?? new List<GroupVehicleDto>();
+            TotalBookings = 0, // Would need Booking service to provide this
+            TotalRevenue = 0 // Would need Payment service to provide this
+        }).ToList();
 
         var financialSummary = await GetGroupFinancialSummaryAsync(groupId);
         var bookingStatistics = await GetGroupBookingStatisticsAsync(groupId);
         var recentActivity = await GetGroupRecentActivityAsync(groupId);
-        // Proposals would need to be fetched from Group service if available
-        var proposals = group.Proposals?.Select(p => new GroupProposalDto
-        {
-            Id = p.Id,
-            Title = p.Title ?? "",
-            Description = p.Description ?? "",
-            Type = p.Type,
-            Status = p.Status,
-            Amount = p.Amount,
-            CreatedAt = p.CreatedAt,
-            VotingEndDate = p.VotingEndDate,
-            CreatorName = "Unknown", // Would need to get from user service
-            TotalVotes = 0, // Votes not available in GroupProposalDto
-            YesVotes = 0,
-            NoVotes = 0,
-            ApprovalPercentage = 0
-        }).ToList() ?? new List<GroupProposalDto>();
+        
+        // Proposals - would need Group service to expose proposals
+        var proposals = new List<GroupProposalDto>();
 
-        var disputes = new List<GroupDisputeDto>(); // This would need to be implemented based on your dispute system
+        // Disputes - from Admin DB
+        var disputes = await _context.Disputes
+            .Where(d => d.GroupId == groupId)
+            .Select(d => new GroupDisputeDto
+            {
+                Id = d.Id,
+                Title = d.Subject,
+                Description = d.Description,
+                Status = d.Status,
+                CreatedAt = d.CreatedAt,
+                InitiatorName = "Unknown", // Would need to fetch via User service
+                Resolution = d.Resolution,
+                ResolvedAt = d.ResolvedAt
+            })
+            .ToListAsync();
 
         var health = await GetGroupHealthAsync(groupId);
 
@@ -1383,9 +1206,9 @@ public class AdminService : IAdminService
             Status = group.Status,
             CreatedAt = group.CreatedAt,
             UpdatedAt = group.UpdatedAt,
-            CreatorName = "Unknown", // Creator info not available in GroupDetailsDto, would need to get from user service
-            Members = members,
-            Vehicles = vehicles,
+            CreatorName = null, // Would need Group service to provide creator name
+            Members = group.Members ?? new List<GroupMemberDetailsDto>(), // Would need Group service to provide members
+            Vehicles = groupVehicles,
             FinancialSummary = financialSummary,
             BookingStatistics = bookingStatistics,
             RecentActivity = recentActivity,
@@ -1397,37 +1220,36 @@ public class AdminService : IAdminService
 
     public async Task<bool> UpdateGroupStatusAsync(Guid groupId, UpdateGroupStatusDto request, Guid adminUserId)
     {
-        // Get group from Group service to verify it exists
-        var group = await _groupServiceClient.GetGroupDetailsAsync(groupId);
-        if (group == null)
-            return false;
-
-        var oldStatus = group.Status;
-        // Note: Group status update should be done via Group service endpoint
-        // For now, we'll just log the action and handle implications
-        // TODO: Add UpdateGroupStatusAsync to IGroupServiceClient
-        await HandleGroupStatusChangeImplicationsAsync(groupId, oldStatus, request.Status);
-
-        // Create audit log
-        var auditLog = new AuditLog
+        // Update group status via Group service
+        var success = await _groupServiceClient.UpdateGroupStatusAsync(groupId, request);
+        
+        if (success)
         {
-            Entity = "OwnershipGroup",
-            EntityId = groupId,
-            Action = "StatusUpdated",
-            Details = $"Group status changed from {oldStatus} to {request.Status}. Reason: {request.Reason}",
-            PerformedBy = adminUserId,
-            Timestamp = DateTime.UtcNow,
-            IpAddress = "127.0.0.1",
-            UserAgent = "Admin API"
-        };
+            // Handle status change implications (cancel bookings, etc.)
+            await HandleGroupStatusChangeImplicationsAsync(groupId, GroupStatus.Active, request.Status); // Would need to get old status from Group service
 
-        _context.AuditLogs.Add(auditLog);
-        await _context.SaveChangesAsync();
+            // Create audit log in Admin DB
+            var now = DateTime.UtcNow;
+            var auditLog = new AuditLog
+            {
+                Entity = "OwnershipGroup",
+                EntityId = groupId,
+                Action = "StatusUpdated",
+                Details = $"Group status changed to {request.Status}. Reason: {request.Reason}",
+                PerformedBy = adminUserId,
+                Timestamp = now,
+                IpAddress = "Admin API",
+                UserAgent = "Admin API"
+            };
 
-        // TODO: Publish GroupStatusChangedEvent
-        // TODO: Send notification to all members if requested
+            _context.AuditLogs.Add(auditLog);
+            await _context.SaveChangesAsync();
 
-        return true;
+            // TODO: Publish GroupStatusChangedEvent
+            // TODO: Send notification to all members if requested
+        }
+
+        return success;
     }
 
     public async Task<GroupAuditResponseDto> GetGroupAuditTrailAsync(Guid groupId, GroupAuditRequestDto request)
@@ -1466,23 +1288,28 @@ public class AdminService : IAdminService
         var totalCount = await query.CountAsync();
         var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
 
-        var entries = await query
-            .Include(a => a.User)
+        var auditLogs = await query
             .OrderByDescending(a => a.Timestamp)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(a => new GroupAuditEntryDto
-            {
-                Id = a.Id,
-                Action = a.Action,
-                Entity = a.Entity,
-                Details = a.Details,
-                UserName = a.User.FirstName + " " + a.User.LastName,
-                Timestamp = a.Timestamp,
-                IpAddress = a.IpAddress,
-                UserAgent = a.UserAgent
-            })
             .ToListAsync();
+
+        // Fetch user names via User service
+        var userIds = auditLogs.Select(a => a.PerformedBy).Distinct().ToList();
+        var users = await _userServiceClient.GetUsersAsync();
+        var userMap = users.Where(u => userIds.Contains(u.Id)).ToDictionary(u => u.Id, u => $"{u.FirstName} {u.LastName}");
+
+        var entries = auditLogs.Select(a => new GroupAuditEntryDto
+        {
+            Id = a.Id,
+            Action = a.Action,
+            Entity = a.Entity,
+            Details = a.Details,
+            UserName = userMap.GetValueOrDefault(a.PerformedBy, "Unknown"),
+            Timestamp = a.Timestamp,
+            IpAddress = a.IpAddress,
+            UserAgent = a.UserAgent
+        }).ToList();
 
         return new GroupAuditResponseDto
         {
@@ -1496,33 +1323,41 @@ public class AdminService : IAdminService
 
     public async Task<bool> InterveneInGroupAsync(Guid groupId, GroupInterventionDto request, Guid adminUserId)
     {
-        // Get group from Group service to verify it exists
+        // Validate group exists via Group service
         var group = await _groupServiceClient.GetGroupDetailsAsync(groupId);
         if (group == null)
             return false;
 
         // Handle intervention based on type
-        // Note: Group status updates should be done via Group service endpoint
-        // TODO: Add intervention methods to IGroupServiceClient
         switch (request.Type)
         {
             case InterventionType.Freeze:
-                // TODO: Call Group service to freeze group
-                _logger.LogInformation("Freeze intervention requested for group {GroupId}", groupId);
+                // Update group status via Group service
+                await _groupServiceClient.UpdateGroupStatusAsync(groupId, new UpdateGroupStatusDto 
+                { 
+                    Status = GroupStatus.Inactive, 
+                    Reason = request.Reason 
+                });
+                // TODO: Implement freeze logic (cancel bookings, prevent new expenses) via Booking/Payment services
                 break;
             case InterventionType.Unfreeze:
-                // TODO: Call Group service to unfreeze group
-                _logger.LogInformation("Unfreeze intervention requested for group {GroupId}", groupId);
+                // Update group status via Group service
+                await _groupServiceClient.UpdateGroupStatusAsync(groupId, new UpdateGroupStatusDto 
+                { 
+                    Status = GroupStatus.Active, 
+                    Reason = request.Reason 
+                });
+                // TODO: Implement unfreeze logic
                 break;
             case InterventionType.AppointAdmin:
                 // TODO: Implement appoint temporary admin logic via Group service
                 break;
             case InterventionType.Message:
-                // TODO: Send message to all group members
+                // TODO: Send message to all group members via Notification service
                 break;
         }
 
-        // Create audit log
+        // Create audit log in Admin DB
         var auditLog = new AuditLog
         {
             Entity = "OwnershipGroup",
@@ -1531,7 +1366,7 @@ public class AdminService : IAdminService
             Details = $"Admin intervention: {request.Type}. Reason: {request.Reason}. Message: {request.Message}",
             PerformedBy = adminUserId,
             Timestamp = DateTime.UtcNow,
-            IpAddress = "127.0.0.1",
+            IpAddress = "Admin API",
             UserAgent = "Admin API"
         };
 
@@ -1543,23 +1378,26 @@ public class AdminService : IAdminService
 
     public async Task<GroupHealthDto> GetGroupHealthAsync(Guid groupId)
     {
-        // Get group from Group service via HTTP
+        // Get group details via Group service
         var group = await _groupServiceClient.GetGroupDetailsAsync(groupId);
-
         if (group == null)
             throw new ArgumentException("Group not found");
 
+        var lastActivity = group.UpdatedAt;
+        var daysInactive = (int)(DateTime.UtcNow - lastActivity).TotalDays;
+        var memberCount = group.Members?.Count ?? 0;
+
         var health = new GroupHealthDto
         {
-            Status = GetGroupHealthStatus(group),
-            Score = CalculateGroupHealthScore(group),
+            Status = GetGroupHealthStatus(daysInactive, memberCount),
+            Score = CalculateGroupHealthScore(daysInactive, memberCount),
             Issues = new List<string>(),
             Warnings = new List<string>(),
-            LastActivity = group.UpdatedAt,
-            DaysInactive = (int)(DateTime.UtcNow - group.UpdatedAt).TotalDays,
-            HasActiveDisputes = false, // This would need to be implemented based on your dispute system
+            LastActivity = lastActivity,
+            DaysInactive = daysInactive,
+            HasActiveDisputes = await _context.Disputes.AnyAsync(d => d.GroupId == groupId && (d.Status == DisputeStatus.Open || d.Status == DisputeStatus.UnderReview)),
             IsUsageBalanced = await IsGroupUsageBalancedAsync(groupId),
-            Recommendation = GetGroupHealthRecommendation(group)
+            Recommendation = GetGroupHealthRecommendation(daysInactive, memberCount)
         };
 
         // Add health issues and warnings
@@ -1568,7 +1406,7 @@ public class AdminService : IAdminService
             health.Issues.Add("Group has been inactive for more than 30 days");
         }
 
-        if ((group.Members?.Count ?? 0) < 2)
+        if (memberCount < 2)
         {
             health.Warnings.Add("Group has fewer than 2 members");
         }
@@ -1582,22 +1420,8 @@ public class AdminService : IAdminService
     }
 
     // Helper methods for group management
-    private decimal CalculateGroupActivityScore(GroupDetailsDto group)
+    private GroupHealthStatus GetGroupHealthStatus(int daysInactive, int memberCount)
     {
-        // This is a simplified calculation - in reality, you'd want more sophisticated scoring
-        var daysSinceCreation = (DateTime.UtcNow - group.CreatedAt).TotalDays;
-        var memberCount = group.Members?.Count ?? 0;
-        var vehicleCount = group.Vehicles?.Count ?? 0;
-        
-        // Basic activity score based on group age, size, and activity
-        return Math.Min(100, (decimal)(memberCount * 10 + vehicleCount * 5 + (100 - daysSinceCreation)));
-    }
-
-    private GroupHealthStatus GetGroupHealthStatus(GroupDetailsDto group)
-    {
-        var daysInactive = (DateTime.UtcNow - group.UpdatedAt).TotalDays;
-        var memberCount = group.Members?.Count ?? 0;
-        
         if (daysInactive > 30 || memberCount < 2)
             return GroupHealthStatus.Critical;
         if (daysInactive > 14 || memberCount < 3)
@@ -1608,11 +1432,9 @@ public class AdminService : IAdminService
         return GroupHealthStatus.Healthy;
     }
 
-    private decimal CalculateGroupHealthScore(GroupDetailsDto group)
+    private decimal CalculateGroupHealthScore(int daysInactive, int memberCount)
     {
-        var daysInactive = (DateTime.UtcNow - group.UpdatedAt).TotalDays;
         var score = 100m;
-        var memberCount = group.Members?.Count ?? 0;
         
         // Deduct points for inactivity
         score -= Math.Min(50, (decimal)daysInactive * 2);
@@ -1634,11 +1456,8 @@ public class AdminService : IAdminService
         return true;
     }
 
-    private string GetGroupHealthRecommendation(GroupDetailsDto group)
+    private string GetGroupHealthRecommendation(int daysInactive, int memberCount)
     {
-        var daysInactive = (DateTime.UtcNow - group.UpdatedAt).TotalDays;
-        var memberCount = group.Members?.Count ?? 0;
-        
         if (daysInactive > 30)
             return "Group appears dormant. Consider reaching out to members or dissolving the group.";
         if (memberCount < 2)
@@ -1649,18 +1468,176 @@ public class AdminService : IAdminService
         return "Group is healthy and functioning well.";
     }
 
+    // Vehicle Management Methods
+    public async Task<VehicleListResponseDto> GetVehiclesAsync(VehicleListRequestDto request)
+    {
+        // Get vehicles via HTTP client
+        var allVehicles = await _vehicleServiceClient.GetVehiclesAsync();
+        
+        // Apply filters in memory
+        var filtered = allVehicles.AsEnumerable();
+        
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var searchLower = request.Search.ToLower();
+            filtered = filtered.Where(v =>
+                (v.Model?.ToLower().Contains(searchLower) ?? false) ||
+                (v.PlateNumber?.ToLower().Contains(searchLower) ?? false) ||
+                (v.Vin?.ToLower().Contains(searchLower) ?? false) ||
+                (v.Color != null && v.Color.ToLower().Contains(searchLower)));
+        }
+
+        if (request.Status.HasValue)
+        {
+            filtered = filtered.Where(v => v.Status == request.Status.Value);
+        }
+
+        if (request.GroupId.HasValue)
+        {
+            filtered = filtered.Where(v => v.GroupId == request.GroupId.Value);
+        }
+
+        // Apply sorting
+        var sortBy = request.SortBy?.ToLower() ?? "createdat";
+        var sortDirection = request.SortDirection?.ToLower() ?? "desc";
+
+        filtered = sortBy switch
+        {
+            "model" => sortDirection == "asc" ? filtered.OrderBy(v => v.Model) : filtered.OrderByDescending(v => v.Model),
+            "platenumber" => sortDirection == "asc" ? filtered.OrderBy(v => v.PlateNumber) : filtered.OrderByDescending(v => v.PlateNumber),
+            "year" => sortDirection == "asc" ? filtered.OrderBy(v => v.Year) : filtered.OrderByDescending(v => v.Year),
+            "status" => sortDirection == "asc" ? filtered.OrderBy(v => v.Status) : filtered.OrderByDescending(v => v.Status),
+            _ => sortDirection == "asc" ? filtered.OrderBy(v => v.CreatedAt) : filtered.OrderByDescending(v => v.CreatedAt)
+        };
+
+        var totalCount = filtered.Count();
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Max(1, Math.Min(100, request.PageSize));
+
+        var vehicles = filtered
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        // Get booking counts for each vehicle via Booking service
+        var vehicleIds = vehicles.Select(v => v.Id).ToList();
+        var bookings = await _bookingServiceClient.GetBookingsAsync();
+        var bookingCounts = bookings
+            .Where(b => vehicleIds.Contains(b.VehicleId))
+            .GroupBy(b => b.VehicleId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Get group names via Group service
+        var groups = await _groupServiceClient.GetGroupsAsync();
+        var groupMap = groups.ToDictionary(g => g.Id, g => g.Name);
+
+        var vehicleDtos = vehicles.Select(v => new VehicleSummaryDto
+        {
+            Id = v.Id,
+            Vin = v.Vin,
+            PlateNumber = v.PlateNumber,
+            Model = v.Model,
+            Year = v.Year,
+            Color = v.Color,
+            Status = v.Status,
+            LastServiceDate = v.LastServiceDate,
+            Odometer = v.Odometer,
+            GroupId = v.GroupId,
+            GroupName = v.GroupId.HasValue && groupMap.ContainsKey(v.GroupId.Value) ? groupMap[v.GroupId.Value] : null,
+            CreatedAt = v.CreatedAt,
+            TotalBookings = bookingCounts.GetValueOrDefault(v.Id, 0)
+        }).ToList();
+
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        return new VehicleListResponseDto
+        {
+            Vehicles = vehicleDtos,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = totalPages
+        };
+    }
+
+    public async Task<VehicleSummaryDto> GetVehicleDetailsAsync(Guid vehicleId)
+    {
+        // Get vehicle via HTTP client
+        var vehicle = await _vehicleServiceClient.GetVehicleAsync(vehicleId);
+        if (vehicle == null)
+            throw new ArgumentException("Vehicle not found");
+
+        // Get booking count via Booking service
+        var bookings = await _bookingServiceClient.GetBookingsAsync();
+        var bookingCount = bookings.Count(b => b.VehicleId == vehicleId);
+
+        // Get group name via Group service
+        var groupName = (string?)null;
+        if (vehicle.GroupId.HasValue)
+        {
+            var group = await _groupServiceClient.GetGroupDetailsAsync(vehicle.GroupId.Value);
+            groupName = group?.Name;
+        }
+
+        return new VehicleSummaryDto
+        {
+            Id = vehicle.Id,
+            Vin = vehicle.Vin,
+            PlateNumber = vehicle.PlateNumber,
+            Model = vehicle.Model,
+            Year = vehicle.Year,
+            Color = vehicle.Color,
+            Status = vehicle.Status,
+            LastServiceDate = vehicle.LastServiceDate,
+            Odometer = vehicle.Odometer,
+            GroupId = vehicle.GroupId,
+            GroupName = groupName,
+            CreatedAt = vehicle.CreatedAt,
+            TotalBookings = bookingCount
+        };
+    }
+
+    public async Task<bool> UpdateVehicleStatusAsync(Guid vehicleId, VehicleStatus status, Guid adminUserId)
+    {
+        // TODO: This method needs Vehicle service endpoint PUT /api/Vehicle/{vehicleId}/status
+        // For now, this operation cannot be performed via HTTP - Vehicle service needs to expose this endpoint
+        
+        _logger.LogWarning("UpdateVehicleStatusAsync called but Vehicle service endpoint not available. VehicleId: {VehicleId}, Status: {Status}", vehicleId, status);
+        
+        // Create audit log in Admin DB
+        var now = DateTime.UtcNow;
+        var auditLog = new AuditLog
+        {
+            Entity = "Vehicle",
+            EntityId = vehicleId,
+            Action = "StatusUpdate",
+            Details = $"Vehicle status update requested: {status}. NOTE: Vehicle service endpoint needed.",
+            PerformedBy = adminUserId,
+            Timestamp = now,
+            IpAddress = "Admin API",
+            UserAgent = "Admin API"
+        };
+
+        _context.AuditLogs.Add(auditLog);
+        await _context.SaveChangesAsync();
+
+        // TODO: Call Vehicle service endpoint when available
+
+        return false; // Return false until Vehicle service endpoint is implemented
+    }
+
     private async Task<GroupFinancialSummaryDto> GetGroupFinancialSummaryAsync(Guid groupId)
     {
-        // Get expenses from Payment service via HTTP
-        var allExpenses = await _paymentServiceClient.GetExpensesAsync(groupId);
-        var expenses = allExpenses.ToList();
+        // Get expenses via Payment service
+        var expenses = await _paymentServiceClient.GetExpensesAsync(groupId: groupId);
+        var expenseList = expenses.ToList();
 
-        var totalExpenses = expenses.Sum(e => e.Amount);
-        var monthlyExpenses = expenses
+        var totalExpenses = expenseList.Sum(e => e.Amount);
+        var monthlyExpenses = expenseList
             .Where(e => e.DateIncurred >= DateTime.UtcNow.AddDays(-30))
             .Sum(e => e.Amount);
 
-        // Get group to get member count
+        // Get member count via Group service (would need Group service endpoint)
         var group = await _groupServiceClient.GetGroupDetailsAsync(groupId);
         var memberCount = group?.Members?.Count ?? 0;
         var averageExpensePerMember = memberCount > 0 ? totalExpenses / memberCount : 0;
@@ -1668,12 +1645,12 @@ public class AdminService : IAdminService
         return new GroupFinancialSummaryDto
         {
             TotalExpenses = totalExpenses,
-            FundBalance = 0, // This would need to be calculated based on your fund system
+            FundBalance = 0, // Would need Payment service to expose fund balance
             MonthlyExpenses = monthlyExpenses,
             AverageExpensePerMember = averageExpensePerMember,
-            TotalRevenue = 0, // This would need to be calculated
-            NetBalance = 0, // This would need to be calculated
-            ExpenseCategories = expenses
+            TotalRevenue = 0, // Would need Payment service to calculate
+            NetBalance = 0, // Would need Payment service to calculate
+            ExpenseCategories = expenseList
                 .GroupBy(e => e.ExpenseType.ToString())
                 .Select(g => new GroupExpenseCategoryDto
                 {
@@ -1688,20 +1665,24 @@ public class AdminService : IAdminService
 
     private async Task<GroupBookingStatisticsDto> GetGroupBookingStatisticsAsync(Guid groupId)
     {
-        // Get bookings from Booking service via HTTP
-        var allBookings = await _bookingServiceClient.GetBookingsAsync();
-        var bookings = allBookings.Where(b => b.GroupId == groupId).ToList();
+        // Get bookings via Booking service
+        var bookings = await _bookingServiceClient.GetBookingsAsync(groupId: groupId);
+        var bookingList = bookings.ToList();
 
-        var totalBookings = bookings.Count;
-        var completedBookings = bookings.Count(b => b.Status == BookingStatus.Completed);
-        var cancelledBookings = bookings.Count(b => b.Status == BookingStatus.Cancelled);
-        var activeBookings = bookings.Count(b => b.Status == BookingStatus.InProgress);
-        var totalRevenue = 0m; // This would need to be calculated based on your payment system
+        var totalBookings = bookingList.Count;
+        var completedBookings = bookingList.Count(b => b.Status == BookingStatus.Completed);
+        var cancelledBookings = bookingList.Count(b => b.Status == BookingStatus.Cancelled);
+        var activeBookings = bookingList.Count(b => b.Status == BookingStatus.InProgress);
+        
+        // Calculate revenue from completed bookings (using TripFeeAmount from bookings)
+        var totalRevenue = bookingList
+            .Where(b => b.Status == BookingStatus.Completed)
+            .Sum(b => b.TripFeeAmount);
 
         var thisMonth = DateTime.UtcNow.AddDays(-30);
         var lastMonth = DateTime.UtcNow.AddDays(-60);
-        var bookingsThisMonth = bookings.Count(b => b.CreatedAt >= thisMonth);
-        var bookingsLastMonth = bookings.Count(b => b.CreatedAt >= lastMonth && b.CreatedAt < thisMonth);
+        var bookingsThisMonth = bookingList.Count(b => b.CreatedAt >= thisMonth);
+        var bookingsLastMonth = bookingList.Count(b => b.CreatedAt >= lastMonth && b.CreatedAt < thisMonth);
 
         var bookingGrowthPercentage = bookingsLastMonth > 0 
             ? ((bookingsThisMonth - bookingsLastMonth) / (double)bookingsLastMonth) * 100 
@@ -1723,39 +1704,39 @@ public class AdminService : IAdminService
 
     private async Task<List<GroupActivityDto>> GetGroupRecentActivityAsync(Guid groupId)
     {
-        return await _context.AuditLogs
+        var auditLogs = await _context.AuditLogs
             .Where(a => a.Entity == "OwnershipGroup" && a.EntityId == groupId)
-            .Include(a => a.User)
             .OrderByDescending(a => a.Timestamp)
             .Take(20)
-            .Select(a => new GroupActivityDto
-            {
-                Id = a.Id,
-                Action = a.Action,
-                Entity = a.Entity,
-                Details = a.Details,
-                UserName = a.User.FirstName + " " + a.User.LastName,
-                Timestamp = a.Timestamp
-            })
             .ToListAsync();
+
+        // Fetch user names via User service
+        var userIds = auditLogs.Select(a => a.PerformedBy).Distinct().ToList();
+        var users = await _userServiceClient.GetUsersAsync();
+        var userMap = users.Where(u => userIds.Contains(u.Id)).ToDictionary(u => u.Id, u => $"{u.FirstName} {u.LastName}");
+
+        return auditLogs.Select(a => new GroupActivityDto
+        {
+            Id = a.Id,
+            Action = a.Action,
+            Entity = a.Entity,
+            Details = a.Details,
+            UserName = userMap.GetValueOrDefault(a.PerformedBy, "Unknown"),
+            Timestamp = a.Timestamp
+        }).ToList();
     }
 
     private async Task HandleGroupStatusChangeImplicationsAsync(Guid groupId, GroupStatus oldStatus, GroupStatus newStatus)
     {
+        // TODO: This would need Booking service endpoints to cancel bookings
+        // For now, we can only log the requirement - Booking service should handle cancellation
         switch (newStatus)
         {
             case GroupStatus.Inactive:
-                // Cancel future bookings
-                // Note: Booking cancellation should be done via Booking service endpoint
-                // For now, we'll just log the action
-                _logger.LogInformation("Group {GroupId} status changed to Inactive. Future bookings should be cancelled via Booking service.", groupId);
-                break;
-                
             case GroupStatus.Dissolved:
-                // Cancel all future bookings and freeze all activities
-                // Note: Booking cancellation should be done via Booking service endpoint
-                // For now, we'll just log the action
-                _logger.LogInformation("Group {GroupId} status changed to Dissolved. All future bookings should be cancelled via Booking service.", groupId);
+                // Cancel future bookings - would need Booking service endpoint
+                // POST /api/Booking/cancel-by-group/{groupId} or similar
+                _logger.LogInformation("Group {GroupId} status changed to {Status}. Future bookings should be cancelled via Booking service.", groupId, newStatus);
                 break;
         }
     }
@@ -1765,7 +1746,7 @@ public class AdminService : IAdminService
     {
         try
         {
-            // Validate group exists
+            // Validate group exists via Group service
             var group = await _groupServiceClient.GetGroupDetailsAsync(request.GroupId);
             if (group == null)
                 throw new ArgumentException("Group not found");
@@ -1776,6 +1757,7 @@ public class AdminService : IAdminService
             // Validate reporter is member of group (if not admin creating on behalf)
             if (request.ReportedBy.HasValue)
             {
+                // Check if user is a member via Group service
                 var isMember = group.Members?.Any(m => m.UserId == reporterId) ?? false;
                 if (!isMember)
                     throw new ArgumentException("User is not a member of the specified group");
@@ -1834,18 +1816,13 @@ public class AdminService : IAdminService
     {
         try
         {
-            var query = _context.Disputes
-                .Include(d => d.Group)
-                .Include(d => d.Reporter)
-                .Include(d => d.AssignedStaff)
-                .AsQueryable();
+            var query = _context.Disputes.AsQueryable();
 
             // Apply filters
             if (!string.IsNullOrEmpty(request.Search))
             {
                 query = query.Where(d => d.Subject.Contains(request.Search) || 
-                                   d.Description.Contains(request.Search) ||
-                                   d.Group.Name.Contains(request.Search));
+                                   d.Description.Contains(request.Search));
             }
 
             if (request.Status.HasValue)
@@ -1884,28 +1861,40 @@ public class AdminService : IAdminService
             var totalCount = await query.CountAsync();
 
             var disputes = await query
+                .Include(d => d.Comments)
                 .Skip((request.Page - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .Select(d => new DisputeSummaryDto
-                {
-                    Id = d.Id,
-                    GroupId = d.GroupId,
-                    GroupName = d.Group.Name,
-                    Subject = d.Subject,
-                    Category = d.Category,
-                    Priority = d.Priority,
-                    Status = d.Status,
-                    ReporterName = d.Reporter.FirstName + " " + d.Reporter.LastName,
-                    AssignedToName = d.AssignedStaff != null ? d.AssignedStaff.FirstName + " " + d.AssignedStaff.LastName : null,
-                    CreatedAt = d.CreatedAt,
-                    ResolvedAt = d.ResolvedAt,
-                    CommentCount = d.Comments.Count
-                })
                 .ToListAsync();
+
+            // Fetch user and group names via HTTP clients
+            var userIds = disputes.Select(d => d.ReportedBy).Union(disputes.Where(d => d.AssignedTo.HasValue).Select(d => d.AssignedTo!.Value)).Distinct().ToList();
+            var groupIds = disputes.Select(d => d.GroupId).Distinct().ToList();
+            
+            var users = await _userServiceClient.GetUsersAsync();
+            var userMap = users.Where(u => userIds.Contains(u.Id)).ToDictionary(u => u.Id, u => $"{u.FirstName} {u.LastName}");
+            
+            var groups = await _groupServiceClient.GetGroupsAsync();
+            var groupMap = groups.Where(g => groupIds.Contains(g.Id)).ToDictionary(g => g.Id, g => g.Name ?? "Unknown");
+
+            var disputeDtos = disputes.Select(d => new DisputeSummaryDto
+            {
+                Id = d.Id,
+                GroupId = d.GroupId,
+                GroupName = groupMap.GetValueOrDefault(d.GroupId, "Unknown"),
+                Subject = d.Subject,
+                Category = d.Category,
+                Priority = d.Priority,
+                Status = d.Status,
+                ReporterName = userMap.GetValueOrDefault(d.ReportedBy, "Unknown"),
+                AssignedToName = d.AssignedTo.HasValue ? userMap.GetValueOrDefault(d.AssignedTo.Value, "Unknown") : null,
+                CreatedAt = d.CreatedAt,
+                ResolvedAt = d.ResolvedAt,
+                CommentCount = d.Comments.Count
+            }).ToList();
 
             return new DisputeListResponseDto
             {
-                Disputes = disputes,
+                Disputes = disputeDtos,
                 TotalCount = totalCount,
                 Page = request.Page,
                 PageSize = request.PageSize,
@@ -1924,46 +1913,59 @@ public class AdminService : IAdminService
         try
         {
             var dispute = await _context.Disputes
-                .Include(d => d.Group)
-                .Include(d => d.Reporter)
-                .Include(d => d.AssignedStaff)
-                .Include(d => d.Resolver)
                 .Include(d => d.Comments)
-                    .ThenInclude(c => c.Commenter)
                 .FirstOrDefaultAsync(d => d.Id == disputeId);
 
             if (dispute == null)
                 throw new ArgumentException("Dispute not found");
 
+            // Fetch user and group names via HTTP clients
+            var userIds = new List<Guid> { dispute.ReportedBy };
+            if (dispute.AssignedTo.HasValue) userIds.Add(dispute.AssignedTo.Value);
+            if (dispute.ResolvedBy.HasValue) userIds.Add(dispute.ResolvedBy.Value);
+            userIds.AddRange(dispute.Comments.Select(c => c.CommentedBy));
+            userIds = userIds.Distinct().ToList();
+
+            var users = await _userServiceClient.GetUsersAsync();
+            var userMap = users.Where(u => userIds.Contains(u.Id)).ToDictionary(u => u.Id, u => new { Name = $"{u.FirstName} {u.LastName}", Email = u.Email });
+
+            var group = await _groupServiceClient.GetGroupDetailsAsync(dispute.GroupId);
+            var groupName = group?.Name ?? "Unknown";
+
             // Get audit trail for this dispute
-            var actions = await _context.AuditLogs
+            var auditLogs = await _context.AuditLogs
                 .Where(al => al.Entity == "Dispute" && al.EntityId == disputeId)
                 .OrderBy(al => al.Timestamp)
-                .Select(al => new DisputeActionDto
-                {
-                    Action = al.Action,
-                    Details = al.Details,
-                    UserName = "Admin User", // Placeholder
-                    Timestamp = al.Timestamp
-                })
                 .ToListAsync();
+
+            var auditUserIds = auditLogs.Select(al => al.PerformedBy).Distinct().ToList();
+            var auditUsers = await _userServiceClient.GetUsersAsync();
+            var auditUserMap = auditUsers.Where(u => auditUserIds.Contains(u.Id)).ToDictionary(u => u.Id, u => $"{u.FirstName} {u.LastName}");
+
+            var actions = auditLogs.Select(al => new DisputeActionDto
+            {
+                Action = al.Action,
+                Details = al.Details,
+                UserName = auditUserMap.GetValueOrDefault(al.PerformedBy, "Unknown"),
+                Timestamp = al.Timestamp
+            }).ToList();
 
             return new DisputeDetailsDto
             {
                 Id = dispute.Id,
                 GroupId = dispute.GroupId,
-                GroupName = dispute.Group.Name,
+                GroupName = groupName,
                 Subject = dispute.Subject,
                 Description = dispute.Description,
                 Category = dispute.Category,
                 Priority = dispute.Priority,
                 Status = dispute.Status,
-                ReporterName = dispute.Reporter.FirstName + " " + dispute.Reporter.LastName,
-                ReporterEmail = dispute.Reporter.Email,
-                AssignedToName = dispute.AssignedStaff != null ? dispute.AssignedStaff.FirstName + " " + dispute.AssignedStaff.LastName : null,
-                AssignedToEmail = dispute.AssignedStaff?.Email,
+                ReporterName = userMap.GetValueOrDefault(dispute.ReportedBy)?.Name ?? "Unknown",
+                ReporterEmail = userMap.GetValueOrDefault(dispute.ReportedBy)?.Email,
+                AssignedToName = dispute.AssignedTo.HasValue ? userMap.GetValueOrDefault(dispute.AssignedTo.Value)?.Name : null,
+                AssignedToEmail = dispute.AssignedTo.HasValue ? userMap.GetValueOrDefault(dispute.AssignedTo.Value)?.Email : null,
                 Resolution = dispute.Resolution,
-                ResolverName = dispute.Resolver != null ? dispute.Resolver.FirstName + " " + dispute.Resolver.LastName : null,
+                ResolverName = dispute.ResolvedBy.HasValue ? userMap.GetValueOrDefault(dispute.ResolvedBy.Value)?.Name : null,
                 CreatedAt = dispute.CreatedAt,
                 UpdatedAt = dispute.UpdatedAt,
                 ResolvedAt = dispute.ResolvedAt,
@@ -1971,8 +1973,8 @@ public class AdminService : IAdminService
                 {
                     Id = c.Id,
                     Comment = c.Comment,
-                    CommenterName = c.Commenter.FirstName + " " + c.Commenter.LastName,
-                    CommenterEmail = c.Commenter.Email,
+                    CommenterName = userMap.GetValueOrDefault(c.CommentedBy)?.Name ?? "Unknown",
+                    CommenterEmail = userMap.GetValueOrDefault(c.CommentedBy)?.Email,
                     IsInternal = c.IsInternal,
                     CreatedAt = c.CreatedAt
                 }).ToList(),
@@ -1994,10 +1996,13 @@ public class AdminService : IAdminService
             if (dispute == null)
                 throw new ArgumentException("Dispute not found");
 
-            // Validate assigned user exists and is staff
+            // Validate assigned user exists and is staff via User service
             var assignedUser = await _userServiceClient.GetUserProfileAsync(request.AssignedTo);
             if (assignedUser == null)
                 throw new ArgumentException("Assigned user not found");
+            
+            if (assignedUser.Role != UserRole.Staff && assignedUser.Role != UserRole.SystemAdmin)
+                throw new ArgumentException("Assigned user must be staff or admin");
 
             var oldAssignee = dispute.AssignedTo;
             dispute.AssignedTo = request.AssignedTo;
@@ -2046,7 +2051,7 @@ public class AdminService : IAdminService
             
             if (!hasAccess)
             {
-                // Check if user is staff/admin
+                // Check if user is staff/admin via User service
                 var user = await _userServiceClient.GetUserProfileAsync(userId);
                 if (user == null || (user.Role != UserRole.SystemAdmin && user.Role != UserRole.Staff))
                     throw new UnauthorizedAccessException("User does not have access to this dispute");
@@ -2191,23 +2196,20 @@ public class AdminService : IAdminService
     {
         try
         {
-            // Get staff members with their dispute counts
-            // Note: This would need to get users from User service and disputes from Admin service
-            var allUsers = await _userServiceClient.GetUsersAsync();
-            var staffUsers = allUsers.Where(u => u.Role == UserRole.Staff || u.Role == UserRole.SystemAdmin).ToList();
+            // Get staff members via User service
+            var users = await _userServiceClient.GetUsersAsync();
+            var staffUsers = users.Where(u => u.Role == UserRole.Staff || u.Role == UserRole.SystemAdmin).ToList();
+
+            // Get disputes from Admin DB
+            var disputes = await _context.Disputes.ToListAsync();
             
-            // Get disputes assigned to staff
-            var allDisputes = await _context.Disputes
-                .Where(d => d.AssignedTo.HasValue)
-                .ToListAsync();
-            
+            // Calculate workload for each staff member
             var staffWorkload = staffUsers.Select(u => new
-                {
-                    UserId = u.Id,
-                    OpenDisputes = allDisputes.Count(d => d.AssignedTo == u.Id && d.Status == DisputeStatus.Open),
-                    UnderReviewDisputes = allDisputes.Count(d => d.AssignedTo == u.Id && d.Status == DisputeStatus.UnderReview)
-                })
-                .ToList();
+            {
+                UserId = u.Id,
+                OpenDisputes = disputes.Count(d => d.AssignedTo == u.Id && d.Status == DisputeStatus.Open),
+                UnderReviewDisputes = disputes.Count(d => d.AssignedTo == u.Id && d.Status == DisputeStatus.UnderReview)
+            }).ToList();
 
             // Find staff member with least workload
             var leastBusy = staffWorkload

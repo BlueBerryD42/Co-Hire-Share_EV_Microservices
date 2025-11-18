@@ -9,35 +9,6 @@ x-dotnet-service: &dotnet-service
     - .env
   environment:
     <<: *common-env
-  deploy:
-    resources:
-      limits:
-        memory: 512M
-        cpus: '0.5'
-      reservations:
-        memory: 128M
-        cpus: '0.2'
-  develop:
-    watch:
-      - action: sync
-        path: ./src
-        target: /src
-        ignore:
-          - node_modules/
-          - bin/
-          - obj/
-          - "**/bin/"
-          - "**/obj/"
-          - "**/*.user"
-          - "**/*.suo"
-          - "**/.vs/"
-          - "**/TestResults/"
-          - "**/coverage/"
-      - action: rebuild
-        path: "./src/**/*.csproj"
-      - action: sync
-        path: "./src/**/*.cs"
-        target: /src
 
 services:
   api-gateway:
@@ -62,14 +33,6 @@ services:
       - "61600:8080"
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.2'
 
   auth-api:
     <<: *dotnet-service
@@ -81,16 +44,10 @@ services:
         APP_DLL: CoOwnershipVehicle.Auth.Api.dll
     ports:
       - "61601:8080"
+    environment:
+      <<: *common-env
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.2'
 
   user-api:
     <<: *dotnet-service
@@ -102,16 +59,10 @@ services:
         APP_DLL: CoOwnershipVehicle.User.Api.dll
     ports:
       - "61602:8080"
+    environment:
+      <<: *common-env
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.2'
 
   group-api:
     <<: *dotnet-service
@@ -125,18 +76,9 @@ services:
       - "61603:8080"
     environment:
       <<: *common-env
-      SIGNATURE_REMINDER_BASE_URL: "http://localhost:61600"  # Use API Gateway for external access
-      ServiceUrls__User: "http://user-api:8080"  # Use Docker service name for inter-service communication
+      SIGNATURE_REMINDER_BASE_URL: "https://localhost:61600" # Use API Gateway for external access
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 768M
-          cpus: '0.75'
-        reservations:
-          memory: 256M
-          cpus: '0.2'
 
   vehicle-api:
     <<: *dotnet-service
@@ -153,14 +95,6 @@ services:
       GroupService__BaseUrl: "http://group-api:8080"
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.2'
 
   payment-api:
     <<: *dotnet-service
@@ -172,16 +106,10 @@ services:
         APP_DLL: CoOwnershipVehicle.Payment.Api.dll
     ports:
       - "61605:8080"
+    environment:
+      <<: *common-env
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.25'
-        reservations:
-          memory: 64M
-          cpus: '0.15'
 
   booking-api:
     <<: *dotnet-service
@@ -193,16 +121,10 @@ services:
         APP_DLL: CoOwnershipVehicle.Booking.Api.dll
     ports:
       - "61606:8080"
+    environment:
+      <<: *common-env
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 768M
-          cpus: '0.75'
-        reservations:
-          memory: 256M
-          cpus: '0.2'
 
   admin-api:
     <<: *dotnet-service
@@ -214,16 +136,11 @@ services:
         APP_DLL: CoOwnershipVehicle.Admin.Api.dll
     ports:
       - "61607:8080"
+    environment:
+      <<: *common-env
+      DB_ADMIN: CoOwnershipVehicle_Admin
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.2'
 
   analytics-api:
     <<: *dotnet-service
@@ -235,16 +152,10 @@ services:
         APP_DLL: CoOwnershipVehicle.Analytics.Api.dll
     ports:
       - "61608:8080"
+    environment:
+      <<: *common-env
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.2'
 
   notification-api:
     <<: *dotnet-service
@@ -256,16 +167,10 @@ services:
         APP_DLL: CoOwnershipVehicle.Notification.Api.dll
     ports:
       - "61609:8080"
+    environment:
+      <<: *common-env
     networks:
       - coownership
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.25'
-        reservations:
-          memory: 64M
-          cpus: '0.15'
 
 networks:
   coownership:

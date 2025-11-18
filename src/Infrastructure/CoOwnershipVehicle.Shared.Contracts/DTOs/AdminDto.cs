@@ -335,6 +335,50 @@ public class GroupVehicleDto
     public decimal TotalRevenue { get; set; }
 }
 
+// Vehicle Management DTOs
+public class VehicleListRequestDto
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? Search { get; set; }
+    public VehicleStatus? Status { get; set; }
+    public Guid? GroupId { get; set; }
+    public string? SortBy { get; set; } = "CreatedAt";
+    public string? SortDirection { get; set; } = "desc";
+}
+
+public class VehicleListResponseDto
+{
+    public List<VehicleSummaryDto> Vehicles { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}
+
+public class VehicleSummaryDto
+{
+    public Guid Id { get; set; }
+    public string Vin { get; set; } = string.Empty;
+    public string PlateNumber { get; set; } = string.Empty;
+    public string Model { get; set; } = string.Empty;
+    public int Year { get; set; }
+    public string? Color { get; set; }
+    public VehicleStatus Status { get; set; }
+    public DateTime? LastServiceDate { get; set; }
+    public int Odometer { get; set; }
+    public Guid? GroupId { get; set; }
+    public string? GroupName { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public int TotalBookings { get; set; }
+}
+
+public class UpdateVehicleStatusDto
+{
+    public VehicleStatus Status { get; set; }
+    public string? Reason { get; set; }
+}
+
 public class GroupFinancialSummaryDto
 {
     public decimal TotalExpenses { get; set; }
