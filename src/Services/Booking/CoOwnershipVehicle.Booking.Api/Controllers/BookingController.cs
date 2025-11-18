@@ -85,6 +85,25 @@ public class BookingController : ControllerBase
     }
 
     /// <summary>
+    /// Get historical bookings with associated check-in records
+    /// </summary>
+    [HttpGet("my-bookings/history")]
+    public async Task<IActionResult> GetMyBookingHistory([FromQuery] int limit = 20)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var history = await _bookingService.GetUserBookingHistoryAsync(userId, limit);
+            return Ok(history);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting booking history for current user");
+            return StatusCode(500, new { message = "An error occurred while retrieving booking history" });
+        }
+    }
+
+    /// <summary>
     /// Get bookings for a specific vehicle
     /// </summary>
     [HttpGet("vehicle/{vehicleId:guid}")]
