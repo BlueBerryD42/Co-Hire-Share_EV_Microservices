@@ -139,9 +139,15 @@ builder.Services.AddScoped<CoOwnershipVehicle.Group.Api.Contracts.IFundService, 
 // Register HTTP Client for User Service
 builder.Services.AddHttpClient<CoOwnershipVehicle.Group.Api.Services.Interfaces.IUserServiceClient, CoOwnershipVehicle.Group.Api.Services.UserServiceClient>(client =>
 {
-    var userServiceUrl = builder.Configuration["ServiceUrls:User"] ?? "https://localhost:61602";
+    // Always use Docker service name when running in containers
+    // This ensures inter-service communication works correctly
+    var userServiceUrl = "http://user-api:8080";
+    
     client.BaseAddress = new Uri(userServiceUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
+    
+    // Log to console so it appears in Docker logs
+    Console.WriteLine($"[DIAGNOSTIC] User Service BaseAddress configured: {userServiceUrl}");
 });
 
 // Register Background Services
