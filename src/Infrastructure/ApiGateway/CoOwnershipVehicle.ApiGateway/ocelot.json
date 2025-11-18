@@ -95,8 +95,8 @@
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
-          "Host": "localhost",
-          "Port": 61603
+          "Host": "group-api",
+          "Port": 8080
         }
       ],
       "UpstreamPathTemplate": "/api/proposal/{everything}",

@@ -106,7 +106,7 @@ services:
     volumes:
       - ./src:/src
       - notification-api-nuget:/root/.nuget
-    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+    command: bash -c "cd /src/Services/Notification/CoOwnershipVehicle.Notification.Api && (dotnet restore CoOwnershipVehicle.Notification.Api.csproj 2>&1 | grep -v 'MSB3202' || true) && dotnet watch run --project CoOwnershipVehicle.Notification.Api.csproj --urls http://0.0.0.0:8080"
 
 volumes:
   api-gateway-nuget:

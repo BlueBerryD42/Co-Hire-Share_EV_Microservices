@@ -15,6 +15,32 @@ public class NotificationDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
+        // CRITICAL: Configure Notification entity FIRST, before base.OnModelCreating()
+        // This prevents base.OnModelCreating() from applying relationship conventions
+        builder.Entity<CoOwnershipVehicle.Domain.Entities.Notification>(entity =>
+        {
+            // Ignore navigation properties IMMEDIATELY to prevent relationship creation
+            entity.Ignore(e => e.User);
+            entity.Ignore(e => e.Group);
+            
+            // Configure properties
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Priority).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.ActionUrl).HasMaxLength(500);
+            entity.Property(e => e.ActionText).HasMaxLength(100);
+            entity.Property(e => e.UserId).IsRequired();
+            entity.Property(e => e.GroupId).IsRequired(false);
+            
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.ScheduledFor);
+        });
+
+        // Now call base - but Notification entity is already configured, so relationships won't be created
         base.OnModelCreating(builder);
 
         // Explicitly ignore Identity entities - Notification service doesn't use Identity
@@ -54,25 +80,13 @@ public class NotificationDbContext : DbContext
         builder.Ignore<GroupMember>();
         builder.Ignore<Vehicle>();
 
-        // Notification entity configuration
+        // Re-configure Notification entity to ensure navigation properties stay ignored
+        // This overrides any relationships that base.OnModelCreating() might have created
         builder.Entity<CoOwnershipVehicle.Domain.Entities.Notification>(entity =>
         {
-            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.Message).IsRequired().HasMaxLength(1000);
-            entity.Property(e => e.Type).HasConversion<int>();
-            entity.Property(e => e.Priority).HasConversion<int>();
-            entity.Property(e => e.Status).HasConversion<int>();
-            entity.Property(e => e.ActionUrl).HasMaxLength(500);
-            entity.Property(e => e.ActionText).HasMaxLength(100);
-
-            // In microservices architecture, we don't create foreign key relationships
-            // to entities from other services. We just store the IDs as simple properties.
-            // The relationships are maintained at the application level, not database level.
-            
-            entity.HasIndex(e => e.UserId);
-            entity.HasIndex(e => e.GroupId);
-            entity.HasIndex(e => e.CreatedAt);
-            entity.HasIndex(e => e.ScheduledFor);
+            // Force ignore navigation properties again after base.OnModelCreating()
+            entity.Ignore(e => e.User);
+            entity.Ignore(e => e.Group);
         });
 
         // NotificationTemplate entity configuration
