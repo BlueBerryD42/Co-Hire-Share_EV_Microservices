@@ -4,6 +4,7 @@ using CoOwnershipVehicle.Group.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 {
     [DbContext(typeof(GroupDbContext))]
-    partial class GroupDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251118113912_RemoveIdentityTablesFromGroupService")]
+    partial class RemoveIdentityTablesFromGroupService
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1551,7 +1554,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.RecurringBooking", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
-                        .WithMany()
+                        .WithMany("RecurringBookings")
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1646,6 +1649,8 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.Navigation("Members");
 
                     b.Navigation("Proposals");
+
+                    b.Navigation("RecurringBookings");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Proposal", b =>

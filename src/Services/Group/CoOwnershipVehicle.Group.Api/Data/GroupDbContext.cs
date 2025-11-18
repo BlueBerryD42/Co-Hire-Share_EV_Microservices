@@ -42,6 +42,14 @@ public class GroupDbContext : DbContext
     {
         base.OnModelCreating(builder);
 
+        // Explicitly ignore Identity entities - Group service doesn't use Identity
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRoleClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserLogin<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserToken<Guid>>();
+
         // Ignore entities not relevant to Group service
         builder.Ignore<KycDocument>();
         builder.Ignore<Expense>();
@@ -72,6 +80,18 @@ public class GroupDbContext : DbContext
 
             // CreatedBy is stored but no FK constraint (User is in another service)
             entity.Ignore(e => e.Creator);
+            
+            // Ignore cross-service navigation properties
+            // Vehicles belong to Vehicle service - fetch via HTTP if needed
+            entity.Ignore(e => e.Vehicles);
+            // Bookings belong to Booking service
+            entity.Ignore(e => e.Bookings);
+            // Expenses belong to Payment service
+            entity.Ignore(e => e.Expenses);
+            // LedgerEntries belong to Payment service
+            entity.Ignore(e => e.LedgerEntries);
+            // RecurringBookings belong to Booking service
+            entity.Ignore(e => e.RecurringBookings);
 
             entity.HasIndex(e => e.Name);
         });

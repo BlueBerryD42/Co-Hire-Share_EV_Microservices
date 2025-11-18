@@ -1,0 +1,122 @@
+# Development docker-compose override file
+# Use this with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --watch
+# Or create an alias: docker compose watch
+
+version: '3.8'
+
+# This file extends docker-compose.yml with development-specific settings
+# It enables hot reload using Docker Compose watch feature
+
+services:
+  api-gateway:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Infrastructure/ApiGateway/CoOwnershipVehicle.ApiGateway/CoOwnershipVehicle.ApiGateway.csproj
+    volumes:
+      - ./src:/src
+      - api-gateway-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  auth-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/Auth/CoOwnershipVehicle.Auth.Api/CoOwnershipVehicle.Auth.Api.csproj
+    volumes:
+      - ./src:/src
+      - auth-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  user-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/User/CoOwnershipVehicle.User.Api/CoOwnershipVehicle.User.Api.csproj
+    volumes:
+      - ./src:/src
+      - user-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  group-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/Group/CoOwnershipVehicle.Group.Api/CoOwnershipVehicle.Group.Api.csproj
+    volumes:
+      - ./src:/src
+      - group-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  vehicle-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/Vehicle/CoOwnershipVehicle.Vehicle.Api/CoOwnershipVehicle.Vehicle.Api.csproj
+    volumes:
+      - ./src:/src
+      - vehicle-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  payment-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/Payment/CoOwnershipVehicle.Payment.Api/CoOwnershipVehicle.Payment.Api.csproj
+    volumes:
+      - ./src:/src
+      - payment-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  booking-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/Booking/CoOwnershipVehicle.Booking.Api/CoOwnershipVehicle.Booking.Api.csproj
+    volumes:
+      - ./src:/src
+      - booking-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  admin-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/Admin/CoOwnershipVehicle.Admin.Api/CoOwnershipVehicle.Admin.Api.csproj
+    volumes:
+      - ./src:/src
+      - admin-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  analytics-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/Analytics/CoOwnershipVehicle.Analytics.Api/CoOwnershipVehicle.Analytics.Api.csproj
+    volumes:
+      - ./src:/src
+      - analytics-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+  notification-api:
+    build:
+      dockerfile: Dockerfile.dev
+    environment:
+      PROJECT: src/Services/Notification/CoOwnershipVehicle.Notification.Api/CoOwnershipVehicle.Notification.Api.csproj
+    volumes:
+      - ./src:/src
+      - notification-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+volumes:
+  api-gateway-nuget:
+  auth-api-nuget:
+  user-api-nuget:
+  group-api-nuget:
+  vehicle-api-nuget:
+  payment-api-nuget:
+  booking-api-nuget:
+  admin-api-nuget:
+  analytics-api-nuget:
+  notification-api-nuget:
+
