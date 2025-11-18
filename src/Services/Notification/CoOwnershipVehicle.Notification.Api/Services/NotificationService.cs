@@ -4,6 +4,9 @@ using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Notification.Api.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Data.SqlClient;
+using System.Data;
+using Microsoft.Extensions.Configuration;
 
 namespace CoOwnershipVehicle.Notification.Api.Services;
 
@@ -12,15 +15,30 @@ public class NotificationService : INotificationService
     private readonly NotificationDbContext _context;
     private readonly IHubContext<NotificationHub> _hubContext;
     private readonly INotificationTemplateService _templateService;
+    private readonly string _connectionString;
 
     public NotificationService(
         NotificationDbContext context,
         IHubContext<NotificationHub> hubContext,
-        INotificationTemplateService templateService)
+        INotificationTemplateService templateService,
+        IConfiguration configuration)
     {
         _context = context;
         _hubContext = hubContext;
         _templateService = templateService;
+        
+        // Get connection string directly to avoid EF Core model validation
+        var dbParams = new
+        {
+            Server = configuration["DB_SERVER"] ?? "host.docker.internal",
+            Database = configuration["DB_NOTIFICATION"] ?? "CoOwnershipVehicle_Notification",
+            User = configuration["DB_USER"] ?? "sa",
+            Password = configuration["DB_PASSWORD"] ?? "",
+            TrustCert = configuration["DB_TRUST_CERT"] ?? "true",
+            MultipleActiveResultSets = configuration["DB_MULTIPLE_ACTIVE_RESULTS"] ?? "true"
+        };
+        _connectionString = configuration["DB_CONNECTION_STRING"] 
+            ?? $"Server={dbParams.Server};Database={dbParams.Database};User Id={dbParams.User};Password={dbParams.Password};TrustServerCertificate={dbParams.TrustCert};MultipleActiveResultSets={dbParams.MultipleActiveResultSets}";
     }
 
     public async Task<NotificationDto> CreateNotificationAsync(CreateNotificationDto dto)
@@ -85,8 +103,10 @@ public class NotificationService : INotificationService
 
     public async Task<NotificationDto> GetNotificationByIdAsync(Guid id)
     {
+        // Note: Group navigation property is ignored because OwnershipGroup is in Group service
+        // Use AsNoTracking() to prevent EF Core from trying to load ignored navigation properties
         var notification = await _context.Notifications
-            .Include(n => n.Group)
+            .AsNoTracking()
             .FirstOrDefaultAsync(n => n.Id == id);
 
         return notification != null ? MapToDto(notification) : null;
@@ -94,38 +114,163 @@ public class NotificationService : INotificationService
 
     public async Task<List<NotificationDto>> GetUserNotificationsAsync(Guid userId, NotificationRequestDto request)
     {
-        var query = _context.Notifications
-            .Include(n => n.Group)
-            .Where(n => n.UserId == userId);
+        // Use ADO.NET directly with a new connection to completely bypass EF Core's entity model
+        // This prevents any attempt to include navigation properties or use EF Core's compiled queries
+        try
+        {
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
 
-        if (request.GroupId.HasValue)
-            query = query.Where(n => n.GroupId == request.GroupId);
+            using var command = connection.CreateCommand();
+            var whereConditions = new List<string> { "[UserId] = @userId" };
+            command.Parameters.Add(new SqlParameter("@userId", userId));
 
-        if (!string.IsNullOrEmpty(request.Type))
-            query = query.Where(n => n.Type.ToString() == request.Type);
+            if (request.GroupId.HasValue)
+            {
+                whereConditions.Add("[GroupId] = @groupId");
+                command.Parameters.Add(new SqlParameter("@groupId", request.GroupId.Value));
+            }
 
-        if (!string.IsNullOrEmpty(request.Priority))
-            query = query.Where(n => n.Priority.ToString() == request.Priority);
+            if (!string.IsNullOrEmpty(request.Type))
+            {
+                // Try to parse as enum name first, then as integer
+                int typeValue;
+                if (Enum.TryParse<NotificationType>(request.Type, true, out var typeEnum))
+                {
+                    typeValue = (int)typeEnum;
+                }
+                else if (int.TryParse(request.Type, out typeValue))
+                {
+                    // Already an integer
+                }
+                else
+                {
+                    // Invalid type - skip this filter
+                    // Could also throw an exception or log a warning
+                    typeValue = -1; // Use invalid value that won't match anything
+                }
+                
+                if (typeValue >= 0)
+                {
+                    whereConditions.Add("[Type] = @type");
+                    command.Parameters.Add(new SqlParameter("@type", typeValue));
+                }
+            }
 
-        if (!string.IsNullOrEmpty(request.Status))
-            query = query.Where(n => n.Status.ToString() == request.Status);
+            if (!string.IsNullOrEmpty(request.Priority))
+            {
+                // Try to parse as enum name first, then as integer
+                int priorityValue;
+                if (Enum.TryParse<NotificationPriority>(request.Priority, true, out var priorityEnum))
+                {
+                    priorityValue = (int)priorityEnum;
+                }
+                else if (int.TryParse(request.Priority, out priorityValue))
+                {
+                    // Already an integer
+                }
+                else
+                {
+                    // Invalid priority - skip this filter
+                    priorityValue = -1;
+                }
+                
+                if (priorityValue >= 0)
+                {
+                    whereConditions.Add("[Priority] = @priority");
+                    command.Parameters.Add(new SqlParameter("@priority", priorityValue));
+                }
+            }
 
-        if (request.StartDate.HasValue)
-            query = query.Where(n => n.CreatedAt >= request.StartDate);
+            if (!string.IsNullOrEmpty(request.Status))
+            {
+                // Try to parse as enum name first, then as integer
+                int statusValue;
+                if (Enum.TryParse<NotificationStatus>(request.Status, true, out var statusEnum))
+                {
+                    statusValue = (int)statusEnum;
+                }
+                else if (int.TryParse(request.Status, out statusValue))
+                {
+                    // Already an integer
+                }
+                else
+                {
+                    // Invalid status - skip this filter
+                    statusValue = -1;
+                }
+                
+                if (statusValue >= 0)
+                {
+                    whereConditions.Add("[Status] = @status");
+                    command.Parameters.Add(new SqlParameter("@status", statusValue));
+                }
+            }
 
-        if (request.EndDate.HasValue)
-            query = query.Where(n => n.CreatedAt <= request.EndDate);
+            if (request.StartDate.HasValue)
+            {
+                whereConditions.Add("[CreatedAt] >= @startDate");
+                command.Parameters.Add(new SqlParameter("@startDate", request.StartDate.Value));
+            }
 
-        query = query.OrderByDescending(n => n.CreatedAt);
+            if (request.EndDate.HasValue)
+            {
+                whereConditions.Add("[CreatedAt] <= @endDate");
+                command.Parameters.Add(new SqlParameter("@endDate", request.EndDate.Value));
+            }
 
-        if (request.Offset.HasValue)
-            query = query.Skip(request.Offset.Value);
+            var whereClause = string.Join(" AND ", whereConditions);
+            var orderBy = "ORDER BY [CreatedAt] DESC";
+            var limitClause = request.Limit.HasValue ? $"OFFSET {request.Offset ?? 0} ROWS FETCH NEXT {request.Limit.Value} ROWS ONLY" : "";
 
-        if (request.Limit.HasValue)
-            query = query.Take(request.Limit.Value);
+            command.CommandText = $@"
+                SELECT [Id], [UserId], [GroupId], [Title], [Message], [Type], [Priority], [Status], 
+                       [ReadAt], [ScheduledFor], [ActionUrl], [ActionText], [CreatedAt], [UpdatedAt]
+                FROM [Notifications]
+                WHERE {whereClause}
+                {orderBy}
+                {limitClause}";
 
-        var notifications = await query.ToListAsync();
-        return notifications.Select(MapToDto).ToList();
+            var results = new List<NotificationDto>();
+            using (var reader = await command.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    results.Add(new NotificationDto
+                    {
+                        Id = reader.GetGuid(0),
+                        UserId = reader.GetGuid(1),
+                        GroupId = reader.IsDBNull(2) ? null : reader.GetGuid(2),
+                        GroupName = "", // Group name not available - fetch via HTTP if needed
+                        Title = reader.GetString(3),
+                        Message = reader.GetString(4),
+                        Type = ((NotificationType)reader.GetInt32(5)).ToString(),
+                        Priority = ((NotificationPriority)reader.GetInt32(6)).ToString(),
+                        Status = ((NotificationStatus)reader.GetInt32(7)).ToString(),
+                        ReadAt = reader.IsDBNull(8) ? null : reader.GetDateTime(8),
+                        ScheduledFor = reader.GetDateTime(9),
+                        ActionUrl = reader.IsDBNull(10) ? null : reader.GetString(10),
+                        ActionText = reader.IsDBNull(11) ? null : reader.GetString(11),
+                        CreatedAt = reader.GetDateTime(12),
+                    });
+                }
+            }
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            // Log the error - this will appear in container logs
+            Console.WriteLine($"[ERROR] GetUserNotificationsAsync failed: {ex.Message}");
+            Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"[ERROR] Inner exception: {ex.InnerException.Message}");
+            }
+            
+            // Re-throw to let the controller handle it
+            throw;
+        }
     }
 
     public async Task<NotificationStatsDto> GetNotificationStatsAsync(Guid userId)
@@ -273,7 +418,7 @@ public class NotificationService : INotificationService
             Id = notification.Id,
             UserId = notification.UserId,
             GroupId = notification.GroupId,
-            GroupName = notification.Group?.Name ?? "",
+            GroupName = "", // Group navigation property is ignored - fetch group name via HTTP if needed
             Title = notification.Title,
             Message = notification.Message,
             Type = notification.Type.ToString(),
