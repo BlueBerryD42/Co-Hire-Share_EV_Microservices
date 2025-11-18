@@ -15,6 +15,8 @@ namespace CoOwnershipVehicle.Booking.Api.Services;
 public class BookingService : IBookingService
 {
     private const int MaxEmergencyBookingsPerMonth = 2; // Define the limit for emergency bookings
+    private const int DefaultHistoryLimit = 20;
+    private const int MaxHistoryLimit = 100;
 
     private readonly IBookingRepository _bookingRepository;
     private readonly ILogger<BookingService> _logger;
@@ -140,6 +142,23 @@ public class BookingService : IBookingService
     {
         var bookings = await _bookingRepository.GetVehicleBookingsAsync(vehicleId, from, to);
         return bookings.Select(MapBookingToDto).ToList();
+    }
+
+    public async Task<IReadOnlyList<BookingHistoryEntryDto>> GetUserBookingHistoryAsync(Guid userId, int limit = DefaultHistoryLimit)
+    {
+        var normalizedLimit = NormalizeHistoryLimit(limit);
+        var bookings = await _bookingRepository.GetUserBookingHistoryAsync(userId, DateTime.UtcNow, normalizedLimit);
+
+        return bookings
+            .Select(booking => new BookingHistoryEntryDto
+            {
+                Booking = MapBookingToDto(booking),
+                CheckIns = booking.CheckIns
+                    .OrderBy(ci => ci.CheckInTime)
+                    .Select(MapCheckInToDto)
+                    .ToList()
+            })
+            .ToList();
     }
 
     public async Task<BookingConflictSummaryDto> CheckBookingConflictsAsync(Guid vehicleId, DateTime startAt, DateTime endAt, Guid? excludeBookingId = null)
@@ -385,6 +404,51 @@ public class BookingService : IBookingService
             DistanceKm = booking.DistanceKm,
             TripFeeAmount = booking.TripFeeAmount
         };
+    }
+
+    private static CheckInDto MapCheckInToDto(CheckIn entity)
+    {
+        return new CheckInDto
+        {
+            Id = entity.Id,
+            BookingId = entity.BookingId,
+            UserId = entity.UserId,
+            VehicleId = entity.VehicleId,
+            Type = entity.Type,
+            Odometer = entity.Odometer,
+            Notes = entity.Notes,
+            SignatureReference = entity.SignatureReference,
+            CheckInTime = entity.CheckInTime,
+            IsLateReturn = entity.IsLateReturn,
+            LateReturnMinutes = entity.LateReturnMinutes,
+            LateFeeAmount = entity.LateFeeAmount,
+            Photos = entity.Photos.Select(p => new CheckInPhotoDto
+            {
+                Id = p.Id,
+                CheckInId = entity.Id,
+                PhotoUrl = p.PhotoUrl,
+                ThumbnailUrl = p.ThumbnailUrl,
+                Description = p.Description,
+                Type = p.Type,
+                ContentType = p.ContentType,
+                CapturedAt = p.CapturedAt,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                IsDeleted = p.IsDeleted
+            }).ToList(),
+            CreatedAt = entity.CreatedAt,
+            UpdatedAt = entity.UpdatedAt
+        };
+    }
+
+    private static int NormalizeHistoryLimit(int limit)
+    {
+        if (limit <= 0)
+        {
+            return DefaultHistoryLimit;
+        }
+
+        return Math.Clamp(limit, 1, MaxHistoryLimit);
     }
 
     private Task NotifyGroupOfEmergencyBookingAsync(CreateBookingDto createDto, Guid createdByUserId, string emergencyReason)

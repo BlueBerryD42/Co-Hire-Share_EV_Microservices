@@ -150,4 +150,22 @@ public class BookingRepository : IBookingRepository
         return _context.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
     }
 
+    public Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetUserBookingHistoryAsync(Guid userId, DateTime before, int limit, CancellationToken cancellationToken = default)
+    {
+        limit = Math.Clamp(limit, 1, 100);
+
+        return _context.Bookings
+            .AsNoTracking()
+            .Where(b => b.UserId == userId && b.EndAt <= before)
+            .OrderByDescending(b => b.EndAt)
+            .Take(limit)
+            .Include(b => b.Vehicle)
+            .Include(b => b.Group)
+            .Include(b => b.User)
+            .Include(b => b.CheckIns)
+                .ThenInclude(ci => ci.Photos.Where(p => !p.IsDeleted))
+            .AsSplitQuery()
+            .ToListAsync(cancellationToken);
+    }
+
 }
