@@ -128,7 +128,11 @@ public class GroupController : ControllerBase
             // Fetch user data via HTTP
             var accessToken = GetAccessToken();
             var memberUserIds = group.Members.Select(m => m.UserId).Distinct().ToList();
+            _logger.LogInformation("Fetching user data for {Count} members: {UserIds}", 
+                memberUserIds.Count, string.Join(", ", memberUserIds));
             var users = await _userServiceClient.GetUsersAsync(memberUserIds, accessToken);
+            _logger.LogInformation("Retrieved {Count} users from User service. User IDs: {UserIds}", 
+                users.Count, string.Join(", ", users.Keys));
 
             var groupDto = new GroupDto
             {
@@ -141,6 +145,10 @@ public class GroupController : ControllerBase
                 Members = group.Members.Select(m =>
                 {
                     var user = users.GetValueOrDefault(m.UserId);
+                    if (user == null)
+                    {
+                        _logger.LogWarning("User {UserId} not found in User service for group {GroupId}", m.UserId, group.Id);
+                    }
                     return new GroupMemberDto
                     {
                         Id = m.Id,
