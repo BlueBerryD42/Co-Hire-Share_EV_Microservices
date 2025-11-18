@@ -53,10 +53,15 @@ public class UserController : ControllerBase
 
             return Ok(profile);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt to get profile");
+            return Unauthorized(new { message = ex.Message });
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting user profile");
-            return StatusCode(500, new { message = "An error occurred while retrieving profile" });
+            _logger.LogError(ex, "Error retrieving user profile: {Message}", ex.Message);
+            return StatusCode(500, new { message = "An error occurred while retrieving profile", details = ex.Message });
         }
     }
 
