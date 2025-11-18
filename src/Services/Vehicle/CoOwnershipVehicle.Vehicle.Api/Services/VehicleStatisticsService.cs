@@ -484,12 +484,12 @@ public class VehicleStatisticsService
             ? ((currentStats.TotalUsageHours - previousStats.TotalUsageHours) / previousStats.TotalUsageHours) * 100
             : (currentStats.TotalUsageHours > 0 ? 100 : 0);
 
-        var currentUtilizationRate = (currentStats.EndDate - currentStats.StartDate).TotalDays * 24m > 0
-            ? (currentStats.TotalUsageHours / ((currentStats.EndDate - currentStats.StartDate).TotalDays * 24m)) * 100
+        var currentUtilizationRate = (Decimal)(currentStats.EndDate - currentStats.StartDate).TotalDays * 24m > 0
+            ? (currentStats.TotalUsageHours / ((Decimal)(currentStats.EndDate - currentStats.StartDate).TotalDays * 24m)) * 100
             : 0;
 
-        var previousUtilizationRate = (previousStats.EndDate - previousStats.StartDate).TotalDays * 24m > 0
-            ? (previousStats.TotalUsageHours / ((previousStats.EndDate - previousStats.StartDate).TotalDays * 24m)) * 100
+        var previousUtilizationRate = (Decimal)(previousStats.EndDate - previousStats.StartDate).TotalDays * 24m > 0
+            ? (previousStats.TotalUsageHours / ((Decimal)(previousStats.EndDate - previousStats.StartDate).TotalDays * 24m)) * 100
             : 0;
 
         var utilizationRateGrowth = previousUtilizationRate > 0

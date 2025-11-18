@@ -308,7 +308,9 @@ public class VehicleHealthScoreService
         // For now, we'll use a placeholder and return a neutral score if no data.
 
         int damageReportCount = 0; // Placeholder - would come from service call
+        int recentMonths = 12; // <-- define this
 
+        
         decimal score;
         string description;
         string status;
