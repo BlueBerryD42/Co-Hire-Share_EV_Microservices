@@ -53,9 +53,10 @@ public class GroupController : ControllerBase
             var userId = GetCurrentUserId();
             _logger.LogInformation("GetUserGroups called for UserId: {UserId}", userId);
             
+            // Note: Vehicles are not included because Vehicle entity is in Vehicle service
+            // Vehicles will be fetched separately via HTTP if needed
             var groups = await _context.OwnershipGroups
                 .Include(g => g.Members)
-                .Include(g => g.Vehicles)
                 .Where(g => g.Members.Any(m => m.UserId == userId))
                 .ToListAsync();
 
@@ -87,19 +88,8 @@ public class GroupController : ControllerBase
                         JoinedAt = m.JoinedAt
                     };
                 }).ToList(),
-                Vehicles = g.Vehicles.Select(v => new VehicleDto
-                {
-                    Id = v.Id,
-                    Vin = v.Vin,
-                    PlateNumber = v.PlateNumber,
-                    Model = v.Model,
-                    Year = v.Year,
-                    Color = v.Color,
-                    Status = (VehicleStatus)v.Status,
-                    Odometer = v.Odometer,
-                    GroupId = v.GroupId,
-                    GroupName = g.Name
-                }).ToList()
+                // Vehicles are managed by Vehicle service - return empty list or fetch via HTTP if needed
+                Vehicles = new List<VehicleDto>()
             }).ToList();
 
             return Ok(groupDtos);
@@ -126,9 +116,9 @@ public class GroupController : ControllerBase
         {
             var userId = GetCurrentUserId();
             
+            // Note: Vehicles are not included because Vehicle entity is in Vehicle service
             var group = await _context.OwnershipGroups
                 .Include(g => g.Members)
-                .Include(g => g.Vehicles)
                 .Where(g => g.Id == id && g.Members.Any(m => m.UserId == userId))
                 .FirstOrDefaultAsync();
 
@@ -163,19 +153,8 @@ public class GroupController : ControllerBase
                         JoinedAt = m.JoinedAt
                     };
                 }).ToList(),
-                Vehicles = group.Vehicles.Select(v => new VehicleDto
-                {
-                    Id = v.Id,
-                    Vin = v.Vin,
-                    PlateNumber = v.PlateNumber,
-                    Model = v.Model,
-                    Year = v.Year,
-                    Color = v.Color,
-                    Status = (VehicleStatus)v.Status,
-                    Odometer = v.Odometer,
-                    GroupId = v.GroupId,
-                    GroupName = group.Name
-                }).ToList()
+                // Vehicles are managed by Vehicle service - return empty list or fetch via HTTP if needed
+                Vehicles = new List<VehicleDto>()
             };
 
             return Ok(groupDto);

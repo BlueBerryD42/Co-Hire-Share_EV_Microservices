@@ -80,6 +80,18 @@ public class GroupDbContext : DbContext
 
             // CreatedBy is stored but no FK constraint (User is in another service)
             entity.Ignore(e => e.Creator);
+            
+            // Ignore cross-service navigation properties
+            // Vehicles belong to Vehicle service - fetch via HTTP if needed
+            entity.Ignore(e => e.Vehicles);
+            // Bookings belong to Booking service
+            entity.Ignore(e => e.Bookings);
+            // Expenses belong to Payment service
+            entity.Ignore(e => e.Expenses);
+            // LedgerEntries belong to Payment service
+            entity.Ignore(e => e.LedgerEntries);
+            // RecurringBookings belong to Booking service
+            entity.Ignore(e => e.RecurringBookings);
 
             entity.HasIndex(e => e.Name);
         });
