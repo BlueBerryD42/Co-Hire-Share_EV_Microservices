@@ -765,10 +765,24 @@ public class AdminService : IAdminService
     // User Management Methods
     public async Task<UserListResponseDto> GetUsersAsync(UserListRequestDto request)
     {
-        // Get users via HTTP client - note: filtering/sorting done in memory (may need User service to support server-side filtering)
-        var allUsers = await _userServiceClient.GetUsersAsync(request);
+        _logger.LogInformation("GetUsersAsync called with request: Page={Page}, PageSize={PageSize}, Search={Search}, Role={Role}, KycStatus={KycStatus}", 
+            request.Page, request.PageSize, request.Search, request.Role, request.KycStatus);
         
-        // Apply filters in memory (ideally User service should support these filters)
+        // Get ALL users from User service first (without pagination), then filter and paginate in Admin service
+        // This ensures we have all data to filter properly
+        // Note: User service will handle its own filtering, we just need to get all pages
+        var requestWithoutPagination = new UserListRequestDto
+        {
+            // Don't pass filters to User service - let it return all users, we'll filter here
+            Page = 1,
+            PageSize = 10000 // Get all users
+        };
+        
+        var allUsers = await _userServiceClient.GetUsersAsync(requestWithoutPagination);
+        
+        _logger.LogInformation("Received {Count} users from UserServiceClient", allUsers.Count);
+        
+        // Apply filters in memory
         var filtered = allUsers.AsEnumerable();
         
         if (!string.IsNullOrEmpty(request.Search))
