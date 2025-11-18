@@ -28,8 +28,12 @@ public class GroupServiceClient : IGroupServiceClient
             // The Group service returns a list of GroupDto, which is more comprehensive.
             // We need to deserialize it and then select only the Id.
             // For simplicity, I'm assuming the GroupDto from Group service has an 'Id' property.
-            // If the GroupDto in Group service is different, this deserialization might need adjustment.
-            var groupDtos = JsonSerializer.Deserialize<List<GroupDto>>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            };
+            var groupDtos = JsonSerializer.Deserialize<List<GroupDto>>(content, options);
             if (groupDtos != null)
             {
                 return groupDtos.Select(g => new GroupServiceGroupDto { Id = g.Id }).ToList();
@@ -55,7 +59,12 @@ public class GroupServiceClient : IGroupServiceClient
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();
-                var groupDtos = JsonSerializer.Deserialize<List<GroupDto>>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                };
+                var groupDtos = JsonSerializer.Deserialize<List<GroupDto>>(content, options);
 
                 // Check if the specified groupId is in the user's groups
                 return groupDtos?.Any(g => g.Id == groupId) ?? false;
@@ -94,7 +103,8 @@ public class GroupServiceClient : IGroupServiceClient
 
                 var options = new JsonSerializerOptions
                 {
-                    PropertyNameCaseInsensitive = true
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
                 };
                 var result = JsonSerializer.Deserialize<CoOwnershipVehicle.Shared.Contracts.DTOs.GroupDetailsDto>(content, options);
 

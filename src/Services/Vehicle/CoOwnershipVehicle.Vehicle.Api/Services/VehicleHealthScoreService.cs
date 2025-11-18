@@ -54,26 +54,74 @@ public class VehicleHealthScoreService
             CalculatedAt = DateTime.UtcNow
         };
 
-        // Calculate each component score
+        // Calculate each component score with error handling
         var breakdown = new ScoreBreakdown();
 
-        // 1. Maintenance Adherence (30%)
-        breakdown.MaintenanceAdherence = await CalculateMaintenanceAdherenceScore(vehicle);
+        try
+        {
+            // 1. Maintenance Adherence (30%)
+            breakdown.MaintenanceAdherence = await CalculateMaintenanceAdherenceScore(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error calculating maintenance adherence score for vehicle {VehicleId}", vehicleId);
+            breakdown.MaintenanceAdherence = GetDefaultComponentScore("Maintenance Adherence", MAINTENANCE_WEIGHT, "Unable to calculate");
+        }
 
-        // 2. Odometer vs Age (20%)
-        breakdown.OdometerVsAge = CalculateOdometerVsAgeScore(vehicle);
+        try
+        {
+            // 2. Odometer vs Age (20%)
+            breakdown.OdometerVsAge = CalculateOdometerVsAgeScore(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error calculating odometer vs age score for vehicle {VehicleId}", vehicleId);
+            breakdown.OdometerVsAge = GetDefaultComponentScore("Odometer vs Age", ODOMETER_AGE_WEIGHT, "Unable to calculate");
+        }
 
-        // 3. Damage Reports (20%)
-        breakdown.DamageReports = await CalculateDamageReportsScore(vehicle, accessToken);
+        try
+        {
+            // 3. Damage Reports (20%)
+            breakdown.DamageReports = await CalculateDamageReportsScore(vehicle, accessToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error calculating damage reports score for vehicle {VehicleId}", vehicleId);
+            breakdown.DamageReports = GetDefaultComponentScore("Damage Reports", DAMAGE_WEIGHT, "Unable to calculate");
+        }
 
-        // 4. Service Frequency (15%)
-        breakdown.ServiceFrequency = await CalculateServiceFrequencyScore(vehicle);
+        try
+        {
+            // 4. Service Frequency (15%)
+            breakdown.ServiceFrequency = await CalculateServiceFrequencyScore(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error calculating service frequency score for vehicle {VehicleId}", vehicleId);
+            breakdown.ServiceFrequency = GetDefaultComponentScore("Service Frequency", SERVICE_FREQUENCY_WEIGHT, "Unable to calculate");
+        }
 
-        // 5. Vehicle Age (10%)
-        breakdown.VehicleAge = CalculateVehicleAgeScore(vehicle);
+        try
+        {
+            // 5. Vehicle Age (10%)
+            breakdown.VehicleAge = CalculateVehicleAgeScore(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error calculating vehicle age score for vehicle {VehicleId}", vehicleId);
+            breakdown.VehicleAge = GetDefaultComponentScore("Vehicle Age", VEHICLE_AGE_WEIGHT, "Unable to calculate");
+        }
 
-        // 6. Inspection Results (5%)
-        breakdown.InspectionResults = await CalculateInspectionScore(vehicle);
+        try
+        {
+            // 6. Inspection Results (5%)
+            breakdown.InspectionResults = await CalculateInspectionScore(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error calculating inspection score for vehicle {VehicleId}", vehicleId);
+            breakdown.InspectionResults = GetDefaultComponentScore("Inspection Results", INSPECTION_WEIGHT, "Unable to calculate");
+        }
 
         response.Breakdown = breakdown;
 
@@ -256,28 +304,23 @@ public class VehicleHealthScoreService
     /// </summary>
     private Task<ComponentScore> CalculateDamageReportsScore(Domain.Entities.Vehicle vehicle, string accessToken)
     {
-        // In a microservices architecture, damage reports would come from:
-        // 1. Analytics Service (CheckIn photos with PhotoType.Damage)
-        // 2. Incident Service (if exists)
-        // For now, we'll estimate based on available data
-
-        var recentMonths = 6;
-        var cutoffDate = DateTime.UtcNow.AddMonths(-recentMonths);
-
-        // Query CheckIn damage photos would go here (if we had access to Analytics Service)
-        // For now, we'll use a placeholder
+        // TODO: Integrate with a proper Damage/Incident service or Analytics Service (CheckIn photos with PhotoType.Damage)
+        // For now, we'll use a placeholder and return a neutral score if no data.
 
         int damageReportCount = 0; // Placeholder - would come from service call
+        int recentMonths = 12; // <-- define this
 
+        
         decimal score;
         string description;
         string status;
 
         if (damageReportCount == 0)
         {
-            score = DAMAGE_WEIGHT; // Full points
-            description = $"No damage reports in the last {recentMonths} months.";
-            status = "Excellent";
+            // If no damage reports, return a neutral score, not full points, as this is a placeholder.
+            score = DAMAGE_WEIGHT * 0.5m; // Neutral score (e.g., 10 points out of 20)
+            description = $"No damage reports found. (Placeholder: Needs integration with damage reporting system)";
+            status = "Fair";
         }
         else if (damageReportCount <= 2)
         {
@@ -1042,6 +1085,22 @@ public class VehicleHealthScoreService
             ColorIndicator = GetColorIndicator((HealthCategory)latestScore.Category),
             AlertCount = alertCount,
             LastCalculated = latestScore.CalculatedAt
+        };
+    }
+
+    /// <summary>
+    /// Get default component score when calculation fails
+    /// </summary>
+    private ComponentScore GetDefaultComponentScore(string componentName, decimal maxPoints, string description)
+    {
+        return new ComponentScore
+        {
+            ComponentName = componentName,
+            Points = 0,
+            MaxPoints = maxPoints,
+            Weight = maxPoints,
+            Description = description,
+            Status = "Unknown"
         };
     }
 }

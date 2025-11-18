@@ -52,9 +52,28 @@ namespace CoOwnershipVehicle.Vehicle.Api.Services
             var totalDays = (endDate - startDate).Days + 1;
 
             // 3. Get expenses from Payment Service
-            var expensesData = await _paymentClient.GetVehicleExpensesAsync(
-                vehicleId, startDate, endDate, accessToken);
+            // The Payment Service's GetVehicleExpensesAsync actually expects a groupId, not a vehicleId.
+            // We need to pass the groupId associated with this vehicle.
+            VehicleExpensesResponse expensesData;
+            if (!vehicle.GroupId.HasValue)
+            {
+                _logger.LogWarning("Vehicle {VehicleId} does not have an associated GroupId. Cannot fetch expenses.", vehicleId);
+                expensesData = new VehicleExpensesResponse
+                {
+                    VehicleId = vehicleId,
+                    StartDate = startDate,
+                    EndDate = endDate,
+                    Expenses = new(),
+                    TotalAmount = 0
+                };
+            }
+            else
+            {
+                expensesData = await _paymentClient.GetVehicleExpensesAsync(
+                    vehicle.GroupId.Value, startDate, endDate, accessToken);
+            }
 
+            // Ensure expensesData is not null before proceeding
             if (expensesData == null)
             {
                 expensesData = new VehicleExpensesResponse

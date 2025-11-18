@@ -20,6 +20,38 @@ public class UserDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
+        base.OnModelCreating(builder);
+
+        // Ignore all entities that are not part of the User service
+        builder.Ignore<OwnershipGroup>();
+        builder.Ignore<GroupMember>();
+        builder.Ignore<Vehicle>();
+        builder.Ignore<Expense>();
+        builder.Ignore<Invoice>();
+        builder.Ignore<Payment>();
+        builder.Ignore<Booking>();
+        builder.Ignore<CheckIn>();
+        builder.Ignore<Notification>();
+        builder.Ignore<NotificationTemplate>();
+        builder.Ignore<AnalyticsSnapshot>();
+        builder.Ignore<Document>();
+        builder.Ignore<DocumentTag>();
+        builder.Ignore<DocumentTagMapping>();
+        builder.Ignore<DocumentSignature>();
+        builder.Ignore<DocumentDownload>();
+        builder.Ignore<DocumentVersion>();
+        builder.Ignore<DocumentTemplate>();
+        builder.Ignore<DocumentShare>();
+        builder.Ignore<DocumentShareAccess>();
+        builder.Ignore<SigningCertificate>();
+        builder.Ignore<SignatureReminder>();
+        builder.Ignore<SavedDocumentSearch>();
+        builder.Ignore<LedgerEntry>();
+        builder.Ignore<Proposal>();
+        builder.Ignore<Vote>();
+        builder.Ignore<AuditLog>();
+        builder.Ignore<GroupFund>();
+        builder.Ignore<FundTransaction>();
         // Automatically trim unrelated domain entities
         var allowedDomainEntities = new HashSet<Type>
         {
