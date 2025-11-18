@@ -76,7 +76,14 @@ namespace CoOwnershipVehicle.Vehicle.Api
         public static void ConfigureServices(WebApplicationBuilder builder)
         {
             // Add services to the container.
-            builder.Services.AddControllers();
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    // Use camelCase for JSON serialization (to match frontend)
+                    options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+                    // Allow both string and numeric enum values
+                    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+                });
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>
             {

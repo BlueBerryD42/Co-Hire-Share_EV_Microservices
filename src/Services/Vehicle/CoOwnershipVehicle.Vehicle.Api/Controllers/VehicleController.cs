@@ -128,17 +128,29 @@ public class VehicleController : ControllerBase
 
             var userId = GetCurrentUserId();
 
-            // Ultra-robust, manual role check that checks for both short and long role claim types
+            // Get user's system role
             var roles = User.Claims
                 .Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role)
                 .Select(c => c.Value);
 
             var isSystemAdmin = roles.Contains("SystemAdmin");
-            var isGroupAdmin = roles.Contains("GroupAdmin");
 
-            if (!isSystemAdmin && !isGroupAdmin)
+            // If not system admin, verify user is a member of the target group
+            if (!isSystemAdmin)
             {
-                 return Forbidden(new { message = "Insufficient permissions to create vehicle for this group" });
+                var accessToken = GetAccessToken();
+
+                // Get user's groups to verify they're a member of the target group
+                var userGroups = await _groupServiceClient.GetUserGroups(accessToken);
+                var targetGroup = userGroups.FirstOrDefault(g => g.Id == createDto.GroupId);
+
+                if (targetGroup == null)
+                {
+                    _logger.LogWarning("User {UserId} attempted to add vehicle to group {GroupId} but is not a member", userId, createDto.GroupId);
+                    return Forbidden(new { message = "You are not a member of this group" });
+                }
+
+                _logger.LogInformation("User {UserId} is a member of group {GroupId}, allowing vehicle creation", userId, createDto.GroupId);
             }
 
             // Check if VIN already exists
