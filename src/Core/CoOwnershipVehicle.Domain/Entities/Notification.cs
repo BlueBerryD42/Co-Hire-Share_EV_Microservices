@@ -87,7 +87,8 @@ public enum NotificationType
     SystemAlert = 17,
     EmergencyBooking = 18,
     OverduePayment = 19,
-    MaintenanceReminder = 20
+    MaintenanceReminder = 20,
+    Chat = 21
 }
 
 public enum NotificationPriority

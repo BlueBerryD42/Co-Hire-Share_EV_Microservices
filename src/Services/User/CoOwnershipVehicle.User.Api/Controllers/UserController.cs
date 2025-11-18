@@ -108,6 +108,38 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
+    /// Search user by email to get user ID (for adding members to groups)
+    /// </summary>
+    [HttpGet("search")]
+    public async Task<IActionResult> SearchUserByEmail([FromQuery] string email)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return BadRequest(new { message = "Email is required" });
+
+            // Search in UserProfiles first
+            var userProfile = await _userService.GetUserByEmailAsync(email);
+            
+            if (userProfile == null)
+                return NotFound(new { message = "User not found" });
+
+            return Ok(new
+            {
+                Id = userProfile.Id,
+                Email = userProfile.Email,
+                FirstName = userProfile.FirstName,
+                LastName = userProfile.LastName
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching user by email {Email}", email);
+            return StatusCode(500, new { message = "An error occurred while searching for user" });
+        }
+    }
+
+    /// <summary>
     /// Get basic user information by ID (any authenticated user)
     /// This endpoint allows users to get basic info (name, email) for other users,
     /// typically used for displaying member names in groups, proposals, etc.
