@@ -68,8 +68,12 @@ public class DataAccuracyTests : IDisposable
             new User { Id = Guid.NewGuid(), Email = "user2@test.com", FirstName = "User2", LastName = "Test", KycStatus = KycStatus.Pending, Role = UserRole.CoOwner, CreatedAt = DateTime.UtcNow, LockoutEnd = null },
             new User { Id = Guid.NewGuid(), Email = "user3@test.com", FirstName = "User3", LastName = "Test", KycStatus = KycStatus.Rejected, Role = UserRole.CoOwner, CreatedAt = DateTime.UtcNow, LockoutEnd = DateTime.UtcNow.AddYears(1) }
         };
-        _context.Users.AddRange(users);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Users DbSet - use UserServiceClient mock instead
+        // _context.Users.AddRange(users);
+        // await _context.SaveChangesAsync();
+        var testUsers = users.Select(u => new UserProfileDto { Id = u.Id, Email = u.Email, FirstName = u.FirstName, LastName = u.LastName, KycStatus = u.KycStatus, Role = u.Role, CreatedAt = u.CreatedAt }).ToList();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(testUsers);
 
         // Act
         var result = await _adminService.GetDashboardMetricsAsync(new DashboardRequestDto { Period = TimePeriod.Monthly });
@@ -88,8 +92,11 @@ public class DataAccuracyTests : IDisposable
     {
         // Arrange
         var adminUser = new User { Id = Guid.NewGuid(), Email = "admin@test.com", FirstName = "Admin", LastName = "User", KycStatus = KycStatus.Approved, Role = UserRole.SystemAdmin, CreatedAt = DateTime.UtcNow };
-        _context.Users.Add(adminUser);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Users DbSet - use UserServiceClient mock instead
+        // _context.Users.Add(adminUser);
+        // await _context.SaveChangesAsync();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> { new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt } });
 
         var groups = new List<OwnershipGroup>
         {
@@ -97,8 +104,12 @@ public class DataAccuracyTests : IDisposable
             new OwnershipGroup { Id = Guid.NewGuid(), Name = "Inactive Group", Status = GroupStatus.Inactive, CreatedBy = adminUser.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
             new OwnershipGroup { Id = Guid.NewGuid(), Name = "Dissolved Group", Status = GroupStatus.Dissolved, CreatedBy = adminUser.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }
         };
-        _context.OwnershipGroups.AddRange(groups);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups DbSet - use GroupServiceClient mock instead
+        // _context.OwnershipGroups.AddRange(groups);
+        // await _context.SaveChangesAsync();
+        var testGroups = groups.Select(g => new GroupDto { Id = g.Id, Name = g.Name, Status = g.Status, CreatedBy = g.CreatedBy, CreatedAt = g.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() }).ToList();
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(testGroups);
 
         // Act
         var result = await _adminService.GetDashboardMetricsAsync(new DashboardRequestDto { Period = TimePeriod.Monthly });
@@ -115,8 +126,11 @@ public class DataAccuracyTests : IDisposable
     {
         // Arrange
         var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
-        _context.OwnershipGroups.Add(group);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups DbSet - use GroupServiceClient mock instead
+        // _context.OwnershipGroups.Add(group);
+        // await _context.SaveChangesAsync();
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(new List<GroupDto> { new GroupDto { Id = group.Id, Name = group.Name, Status = group.Status, CreatedBy = group.CreatedBy, CreatedAt = group.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() } });
 
         var vehicles = new List<Vehicle>
         {
@@ -125,8 +139,12 @@ public class DataAccuracyTests : IDisposable
             new Vehicle { Id = Guid.NewGuid(), Vin = "VIN003", PlateNumber = "PLT003", Model = "Model3", Year = 2023, Status = VehicleStatus.Maintenance, GroupId = group.Id, CreatedAt = DateTime.UtcNow },
             new Vehicle { Id = Guid.NewGuid(), Vin = "VIN004", PlateNumber = "PLT004", Model = "Model4", Year = 2023, Status = VehicleStatus.Unavailable, GroupId = group.Id, CreatedAt = DateTime.UtcNow }
         };
-        _context.Vehicles.AddRange(vehicles);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Vehicles DbSet - use VehicleServiceClient mock instead
+        // _context.Vehicles.AddRange(vehicles);
+        // await _context.SaveChangesAsync();
+        var testVehicles = vehicles.Select(v => new VehicleDto { Id = v.Id, Vin = v.Vin, PlateNumber = v.PlateNumber, Model = v.Model, Year = v.Year, Status = v.Status, GroupId = v.GroupId, CreatedAt = v.CreatedAt }).ToList();
+        _vehicleServiceClientMock.Setup(x => x.GetVehiclesAsync())
+            .ReturnsAsync(testVehicles);
 
         // Act
         var result = await _adminService.GetDashboardMetricsAsync(new DashboardRequestDto { Period = TimePeriod.Monthly });
@@ -146,10 +164,18 @@ public class DataAccuracyTests : IDisposable
         var user = new User { Id = Guid.NewGuid(), Email = "user@test.com", FirstName = "User", LastName = "Test", KycStatus = KycStatus.Approved, Role = UserRole.CoOwner, CreatedAt = DateTime.UtcNow };
         var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = user.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         var vehicle = new Vehicle { Id = Guid.NewGuid(), Vin = "VIN001", PlateNumber = "PLT001", Model = "Model1", Year = 2023, Status = VehicleStatus.Available, GroupId = group.Id, CreatedAt = DateTime.UtcNow };
-        _context.Users.Add(user);
-        _context.OwnershipGroups.Add(group);
-        _context.Vehicles.Add(vehicle);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Users/OwnershipGroups/Vehicles DbSets - use HTTP client mocks instead
+        // _context.Users.Add(user);
+        // _context.OwnershipGroups.Add(group);
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> { new UserProfileDto { Id = user.Id, Email = user.Email, FirstName = user.FirstName, LastName = user.LastName, KycStatus = user.KycStatus, Role = user.Role, CreatedAt = user.CreatedAt } });
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(new List<GroupDto> { new GroupDto { Id = group.Id, Name = group.Name, Status = group.Status, CreatedBy = group.CreatedBy, CreatedAt = group.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() } });
+        // TODO: AdminDbContext no longer has Vehicles DbSet - use VehicleServiceClient mock instead
+        // _context.Vehicles.Add(vehicle);
+        // await _context.SaveChangesAsync();
+        _vehicleServiceClientMock.Setup(x => x.GetVehiclesAsync())
+            .ReturnsAsync(new List<VehicleDto> { new VehicleDto { Id = vehicle.Id, Vin = vehicle.Vin, PlateNumber = vehicle.PlateNumber, Model = vehicle.Model, Year = vehicle.Year, Status = vehicle.Status, GroupId = vehicle.GroupId, CreatedAt = vehicle.CreatedAt } });
 
         var bookings = new List<Booking>
         {
@@ -159,8 +185,12 @@ public class DataAccuracyTests : IDisposable
             new Booking { Id = Guid.NewGuid(), VehicleId = vehicle.Id, GroupId = group.Id, UserId = user.Id, StartAt = DateTime.UtcNow.AddDays(-10), EndAt = DateTime.UtcNow.AddDays(-9), Status = BookingStatus.Completed, CreatedAt = DateTime.UtcNow.AddDays(-12) },
             new Booking { Id = Guid.NewGuid(), VehicleId = vehicle.Id, GroupId = group.Id, UserId = user.Id, StartAt = DateTime.UtcNow.AddDays(5), EndAt = DateTime.UtcNow.AddDays(6), Status = BookingStatus.Cancelled, CreatedAt = DateTime.UtcNow }
         };
-        _context.Bookings.AddRange(bookings);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Bookings DbSet - use BookingServiceClient mock instead
+        // _context.Bookings.AddRange(bookings);
+        // await _context.SaveChangesAsync();
+        var testBookings = bookings.Select(b => new BookingDto { Id = b.Id, VehicleId = b.VehicleId, GroupId = b.GroupId, UserId = b.UserId, StartAt = b.StartAt, EndAt = b.EndAt, Status = b.Status, CreatedAt = b.CreatedAt, TripFeeAmount = 0 }).ToList();
+        _bookingServiceClientMock.Setup(x => x.GetBookingsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<Guid?>(), It.IsAny<Guid?>()))
+            .ReturnsAsync(testBookings);
 
         // Act
         var result = await _adminService.GetDashboardMetricsAsync(new DashboardRequestDto { Period = TimePeriod.Monthly });
@@ -190,8 +220,12 @@ public class DataAccuracyTests : IDisposable
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 3000, Status = PaymentStatus.Failed, Method = PaymentMethod.CreditCard, CreatedAt = DateTime.UtcNow },
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 500, Status = PaymentStatus.Completed, Method = PaymentMethod.CreditCard, CreatedAt = DateTime.UtcNow.AddDays(-35), PaidAt = DateTime.UtcNow.AddDays(-35) }
         };
-        _context.Payments.AddRange(payments);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Payments DbSet - use PaymentServiceClient mock instead
+        // _context.Payments.AddRange(payments);
+        // await _context.SaveChangesAsync();
+        var testPayments = payments.Select(p => new PaymentDto { Id = p.Id, InvoiceId = Guid.NewGuid(), PayerId = p.PayerId, Amount = p.Amount, Status = p.Status, Method = p.Method, CreatedAt = p.CreatedAt, PaidAt = p.PaidAt }).ToList();
+        _paymentServiceClientMock.Setup(x => x.GetPaymentsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<PaymentStatus?>()))
+            .ReturnsAsync(testPayments);
 
         // Act
         var result = await _adminService.GetFinancialOverviewAsync();
@@ -230,8 +264,21 @@ public class DataAccuracyTests : IDisposable
             _bookingServiceClientMock.Object,
             _paymentServiceClientMock.Object);
 
-        isolatedContext.Payments.AddRange(payments);
-        await isolatedContext.SaveChangesAsync();
+        // TODO: Update test to use PaymentServiceClient mock instead of direct DB access
+        // isolatedContext.Payments.AddRange(payments); // AdminDbContext no longer has Payments DbSet
+        var testPayments = payments.Select(p => new PaymentDto 
+        { 
+            Id = p.Id, 
+            InvoiceId = Guid.NewGuid(), 
+            PayerId = p.PayerId, 
+            Amount = p.Amount, 
+            Status = p.Status, 
+            Method = p.Method, 
+            CreatedAt = p.CreatedAt, 
+            PaidAt = p.PaidAt 
+        }).ToList();
+        _paymentServiceClientMock.Setup(x => x.GetPaymentsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<PaymentStatus?>()))
+            .ReturnsAsync(testPayments);
 
         // Act
         var result = await isolatedService.GetFinancialOverviewAsync();
@@ -252,8 +299,12 @@ public class DataAccuracyTests : IDisposable
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 1000, Status = PaymentStatus.Completed, Method = PaymentMethod.CreditCard, CreatedAt = DateTime.UtcNow, PaidAt = DateTime.UtcNow },
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 1000, Status = PaymentStatus.Failed, Method = PaymentMethod.CreditCard, CreatedAt = DateTime.UtcNow }
         };
-        _context.Payments.AddRange(payments);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Payments DbSet - use PaymentServiceClient mock instead
+        // _context.Payments.AddRange(payments);
+        // await _context.SaveChangesAsync();
+        var testPayments = payments.Select(p => new PaymentDto { Id = p.Id, InvoiceId = Guid.NewGuid(), PayerId = p.PayerId, Amount = p.Amount, Status = p.Status, Method = p.Method, CreatedAt = p.CreatedAt, PaidAt = p.PaidAt }).ToList();
+        _paymentServiceClientMock.Setup(x => x.GetPaymentsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<PaymentStatus?>()))
+            .ReturnsAsync(testPayments);
 
         // Act
         var result = await _adminService.GetFinancialOverviewAsync();
@@ -268,8 +319,12 @@ public class DataAccuracyTests : IDisposable
         // Arrange
         var group1 = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Group 1", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         var group2 = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Group 2", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
-        _context.OwnershipGroups.AddRange(group1, group2);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups DbSet - use GroupServiceClient mock instead
+        // _context.OwnershipGroups.AddRange(group1, group2);
+        // await _context.SaveChangesAsync();
+        var testGroups = new[] { group1, group2 }.Select(g => new GroupDto { Id = g.Id, Name = g.Name, Status = g.Status, CreatedBy = g.CreatedBy, CreatedAt = g.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() }).ToList();
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(testGroups);
 
         var expenses = new List<Expense>
         {
@@ -277,8 +332,12 @@ public class DataAccuracyTests : IDisposable
             new Expense { Id = Guid.NewGuid(), GroupId = group1.Id, ExpenseType = ExpenseType.Maintenance, Amount = 2000, Description = "Maintenance", CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow },
             new Expense { Id = Guid.NewGuid(), GroupId = group2.Id, ExpenseType = ExpenseType.Fuel, Amount = 500, Description = "Fuel", CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow }
         };
-        _context.Expenses.AddRange(expenses);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Expenses DbSet - use PaymentServiceClient mock instead
+        // _context.Expenses.AddRange(expenses);
+        // await _context.SaveChangesAsync();
+        var testExpenses = expenses.Select(e => new ExpenseDto { Id = e.Id, GroupId = e.GroupId, VehicleId = e.VehicleId, ExpenseType = e.ExpenseType, Amount = e.Amount, Description = e.Description, DateIncurred = e.DateIncurred, CreatedBy = e.CreatedBy, CreatedAt = e.CreatedAt }).ToList();
+        _paymentServiceClientMock.Setup(x => x.GetExpensesAsync(It.IsAny<Guid?>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
+            .ReturnsAsync(testExpenses);
 
         // Act
         var result = await _adminService.GetFinancialByGroupsAsync();
@@ -302,8 +361,15 @@ public class DataAccuracyTests : IDisposable
         // Arrange
         var user = new User { Id = Guid.NewGuid(), Email = "user@test.com", FirstName = "User", LastName = "Test", KycStatus = KycStatus.Approved, Role = UserRole.CoOwner, CreatedAt = DateTime.UtcNow, LockoutEnd = null };
         var adminUser = new User { Id = Guid.NewGuid(), Email = "admin@test.com", FirstName = "Admin", LastName = "User", KycStatus = KycStatus.Approved, Role = UserRole.SystemAdmin, CreatedAt = DateTime.UtcNow };
-        _context.Users.AddRange(user, adminUser);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Users DbSet - use UserServiceClient mock instead
+        // _context.Users.AddRange(user, adminUser);
+        // await _context.SaveChangesAsync();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> 
+            { 
+                new UserProfileDto { Id = user.Id, Email = user.Email, FirstName = user.FirstName, LastName = user.LastName, KycStatus = user.KycStatus, Role = user.Role, CreatedAt = user.CreatedAt },
+                new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt }
+            });
 
         var request = new UpdateUserStatusDto
         {
@@ -329,8 +395,15 @@ public class DataAccuracyTests : IDisposable
         // Arrange
         var user = new User { Id = Guid.NewGuid(), Email = "user@test.com", FirstName = "User", LastName = "Test", KycStatus = KycStatus.Approved, Role = UserRole.CoOwner, CreatedAt = DateTime.UtcNow };
         var adminUser = new User { Id = Guid.NewGuid(), Email = "admin@test.com", FirstName = "Admin", LastName = "User", KycStatus = KycStatus.Approved, Role = UserRole.SystemAdmin, CreatedAt = DateTime.UtcNow };
-        _context.Users.AddRange(user, adminUser);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Users DbSet - use UserServiceClient mock instead
+        // _context.Users.AddRange(user, adminUser);
+        // await _context.SaveChangesAsync();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> 
+            { 
+                new UserProfileDto { Id = user.Id, Email = user.Email, FirstName = user.FirstName, LastName = user.LastName, KycStatus = user.KycStatus, Role = user.Role, CreatedAt = user.CreatedAt },
+                new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt }
+            });
 
         var request = new UpdateUserRoleDto
         {
@@ -356,9 +429,16 @@ public class DataAccuracyTests : IDisposable
         // Arrange
         var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         var adminUser = new User { Id = Guid.NewGuid(), Email = "admin@test.com", FirstName = "Admin", LastName = "User", KycStatus = KycStatus.Approved, Role = UserRole.SystemAdmin, CreatedAt = DateTime.UtcNow };
-        _context.OwnershipGroups.Add(group);
-        _context.Users.Add(adminUser);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups/Users DbSets - use HTTP client mocks instead
+        // _context.OwnershipGroups.Add(group);
+        // _context.Users.Add(adminUser);
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(new List<GroupDto> { new GroupDto { Id = group.Id, Name = group.Name, Status = group.Status, CreatedBy = group.CreatedBy, CreatedAt = group.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() } });
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> { new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt } });
+        // await _context.SaveChangesAsync();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> { new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt } });
 
         var request = new UpdateGroupStatusDto
         {
@@ -384,9 +464,16 @@ public class DataAccuracyTests : IDisposable
         // Arrange
         var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         var adminUser = new User { Id = Guid.NewGuid(), Email = "admin@test.com", FirstName = "Admin", LastName = "User", KycStatus = KycStatus.Approved, Role = UserRole.SystemAdmin, CreatedAt = DateTime.UtcNow };
-        _context.OwnershipGroups.Add(group);
-        _context.Users.Add(adminUser);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups/Users DbSets - use HTTP client mocks instead
+        // _context.OwnershipGroups.Add(group);
+        // _context.Users.Add(adminUser);
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(new List<GroupDto> { new GroupDto { Id = group.Id, Name = group.Name, Status = group.Status, CreatedBy = group.CreatedBy, CreatedAt = group.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() } });
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> { new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt } });
+        // await _context.SaveChangesAsync();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> { new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt } });
 
         var request = new CreateDisputeDto
         {
@@ -414,9 +501,16 @@ public class DataAccuracyTests : IDisposable
         // Arrange
         var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         var adminUser = new User { Id = Guid.NewGuid(), Email = "admin@test.com", FirstName = "Admin", LastName = "User", KycStatus = KycStatus.Approved, Role = UserRole.SystemAdmin, CreatedAt = DateTime.UtcNow };
-        _context.OwnershipGroups.Add(group);
-        _context.Users.Add(adminUser);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups/Users DbSets - use HTTP client mocks instead
+        // _context.OwnershipGroups.Add(group);
+        // _context.Users.Add(adminUser);
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(new List<GroupDto> { new GroupDto { Id = group.Id, Name = group.Name, Status = group.Status, CreatedBy = group.CreatedBy, CreatedAt = group.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() } });
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> { new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt } });
+        // await _context.SaveChangesAsync();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(new List<UserProfileDto> { new UserProfileDto { Id = adminUser.Id, Email = adminUser.Email, FirstName = adminUser.FirstName, LastName = adminUser.LastName, KycStatus = adminUser.KycStatus, Role = adminUser.Role, CreatedAt = adminUser.CreatedAt } });
 
         var dispute = new Dispute
         {

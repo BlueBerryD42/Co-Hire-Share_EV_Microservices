@@ -223,7 +223,7 @@ public class BookingService : IBookingService
         return pending.Select(MapBookingToDto).ToList();
     }
 
-    public async Task<BookingDto> UpdateVehicleStatusAsync(Guid bookingId, UpdateVehicleStatusDto request)
+    public async Task<BookingDto> UpdateVehicleStatusAsync(Guid bookingId, CoOwnershipVehicle.Booking.Api.DTOs.UpdateVehicleStatusDto request)
     {
         if (request == null)
         {

@@ -208,7 +208,7 @@ public class VehicleController : ControllerBase
 /// </summary>
 [HttpPut("{id:guid}/status")]
 [Authorize]
-public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto updateDto)
+public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] CoOwnershipVehicle.Vehicle.Api.DTOs.UpdateVehicleStatusDto updateDto)
 {
     try
     {
@@ -225,48 +225,50 @@ public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateV
         var isSystemAdmin = roles.Contains("SystemAdmin");
         var isGroupAdmin = roles.Contains("GroupAdmin");
 
-        // Quyền hạn kiểm tra trước
+        // ✅ Quyền hạn kiểm tra trước
         if (!isSystemAdmin && !isGroupAdmin)
         {
             return Forbid("Insufficient permissions to update vehicle status");
         }
 
-        //  (Tuỳ chọn) — kiểm tra xung đột booking nếu DTO có khoảng thời gian
+        // ✅ (Tuỳ chọn) — kiểm tra xung đột booking nếu DTO có khoảng thời gian
         if (updateDto.From != null && updateDto.To != null)
         {
-            // Get access token for Booking Service call
-            var accessToken = GetAccessToken();
-            
-            // Check for conflicting bookings via Booking Service
-            var conflictCheck = await _bookingServiceClient.CheckAvailabilityAsync(
-                id, updateDto.From.Value, updateDto.To.Value, accessToken);
-
-            if (conflictCheck != null && conflictCheck.HasConflicts && conflictCheck.ConflictingBookings.Any())
+            try
             {
-                // Map Vehicle.Api.DTOs.BookingDto to Shared.Contracts.DTOs.BookingDto
-                var conflictingBookings = conflictCheck.ConflictingBookings.Select(b => new CoOwnershipVehicle.Shared.Contracts.DTOs.BookingDto
+                var accessToken = GetAccessToken();
+                var conflictResult = await _bookingServiceClient.CheckAvailabilityAsync(id, updateDto.From.Value, updateDto.To.Value, accessToken);
+                
+                if (conflictResult != null && conflictResult.HasConflicts && conflictResult.ConflictingBookings.Any())
                 {
-                    Id = b.Id,
-                    VehicleId = b.VehicleId,
-                    UserId = b.UserId,
-                    UserFirstName = b.UserFirstName ?? string.Empty,
-                    UserLastName = b.UserLastName ?? string.Empty,
-                    StartAt = b.StartAt,
-                    EndAt = b.EndAt,
-                    Status = MapBookingStatus(b.Status),
-                    Notes = null, // Not available in conflict DTO
-                    RequiresDamageReview = false // Not available in conflict DTO
-                }).ToList();
+                    // Convert to Shared.Contracts.DTOs.BookingDto format
+                    var conflictingBookings = conflictResult.ConflictingBookings.Select(b => new CoOwnershipVehicle.Shared.Contracts.DTOs.BookingDto
+                    {
+                        Id = b.Id,
+                        VehicleId = b.VehicleId,
+                        UserId = b.UserId,
+                        UserFirstName = b.UserFirstName,
+                        UserLastName = b.UserLastName,
+                        StartAt = b.StartAt,
+                        EndAt = b.EndAt,
+                        Status = (CoOwnershipVehicle.Domain.Entities.BookingStatus)b.Status
+                    }).ToList();
 
-                return Conflict(new
-                {
-                    message = "Cannot update status due to active or overlapping bookings",
-                    conflictingBookings
-                });
+                    return Conflict(new
+                    {
+                        message = "Cannot update status due to active or overlapping bookings",
+                        conflictingBookings
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to check booking conflicts, proceeding with status update");
+                // Continue with status update if conflict check fails
             }
         }
 
-        //  Cập nhật trạng thái
+        // ✅ Cập nhật trạng thái
         vehicle.Status = updateDto.Status;
         vehicle.UpdatedAt = DateTime.UtcNow;
 
@@ -660,21 +662,6 @@ public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateV
             throw new UnauthorizedAccessException("Missing or invalid authorization header");
         }
         return authHeader.Substring("Bearer ".Length).Trim();
-    }
-
-    private Domain.Entities.BookingStatus MapBookingStatus(DTOs.BookingStatus status)
-    {
-        return status switch
-        {
-            DTOs.BookingStatus.Pending => Domain.Entities.BookingStatus.Pending,
-            DTOs.BookingStatus.PendingApproval => Domain.Entities.BookingStatus.PendingApproval,
-            DTOs.BookingStatus.Confirmed => Domain.Entities.BookingStatus.Confirmed,
-            DTOs.BookingStatus.InProgress => Domain.Entities.BookingStatus.InProgress,
-            DTOs.BookingStatus.Completed => Domain.Entities.BookingStatus.Completed,
-            DTOs.BookingStatus.Cancelled => Domain.Entities.BookingStatus.Cancelled,
-            DTOs.BookingStatus.NoShow => Domain.Entities.BookingStatus.NoShow,
-            _ => Domain.Entities.BookingStatus.Pending
-        };
     }
 
     private IActionResult Forbidden(object value)

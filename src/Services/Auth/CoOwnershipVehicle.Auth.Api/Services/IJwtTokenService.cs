@@ -159,7 +159,29 @@ public class JwtTokenService : IJwtTokenService
 
     private async Task<List<System.Security.Claims.Claim>> BuildClaimsAsync(User user)
     {
-        // Fetch user profile data from User service for JWT claims
+        // First, try to get role from Auth DB (UserRoles table) - this is the source of truth for authentication
+        Domain.Entities.UserRole userRole = Domain.Entities.UserRole.CoOwner;
+        var identityRoles = await _userManager.GetRolesAsync(user);
+        if (identityRoles != null && identityRoles.Count > 0)
+        {
+            // Get the first role (users typically have one primary role)
+            var roleName = identityRoles.First();
+            if (Enum.TryParse<Domain.Entities.UserRole>(roleName, out var parsedRole))
+            {
+                userRole = parsedRole;
+                _logger.LogDebug("Using role from Auth DB for {UserId}: Role={Role}", user.Id, userRole);
+            }
+            else
+            {
+                _logger.LogWarning("Invalid role name '{RoleName}' in Auth DB for {UserId}, will try UserService", roleName, user.Id);
+            }
+        }
+        else
+        {
+            _logger.LogWarning("No roles found in Auth DB for {UserId}, will try UserService", user.Id);
+        }
+
+        // Fetch user profile data from User service for JWT claims (for KYC status and name)
         UserRoleInfo? roleInfo = null;
         if (_userServiceClient != null)
         {
@@ -170,24 +192,31 @@ public class JwtTokenService : IJwtTokenService
                 {
                     _logger.LogDebug("Successfully fetched user role info for {UserId}: Role={Role}, KycStatus={KycStatus}", 
                         user.Id, roleInfo.Role, roleInfo.KycStatus);
+                    
+                    // Override role from Auth DB if UserService has a different role (Auth DB takes precedence)
+                    // But if Auth DB had no role, use UserService role
+                    if (identityRoles == null || identityRoles.Count == 0)
+                    {
+                        userRole = roleInfo.Role;
+                        _logger.LogDebug("Using role from UserService for {UserId}: Role={Role} (no role in Auth DB)", user.Id, userRole);
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("User role info not found for {UserId}, using defaults", user.Id);
+                    _logger.LogWarning("User role info not found for {UserId} in UserService", user.Id);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch user role info for {UserId} from User service, using defaults", user.Id);
+                _logger.LogWarning(ex, "Failed to fetch user role info for {UserId} from User service", user.Id);
             }
         }
         else
         {
-            _logger.LogWarning("UserServiceClient not available, using default role values for {UserId}", user.Id);
+            _logger.LogWarning("UserServiceClient not available for {UserId}", user.Id);
         }
 
         // Use fetched role info or defaults
-        var userRole = roleInfo?.Role ?? Domain.Entities.UserRole.CoOwner;
         var kycStatus = roleInfo?.KycStatus ?? Domain.Entities.KycStatus.Pending;
         var firstName = roleInfo?.FirstName ?? string.Empty;
         var lastName = roleInfo?.LastName ?? string.Empty;
@@ -198,8 +227,8 @@ public class JwtTokenService : IJwtTokenService
             new(System.Security.Claims.ClaimTypes.Email, user.Email ?? string.Empty),
             new(System.Security.Claims.ClaimTypes.GivenName, firstName),
             new(System.Security.Claims.ClaimTypes.Surname, lastName),
-            new("role", userRole.ToString()), // Actual role from UserProfile
-            new("kyc_status", kycStatus.ToString()), // Actual KYC status from UserProfile
+            new("role", userRole.ToString()), // Role from Auth DB (UserRoles table) - source of truth
+            new("kyc_status", kycStatus.ToString()), // KYC status from UserService
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat,
                 new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(),
@@ -207,7 +236,7 @@ public class JwtTokenService : IJwtTokenService
         };
 
         // Add ASP.NET Identity roles (for [Authorize(Roles = "...")] attributes)
-        var identityRoles = await _userManager.GetRolesAsync(user);
+        // Use the roles already fetched above
         foreach (var role in identityRoles)
         {
             claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, role));

@@ -11,36 +11,35 @@ public class AdminDbContext : DbContext
 
     // Admin service entities - only Admin-specific entities
     // All other entities (User, Group, Vehicle, Booking, Payment, etc.) are accessed via HTTP calls to their respective services
-    // However, these DbSets are included for testing purposes
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<Dispute> Disputes { get; set; }
     public DbSet<DisputeComment> DisputeComments { get; set; }
-    
-    // Test-only DbSets (for unit testing)
-    public DbSet<User> Users { get; set; }
-    public DbSet<OwnershipGroup> OwnershipGroups { get; set; }
-    public DbSet<Vehicle> Vehicles { get; set; }
-    public DbSet<Booking> Bookings { get; set; }
-    public DbSet<Expense> Expenses { get; set; }
-    public DbSet<GroupMember> GroupMembers { get; set; }
-    public DbSet<Payment> Payments { get; set; }
-    public DbSet<LedgerEntry> LedgerEntries { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Ignore entities that aren't needed in Admin service
+        // Ignore all entities from other services - Admin service only manages Disputes and AuditLogs
+        // All other entities are accessed via HTTP calls to their respective services
         modelBuilder.Ignore<AnalyticsSnapshot>();
-        // Ignore entities from other services that aren't used in tests
-        // Note: User, OwnershipGroup, Vehicle, Booking, Payment, Expense, GroupMember, and LedgerEntry
-        // are included as DbSets above for testing purposes
+        modelBuilder.Ignore<User>();
+        modelBuilder.Ignore<OwnershipGroup>();
+        modelBuilder.Ignore<Vehicle>();
+        modelBuilder.Ignore<Booking>();
+        modelBuilder.Ignore<Expense>();
+        modelBuilder.Ignore<GroupMember>();
+        modelBuilder.Ignore<Payment>();
+        modelBuilder.Ignore<LedgerEntry>();
         modelBuilder.Ignore<Invoice>();
+        modelBuilder.Ignore<KycDocument>();
         modelBuilder.Ignore<Notification>();
         modelBuilder.Ignore<Proposal>();
         modelBuilder.Ignore<CheckIn>();
         modelBuilder.Ignore<Document>();
-        modelBuilder.Ignore<KycDocument>();
+        modelBuilder.Ignore<DocumentTag>();
+        modelBuilder.Ignore<DocumentTagMapping>();
+        modelBuilder.Ignore<DocumentSignature>();
+        modelBuilder.Ignore<SavedDocumentSearch>();
         modelBuilder.Ignore<GroupFund>();
         modelBuilder.Ignore<FundTransaction>();
         modelBuilder.Ignore<Vote>();
@@ -109,6 +108,9 @@ public class AdminDbContext : DbContext
             entity.HasIndex(e => e.DisputeId);
             entity.HasIndex(e => e.CommentedBy);
         });
+
+        // Note: KycDocument and other entities from other services are ignored
+        // They are accessed via HTTP calls to User service, Group service, etc.
 
         // Configure automatic timestamp updates
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

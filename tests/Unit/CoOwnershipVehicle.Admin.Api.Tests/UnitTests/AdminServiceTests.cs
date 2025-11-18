@@ -60,10 +60,14 @@ public class AdminServiceTests : IDisposable
 
     private void SeedTestData()
     {
-        // Add test users
-        var users = new List<User>
+        // TODO: Update tests to use HTTP client mocks instead of direct DB access
+        // Admin service now uses HTTP calls to other microservices, so tests should mock HTTP client responses
+        // For now, we only seed Admin-specific entities (Disputes, AuditLogs)
+        
+        // Mock user data for HTTP client
+        var testUsers = new List<UserProfileDto>
         {
-            new User
+            new UserProfileDto
             {
                 Id = Guid.NewGuid(),
                 Email = "user1@test.com",
@@ -71,10 +75,9 @@ public class AdminServiceTests : IDisposable
                 LastName = "Doe",
                 KycStatus = KycStatus.Approved,
                 Role = UserRole.CoOwner,
-                CreatedAt = DateTime.UtcNow.AddDays(-30),
-                LockoutEnd = null
+                CreatedAt = DateTime.UtcNow.AddDays(-30)
             },
-            new User
+            new UserProfileDto
             {
                 Id = Guid.NewGuid(),
                 Email = "user2@test.com",
@@ -82,10 +85,9 @@ public class AdminServiceTests : IDisposable
                 LastName = "Smith",
                 KycStatus = KycStatus.Pending,
                 Role = UserRole.CoOwner,
-                CreatedAt = DateTime.UtcNow.AddDays(-7),
-                LockoutEnd = null
+                CreatedAt = DateTime.UtcNow.AddDays(-7)
             },
-            new User
+            new UserProfileDto
             {
                 Id = Guid.NewGuid(),
                 Email = "admin@test.com",
@@ -93,46 +95,47 @@ public class AdminServiceTests : IDisposable
                 LastName = "User",
                 KycStatus = KycStatus.Approved,
                 Role = UserRole.SystemAdmin,
-                CreatedAt = DateTime.UtcNow.AddDays(-90),
-                LockoutEnd = null
+                CreatedAt = DateTime.UtcNow.AddDays(-90)
             }
         };
 
-        _context.Users.AddRange(users);
-        _context.SaveChanges();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(testUsers);
 
-        // Add test groups
-        var groups = new List<OwnershipGroup>
+        // Mock group data for HTTP client
+        var testGroups = new List<GroupDto>
         {
-            new OwnershipGroup
+            new GroupDto
             {
                 Id = Guid.NewGuid(),
                 Name = "Test Group 1",
                 Description = "First test group",
                 Status = GroupStatus.Active,
-                CreatedBy = users[0].Id,
+                CreatedBy = testUsers[0].Id,
                 CreatedAt = DateTime.UtcNow.AddDays(-60),
-                UpdatedAt = DateTime.UtcNow.AddDays(-5)
+                Members = new List<GroupMemberDto>(),
+                Vehicles = new List<VehicleDto>()
             },
-            new OwnershipGroup
+            new GroupDto
             {
                 Id = Guid.NewGuid(),
                 Name = "Test Group 2",
                 Description = "Second test group",
                 Status = GroupStatus.Inactive,
-                CreatedBy = users[1].Id,
+                CreatedBy = testUsers[1].Id,
                 CreatedAt = DateTime.UtcNow.AddDays(-30),
-                UpdatedAt = DateTime.UtcNow.AddDays(-50)
+                Members = new List<GroupMemberDto>(),
+                Vehicles = new List<VehicleDto>()
             }
         };
 
-        _context.OwnershipGroups.AddRange(groups);
-        _context.SaveChanges();
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(testGroups);
 
-        // Add test vehicles
-        var vehicles = new List<Vehicle>
+        // Mock vehicle data for HTTP client
+        var testVehicles = new List<VehicleDto>
         {
-            new Vehicle
+            new VehicleDto
             {
                 Id = Guid.NewGuid(),
                 Vin = "1HGBH41JXMN109186",
@@ -140,11 +143,10 @@ public class AdminServiceTests : IDisposable
                 Model = "Tesla Model 3",
                 Year = 2023,
                 Status = VehicleStatus.Available,
-                GroupId = groups[0].Id,
-                CreatedAt = DateTime.UtcNow.AddDays(-45),
-                LastServiceDate = DateTime.UtcNow.AddMonths(-3)
+                GroupId = testGroups[0].Id,
+                CreatedAt = DateTime.UtcNow.AddDays(-45)
             },
-            new Vehicle
+            new VehicleDto
             {
                 Id = Guid.NewGuid(),
                 Vin = "5YJ3E1EA1KF123456",
@@ -152,113 +154,105 @@ public class AdminServiceTests : IDisposable
                 Model = "Tesla Model Y",
                 Year = 2024,
                 Status = VehicleStatus.InUse,
-                GroupId = groups[0].Id,
-                CreatedAt = DateTime.UtcNow.AddDays(-30),
-                LastServiceDate = DateTime.UtcNow.AddMonths(-8)
+                GroupId = testGroups[0].Id,
+                CreatedAt = DateTime.UtcNow.AddDays(-30)
             }
         };
 
-        _context.Vehicles.AddRange(vehicles);
-        _context.SaveChanges();
+        _vehicleServiceClientMock.Setup(x => x.GetVehiclesAsync())
+            .ReturnsAsync(testVehicles);
 
-        // Add test bookings
-        var bookings = new List<Booking>
+        // Mock booking data for HTTP client
+        var testBookings = new List<BookingDto>
         {
-            new Booking
+            new BookingDto
             {
                 Id = Guid.NewGuid(),
-                VehicleId = vehicles[0].Id,
-                GroupId = groups[0].Id,
-                UserId = users[0].Id,
+                VehicleId = testVehicles[0].Id,
+                GroupId = testGroups[0].Id,
+                UserId = testUsers[0].Id,
                 StartAt = DateTime.UtcNow.AddDays(1),
                 EndAt = DateTime.UtcNow.AddDays(2),
                 Status = BookingStatus.Confirmed,
-                CreatedAt = DateTime.UtcNow.AddDays(-1)
+                CreatedAt = DateTime.UtcNow.AddDays(-1),
+                TripFeeAmount = 100
             },
-            new Booking
+            new BookingDto
             {
                 Id = Guid.NewGuid(),
-                VehicleId = vehicles[0].Id,
-                GroupId = groups[0].Id,
-                UserId = users[0].Id,
+                VehicleId = testVehicles[0].Id,
+                GroupId = testGroups[0].Id,
+                UserId = testUsers[0].Id,
                 StartAt = DateTime.UtcNow.AddDays(-30),
                 EndAt = DateTime.UtcNow.AddDays(-29),
                 Status = BookingStatus.Completed,
-                CreatedAt = DateTime.UtcNow.AddDays(-32)
+                CreatedAt = DateTime.UtcNow.AddDays(-32),
+                TripFeeAmount = 200
             },
-            new Booking
+            new BookingDto
             {
                 Id = Guid.NewGuid(),
-                VehicleId = vehicles[1].Id,
-                GroupId = groups[0].Id,
-                UserId = users[1].Id,
+                VehicleId = testVehicles[1].Id,
+                GroupId = testGroups[0].Id,
+                UserId = testUsers[1].Id,
                 StartAt = DateTime.UtcNow,
                 EndAt = DateTime.UtcNow.AddDays(1),
                 Status = BookingStatus.InProgress,
-                CreatedAt = DateTime.UtcNow.AddDays(-2)
+                CreatedAt = DateTime.UtcNow.AddDays(-2),
+                TripFeeAmount = 150
             }
         };
 
-        _context.Bookings.AddRange(bookings);
-        _context.SaveChanges();
+        _bookingServiceClientMock.Setup(x => x.GetBookingsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<Guid?>(), It.IsAny<Guid?>()))
+            .ReturnsAsync(testBookings);
 
-        // Add test expenses
-        var expenses = new List<Expense>
+        // Mock payment/expense data for HTTP client
+        var testExpenses = new List<ExpenseDto>
         {
-            new Expense
+            new ExpenseDto
             {
                 Id = Guid.NewGuid(),
-                GroupId = groups[0].Id,
-                VehicleId = vehicles[0].Id,
+                GroupId = testGroups[0].Id,
+                VehicleId = testVehicles[0].Id,
                 ExpenseType = ExpenseType.Fuel,
                 Amount = 500,
                 Description = "Fuel purchase",
                 DateIncurred = DateTime.UtcNow.AddDays(-10),
-                CreatedBy = users[0].Id,
+                CreatedBy = testUsers[0].Id,
                 CreatedAt = DateTime.UtcNow.AddDays(-10)
             },
-            new Expense
+            new ExpenseDto
             {
                 Id = Guid.NewGuid(),
-                GroupId = groups[0].Id,
-                VehicleId = vehicles[0].Id,
+                GroupId = testGroups[0].Id,
+                VehicleId = testVehicles[0].Id,
                 ExpenseType = ExpenseType.Maintenance,
                 Amount = 1500,
                 Description = "Regular maintenance",
                 DateIncurred = DateTime.UtcNow.AddDays(-20),
-                CreatedBy = users[0].Id,
+                CreatedBy = testUsers[0].Id,
                 CreatedAt = DateTime.UtcNow.AddDays(-20)
             }
         };
 
-        _context.Expenses.AddRange(expenses);
-        _context.SaveChanges();
+        _paymentServiceClientMock.Setup(x => x.GetExpensesAsync(It.IsAny<Guid?>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
+            .ReturnsAsync(testExpenses);
 
-        // Add group members
-        var groupMembers = new List<GroupMember>
+        var testPayments = new List<PaymentDto>
         {
-            new GroupMember
+            new PaymentDto
             {
                 Id = Guid.NewGuid(),
-                GroupId = groups[0].Id,
-                UserId = users[0].Id,
-                RoleInGroup = GroupRole.Admin,
-                SharePercentage = 0.5m,
-                JoinedAt = DateTime.UtcNow.AddDays(-60)
-            },
-            new GroupMember
-            {
-                Id = Guid.NewGuid(),
-                GroupId = groups[0].Id,
-                UserId = users[1].Id,
-                RoleInGroup = GroupRole.Member,
-                SharePercentage = 0.5m,
-                JoinedAt = DateTime.UtcNow.AddDays(-55)
+                InvoiceId = Guid.NewGuid(),
+                PayerId = testUsers[0].Id,
+                Amount = 500,
+                Status = PaymentStatus.Completed,
+                CreatedAt = DateTime.UtcNow.AddDays(-10)
             }
         };
 
-        _context.GroupMembers.AddRange(groupMembers);
-        _context.SaveChanges();
+        _paymentServiceClientMock.Setup(x => x.GetPaymentsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<PaymentStatus?>()))
+            .ReturnsAsync(testPayments);
     }
 
     #region Dashboard Tests
@@ -460,7 +454,9 @@ public class AdminServiceTests : IDisposable
     public async Task GetUserDetailsAsync_WithValidId_ReturnsUserDetails()
     {
         // Arrange
-        var user = await _context.Users.FirstAsync();
+        // TODO: Use UserServiceClient mock instead
+        var testUsers = await _userServiceClientMock.Object.GetUsersAsync();
+        var user = testUsers.First();
         var userId = user.Id;
 
         // Act
@@ -545,7 +541,9 @@ public class AdminServiceTests : IDisposable
     public async Task GetGroupDetailsAsync_WithValidId_ReturnsGroupDetails()
     {
         // Arrange
-        var group = await _context.OwnershipGroups.FirstAsync();
+        // TODO: Use GroupServiceClient mock instead
+        var testGroups = await _groupServiceClientMock.Object.GetGroupsAsync();
+        var group = testGroups.First();
         var groupId = group.Id;
 
         // Act
@@ -575,7 +573,9 @@ public class AdminServiceTests : IDisposable
     public async Task GetGroupHealthAsync_WithValidId_ReturnsHealthStatus()
     {
         // Arrange
-        var group = await _context.OwnershipGroups.FirstAsync();
+        // TODO: Use GroupServiceClient mock instead
+        var testGroups = await _groupServiceClientMock.Object.GetGroupsAsync();
+        var group = testGroups.First();
         var groupId = group.Id;
 
         // Act
@@ -663,8 +663,11 @@ public class AdminServiceTests : IDisposable
     public async Task CreateDisputeAsync_WithValidData_CreatesDispute()
     {
         // Arrange
-        var group = await _context.OwnershipGroups.FirstAsync();
-        var adminUser = await _context.Users.Where(u => u.Role == UserRole.SystemAdmin).FirstAsync();
+        // TODO: Use GroupServiceClient and UserServiceClient mocks instead
+        var testGroups = await _groupServiceClientMock.Object.GetGroupsAsync();
+        var testUsers = await _userServiceClientMock.Object.GetUsersAsync();
+        var group = testGroups.First();
+        var adminUser = testUsers.First(u => u.Role == UserRole.SystemAdmin);
         var request = new CreateDisputeDto
         {
             GroupId = group.Id,
@@ -688,7 +691,9 @@ public class AdminServiceTests : IDisposable
     public async Task CreateDisputeAsync_WithInvalidGroup_ThrowsArgumentException()
     {
         // Arrange
-        var adminUser = await _context.Users.Where(u => u.Role == UserRole.SystemAdmin).FirstAsync();
+        // TODO: Use UserServiceClient mock instead
+        var testUsers = await _userServiceClientMock.Object.GetUsersAsync();
+        var adminUser = testUsers.First(u => u.Role == UserRole.SystemAdmin);
         var request = new CreateDisputeDto
         {
             GroupId = Guid.NewGuid(),
@@ -741,8 +746,11 @@ public class AdminServiceTests : IDisposable
         // Arrange
         var userId = Guid.NewGuid();
         var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = userId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
-        _context.OwnershipGroups.Add(group);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups DbSet - use GroupServiceClient mock instead
+        // _context.OwnershipGroups.Add(group);
+        // await _context.SaveChangesAsync();
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(new List<GroupDto> { new GroupDto { Id = group.Id, Name = group.Name, Status = group.Status, CreatedBy = group.CreatedBy, CreatedAt = group.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() } });
 
         var ledgerEntries = new List<LedgerEntry>
         {
@@ -750,8 +758,9 @@ public class AdminServiceTests : IDisposable
             new LedgerEntry { Id = Guid.NewGuid(), GroupId = group.Id, Type = LedgerEntryType.Fee, Amount = 100, BalanceAfter = 900, CreatedAt = DateTime.UtcNow },
             new LedgerEntry { Id = Guid.NewGuid(), GroupId = group.Id, Type = LedgerEntryType.RefundReceived, Amount = 50, BalanceAfter = 950, CreatedAt = DateTime.UtcNow }
         };
-        _context.LedgerEntries.AddRange(ledgerEntries);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has LedgerEntries DbSet - use PaymentServiceClient mock instead
+        // _context.LedgerEntries.AddRange(ledgerEntries);
+        // await _context.SaveChangesAsync();
 
         // Act
         var result = await _adminService.GetFinancialOverviewAsync();
@@ -765,17 +774,23 @@ public class AdminServiceTests : IDisposable
     public async Task GetFinancialByGroups_BalanceCalculation_MatchDatabase()
     {
         // Arrange
-        var user = _context.Users.First();
+        // TODO: Use UserServiceClient mock instead
+        var testUsers = await _userServiceClientMock.Object.GetUsersAsync();
+        var user = testUsers.First();
         var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = user.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
-        _context.OwnershipGroups.Add(group);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups DbSet - use GroupServiceClient mock instead
+        // _context.OwnershipGroups.Add(group);
+        // await _context.SaveChangesAsync();
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(new List<GroupDto> { new GroupDto { Id = group.Id, Name = group.Name, Status = group.Status, CreatedBy = group.CreatedBy, CreatedAt = group.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() } });
 
         var ledgerEntries = new List<LedgerEntry>
         {
             new LedgerEntry { Id = Guid.NewGuid(), GroupId = group.Id, Type = LedgerEntryType.Deposit, Amount = 5000, BalanceAfter = 5000, CreatedAt = DateTime.UtcNow.AddDays(-10) },
             new LedgerEntry { Id = Guid.NewGuid(), GroupId = group.Id, Type = LedgerEntryType.Fee, Amount = 500, BalanceAfter = 4500, CreatedAt = DateTime.UtcNow }
         };
-        _context.LedgerEntries.AddRange(ledgerEntries);
+        // TODO: AdminDbContext no longer has LedgerEntries DbSet - use PaymentServiceClient mock instead
+        // _context.LedgerEntries.AddRange(ledgerEntries);
         
         // Act
         var result = await _adminService.GetFinancialByGroupsAsync();
@@ -798,8 +813,12 @@ public class AdminServiceTests : IDisposable
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 300, Status = PaymentStatus.Failed, Method = PaymentMethod.CreditCard, CreatedAt = DateTime.UtcNow },
             new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 400, Status = PaymentStatus.Completed, Method = PaymentMethod.BankTransfer, CreatedAt = DateTime.UtcNow, PaidAt = DateTime.UtcNow }
         };
-        _context.Payments.AddRange(payments);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Payments DbSet - use PaymentServiceClient mock instead
+        // _context.Payments.AddRange(payments);
+        // await _context.SaveChangesAsync();
+        var testPayments = payments.Select(p => new PaymentDto { Id = p.Id, InvoiceId = Guid.NewGuid(), PayerId = p.PayerId, Amount = p.Amount, Status = p.Status, Method = p.Method, CreatedAt = p.CreatedAt, PaidAt = p.PaidAt }).ToList();
+        _paymentServiceClientMock.Setup(x => x.GetPaymentsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<PaymentStatus?>()))
+            .ReturnsAsync(testPayments);
 
         // Act
         var result = await _adminService.GetPaymentStatisticsAsync();
@@ -819,14 +838,20 @@ public class AdminServiceTests : IDisposable
     {
         // Arrange
         var group = new OwnershipGroup { Id = Guid.NewGuid(), Name = "Test Group", Status = GroupStatus.Active, CreatedBy = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
-        _context.OwnershipGroups.Add(group);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has OwnershipGroups DbSet - use GroupServiceClient mock instead
+        // _context.OwnershipGroups.Add(group);
+        // await _context.SaveChangesAsync();
+        _groupServiceClientMock.Setup(x => x.GetGroupsAsync(It.IsAny<GroupListRequestDto>()))
+            .ReturnsAsync(new List<GroupDto> { new GroupDto { Id = group.Id, Name = group.Name, Status = group.Status, CreatedBy = group.CreatedBy, CreatedAt = group.CreatedAt, Members = new List<GroupMemberDto>(), Vehicles = new List<VehicleDto>() } });
 
-        var existingExpenses = _context.Expenses.ToList();
-        _context.Expenses.RemoveRange(existingExpenses);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Expenses DbSet - use PaymentServiceClient mock instead
+        // var existingExpenses = _context.Expenses.ToList();
+        // _context.Expenses.RemoveRange(existingExpenses);
+        // await _context.SaveChangesAsync();
 
-        var creatorId = _context.Users.First().Id;
+        // TODO: Use UserServiceClient mock instead
+        var testUsers = await _userServiceClientMock.Object.GetUsersAsync();
+        var creatorId = testUsers.First().Id;
 
         var expenses = new List<Expense>
         {
@@ -835,8 +860,12 @@ public class AdminServiceTests : IDisposable
             new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Maintenance, Amount = 1000, Description = "Maintenance", CreatedBy = creatorId, CreatedAt = DateTime.UtcNow },
             new Expense { Id = Guid.NewGuid(), GroupId = group.Id, ExpenseType = ExpenseType.Insurance, Amount = 200, Description = "Insurance", CreatedBy = creatorId, CreatedAt = DateTime.UtcNow }
         };
-        _context.Expenses.AddRange(expenses);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Expenses DbSet - use PaymentServiceClient mock instead
+        // _context.Expenses.AddRange(expenses);
+        // await _context.SaveChangesAsync();
+        var testExpenses = expenses.Select(e => new ExpenseDto { Id = e.Id, GroupId = e.GroupId, VehicleId = e.VehicleId, ExpenseType = e.ExpenseType, Amount = e.Amount, Description = e.Description, DateIncurred = e.DateIncurred, CreatedBy = e.CreatedBy, CreatedAt = e.CreatedAt }).ToList();
+        _paymentServiceClientMock.Setup(x => x.GetExpensesAsync(It.IsAny<Guid?>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>()))
+            .ReturnsAsync(testExpenses);
 
         // Act
         var result = await _adminService.GetExpenseAnalysisAsync();
@@ -848,11 +877,12 @@ public class AdminServiceTests : IDisposable
         result.TotalByType[ExpenseType.Maintenance].Should().Be(1000);
         result.TotalByType[ExpenseType.Insurance].Should().Be(200);
 
-        if (existingExpenses.Any())
-        {
-            _context.Expenses.AddRange(existingExpenses);
-            await _context.SaveChangesAsync();
-        }
+        // TODO: AdminDbContext no longer has Expenses DbSet - use PaymentServiceClient mock instead
+        // if (existingExpenses.Any())
+        // {
+        //     _context.Expenses.AddRange(existingExpenses);
+        //     await _context.SaveChangesAsync();
+        // }
     }
 
     #endregion
@@ -893,9 +923,13 @@ public class AdminServiceTests : IDisposable
             LockoutEnd = null
         }).ToList();
 
-        _context.Users.AddRange(usersThisMonth);
-        _context.Users.AddRange(usersLastMonth);
-        await _context.SaveChangesAsync();
+        // TODO: AdminDbContext no longer has Users DbSet - use UserServiceClient mock instead
+        // _context.Users.AddRange(usersThisMonth);
+        // _context.Users.AddRange(usersLastMonth);
+        // await _context.SaveChangesAsync();
+        var allTestUsers = usersThisMonth.Concat(usersLastMonth).Select(u => new UserProfileDto { Id = u.Id, Email = u.Email, FirstName = u.FirstName, LastName = u.LastName, KycStatus = u.KycStatus, Role = u.Role, CreatedAt = u.CreatedAt }).ToList();
+        _userServiceClientMock.Setup(x => x.GetUsersAsync(It.IsAny<UserListRequestDto>()))
+            .ReturnsAsync(allTestUsers);
 
         // Act
         var result = await _adminService.GetDashboardMetricsAsync(new DashboardRequestDto { Period = TimePeriod.Monthly });
@@ -941,12 +975,15 @@ public class AdminServiceTests : IDisposable
             _bookingServiceClientMock.Object,
             _paymentServiceClientMock.Object);
 
-        var payments = new List<Payment>
+        // TODO: Update test to use PaymentServiceClient mock instead of direct DB access
+        // var payments = new List<Payment> { ... };
+        // isolatedContext.Payments.AddRange(payments); // AdminDbContext no longer has Payments DbSet
+        var testPayments = new List<PaymentDto>
         {
-            new Payment { Id = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 1000, Status = PaymentStatus.Completed, Method = PaymentMethod.CreditCard, CreatedAt = DateTime.UtcNow, PaidAt = DateTime.UtcNow }
+            new PaymentDto { Id = Guid.NewGuid(), InvoiceId = Guid.NewGuid(), PayerId = Guid.NewGuid(), Amount = 1000, Status = PaymentStatus.Completed, Method = PaymentMethod.CreditCard, CreatedAt = DateTime.UtcNow, PaidAt = DateTime.UtcNow }
         };
-        isolatedContext.Payments.AddRange(payments);
-        await isolatedContext.SaveChangesAsync();
+        _paymentServiceClientMock.Setup(x => x.GetPaymentsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<PaymentStatus?>()))
+            .ReturnsAsync(testPayments);
 
         // Act
         var result = await isolatedService.GetDashboardMetricsAsync(new DashboardRequestDto { Period = TimePeriod.Monthly });

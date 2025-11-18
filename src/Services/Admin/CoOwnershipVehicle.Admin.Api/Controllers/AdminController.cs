@@ -725,6 +725,100 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Get paginated list of vehicles with filtering and search
+    /// </summary>
+    /// <param name="request">Vehicle list request parameters</param>
+    /// <returns>Paginated list of vehicles</returns>
+    [HttpGet("vehicles")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(VehicleListResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<VehicleListResponseDto>> GetVehicles([FromQuery] VehicleListRequestDto request)
+    {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetVehiclesAsync(request),
+            "Error retrieving vehicles",
+            "SystemAdmin", "Staff"
+        );
+    }
+
+    /// <summary>
+    /// Get detailed information about a specific vehicle
+    /// </summary>
+    /// <param name="id">Vehicle ID</param>
+    /// <returns>Detailed vehicle information</returns>
+    [HttpGet("vehicles/{id}")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(VehicleSummaryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<VehicleSummaryDto>> GetVehicleDetails(Guid id)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var result = await _adminService.GetVehicleDetailsAsync(id);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving vehicle details for vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while retrieving vehicle details" });
+        }
+    }
+
+    /// <summary>
+    /// Update vehicle status
+    /// </summary>
+    /// <param name="id">Vehicle ID</param>
+    /// <param name="request">Status update request</param>
+    /// <returns>Success status</returns>
+    [HttpPut("vehicles/{id}/status")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var adminUserId = GetCurrentUserId();
+            var result = await _adminService.UpdateVehicleStatusAsync(id, request.Status, adminUserId);
+            
+            if (!result)
+                return NotFound(new { message = "Vehicle not found" });
+
+            return Ok(new { message = "Vehicle status updated successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating vehicle status for vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while updating vehicle status" });
+        }
+    }
+
     private async Task<ActionResult<T>> ExecuteAdminActionAsync<T>(Func<Task<T>> action, string errorMessage, params string[] requiredRoles)
     {
         try

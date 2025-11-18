@@ -258,7 +258,7 @@ public class BookingController : ControllerBase
     /// Update the recorded vehicle status for a booking.
     /// </summary>
     [HttpPatch("{id:guid}/vehicle-status")]
-    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto dto)
+    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] CoOwnershipVehicle.Booking.Api.DTOs.UpdateVehicleStatusDto dto)
     {
         try
         {
