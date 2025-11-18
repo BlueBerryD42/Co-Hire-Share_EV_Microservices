@@ -129,17 +129,17 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                 column: "GroupId",
                 unique: true);
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_RecurringBooking_OwnershipGroups_GroupId",
-                table: "RecurringBooking",
-                column: "GroupId",
-                principalTable: "OwnershipGroups",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
-
-            // NOTE: FK constraints for Vehicles.GroupId and Vehicles.OwnershipGroupId are intentionally
-            // NOT created because in microservices architecture, GroupId references Group Service (different DB)
+            // NOTE: All FK constraints referencing GroupId are intentionally NOT created
+            // because in microservices architecture, GroupId references Group Service (different DB)
             // See: scripts/fix-vehicle-groupid-fk.sql for more details
+
+            // migrationBuilder.AddForeignKey(
+            //     name: "FK_RecurringBooking_OwnershipGroups_GroupId",
+            //     table: "RecurringBooking",
+            //     column: "GroupId",
+            //     principalTable: "OwnershipGroups",
+            //     principalColumn: "Id",
+            //     onDelete: ReferentialAction.Cascade);
 
             // migrationBuilder.AddForeignKey(
             //     name: "FK_Vehicles_OwnershipGroups_GroupId",
@@ -159,11 +159,11 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_RecurringBooking_OwnershipGroups_GroupId",
-                table: "RecurringBooking");
-
             // FK constraints were not created in Up(), so don't drop them in Down()
+            // migrationBuilder.DropForeignKey(
+            //     name: "FK_RecurringBooking_OwnershipGroups_GroupId",
+            //     table: "RecurringBooking");
+
             // migrationBuilder.DropForeignKey(
             //     name: "FK_Vehicles_OwnershipGroups_GroupId",
             //     table: "Vehicles");
