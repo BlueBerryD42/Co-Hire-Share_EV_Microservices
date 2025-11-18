@@ -126,6 +126,11 @@ public class VehicleController : ControllerBase
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            if (createDto.GroupId == null || createDto.GroupId == Guid.Empty)
+            {
+                return BadRequest(new { message = "GroupId is required." });
+            }
+
             var userId = GetCurrentUserId();
 
             // Get user's system role
@@ -135,10 +140,11 @@ public class VehicleController : ControllerBase
 
             var isSystemAdmin = roles.Contains("SystemAdmin");
 
+            var accessToken = GetAccessToken();
             // If not system admin, verify user is a member of the target group
             if (!isSystemAdmin)
             {
-                var accessToken = GetAccessToken();
+                await Task.Delay(5000); // Temporary delay to mitigate race condition
 
                 // Get user's groups to verify they're a member of the target group
                 var userGroups = await _groupServiceClient.GetUserGroups(accessToken);
@@ -151,6 +157,24 @@ public class VehicleController : ControllerBase
                 }
 
                 _logger.LogInformation("User {UserId} is a member of group {GroupId}, allowing vehicle creation", userId, createDto.GroupId);
+            }
+
+            // ### FIX: Validate GroupId by calling Group Service directly ###
+            // This replaces the check against the local, potentially stale, database table.
+            try
+            {
+                var groupDetails = await _groupServiceClient.GetGroupDetailsAsync(createDto.GroupId.Value, accessToken);
+                if (groupDetails == null)
+                {
+                     _logger.LogWarning("Validation failed: Group with ID {GroupId} not found via GroupServiceClient.", createDto.GroupId);
+                    return BadRequest(new { message = $"Group with ID {createDto.GroupId} could not be found or verified." });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating GroupId {GroupId} with Group Service.", createDto.GroupId);
+                // Depending on the client's behavior, it might throw on a 404.
+                return BadRequest(new { message = $"Error validating group with ID {createDto.GroupId}. It may not exist." });
             }
 
             // Check if VIN already exists

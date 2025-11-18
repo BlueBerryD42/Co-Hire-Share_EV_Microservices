@@ -22,7 +22,7 @@ public class VehicleDto
 public class CreateVehicleDto
 {
     [Required]
-    [StringLength(17)]
+    [StringLength(17, MinimumLength = 17, ErrorMessage = "VIN must be exactly 17 characters.")]
     public string Vin { get; set; } = string.Empty;
     
     [Required]
@@ -41,8 +41,7 @@ public class CreateVehicleDto
     [Range(0, int.MaxValue)]
     public int Odometer { get; set; }
     
-    [Required]
-    public Guid GroupId { get; set; }
+    public Guid? GroupId { get; set; }
 }
 
 public class UpdateVehicleDto

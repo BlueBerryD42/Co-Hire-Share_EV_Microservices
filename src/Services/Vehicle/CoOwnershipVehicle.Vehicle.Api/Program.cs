@@ -8,6 +8,7 @@ using CoOwnershipVehicle.Shared.Configuration;
 using CoOwnershipVehicle.Vehicle.Api.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using CoOwnershipVehicle.Vehicle.Api.Consumers;
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -143,6 +144,8 @@ namespace CoOwnershipVehicle.Vehicle.Api
             // Add MassTransit for message bus (must be registered before services that use IPublishEndpoint)
             builder.Services.AddMassTransit(x =>
             {
+                x.AddConsumer<GroupCreatedConsumer>();
+
                 x.UsingRabbitMq((context, cfg) =>
                 {
                     cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
