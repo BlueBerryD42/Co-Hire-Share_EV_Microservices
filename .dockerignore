@@ -1,13 +1,66 @@
 .git
 .github
 .vscode
-bin
-obj
-**/bin
-**/obj
+.vs
 *.user
 *.swp
 *.suo
 *.log
-.vs
-db/*.bak
+*.md
+*.txt
+
+# Build artifacts
+bin
+obj
+**/bin
+**/obj
+**/Debug
+**/Release
+**/publish
+
+# Test projects and results
+tests
+**/*Tests
+**/*Test
+**/*.Tests.csproj
+**/TestResults
+**/coverage
+
+# Logs and temporary files
+logs
+*.log
+*.tmp
+*.cache
+
+# Database files
+db
+*.db
+*.mdf
+*.ldf
+*.bak
+
+# IDE and editor files
+.idea
+*.sln.DotSettings.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment files (should be handled separately)
+.env.local
+.env.*.local
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Scripts (not needed in container)
+*.ps1
+*.sh
+*.bat
