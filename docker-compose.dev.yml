@@ -14,8 +14,9 @@ services:
     environment:
       PROJECT: src/Infrastructure/ApiGateway/CoOwnershipVehicle.ApiGateway/CoOwnershipVehicle.ApiGateway.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - api-gateway-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   auth-api:
     build:
@@ -23,8 +24,9 @@ services:
     environment:
       PROJECT: src/Services/Auth/CoOwnershipVehicle.Auth.Api/CoOwnershipVehicle.Auth.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - auth-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   user-api:
     build:
@@ -32,8 +34,9 @@ services:
     environment:
       PROJECT: src/Services/User/CoOwnershipVehicle.User.Api/CoOwnershipVehicle.User.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - user-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   group-api:
     build:
@@ -41,8 +44,9 @@ services:
     environment:
       PROJECT: src/Services/Group/CoOwnershipVehicle.Group.Api/CoOwnershipVehicle.Group.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - group-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   vehicle-api:
     build:
@@ -50,8 +54,9 @@ services:
     environment:
       PROJECT: src/Services/Vehicle/CoOwnershipVehicle.Vehicle.Api/CoOwnershipVehicle.Vehicle.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - vehicle-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   payment-api:
     build:
@@ -59,8 +64,9 @@ services:
     environment:
       PROJECT: src/Services/Payment/CoOwnershipVehicle.Payment.Api/CoOwnershipVehicle.Payment.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - payment-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   booking-api:
     build:
@@ -68,8 +74,9 @@ services:
     environment:
       PROJECT: src/Services/Booking/CoOwnershipVehicle.Booking.Api/CoOwnershipVehicle.Booking.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - booking-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   admin-api:
     build:
@@ -77,8 +84,9 @@ services:
     environment:
       PROJECT: src/Services/Admin/CoOwnershipVehicle.Admin.Api/CoOwnershipVehicle.Admin.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - admin-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   analytics-api:
     build:
@@ -86,8 +94,9 @@ services:
     environment:
       PROJECT: src/Services/Analytics/CoOwnershipVehicle.Analytics.Api/CoOwnershipVehicle.Analytics.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - analytics-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   notification-api:
     build:
@@ -95,6 +104,19 @@ services:
     environment:
       PROJECT: src/Services/Notification/CoOwnershipVehicle.Notification.Api/CoOwnershipVehicle.Notification.Api.csproj
     volumes:
-      - ./src:/src:ro
-    command: dotnet watch run --project ${PROJECT} --no-restore --urls http://0.0.0.0:8080
+      - ./src:/src
+      - notification-api-nuget:/root/.nuget
+    command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
+
+volumes:
+  api-gateway-nuget:
+  auth-api-nuget:
+  user-api-nuget:
+  group-api-nuget:
+  vehicle-api-nuget:
+  payment-api-nuget:
+  booking-api-nuget:
+  admin-api-nuget:
+  analytics-api-nuget:
+  notification-api-nuget:
 
