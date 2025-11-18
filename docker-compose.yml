@@ -17,6 +17,27 @@ x-dotnet-service: &dotnet-service
       reservations:
         memory: 128M
         cpus: '0.2'
+  develop:
+    watch:
+      - action: sync
+        path: ./src
+        target: /src
+        ignore:
+          - node_modules/
+          - bin/
+          - obj/
+          - "**/bin/"
+          - "**/obj/"
+          - "**/*.user"
+          - "**/*.suo"
+          - "**/.vs/"
+          - "**/TestResults/"
+          - "**/coverage/"
+      - action: rebuild
+        path: "./src/**/*.csproj"
+      - action: sync
+        path: "./src/**/*.cs"
+        target: /src
 
 services:
   api-gateway:
