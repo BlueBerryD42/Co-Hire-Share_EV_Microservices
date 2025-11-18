@@ -51,7 +51,7 @@ public class GroupController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
-            _logger.LogInformation("GetUserGroups called for UserId: {UserId}", userId); // Added log
+            _logger.LogInformation("GetUserGroups called for UserId: {UserId}", userId);
             
             var groups = await _context.OwnershipGroups
                 .Include(g => g.Members)
@@ -104,10 +104,15 @@ public class GroupController : ControllerBase
 
             return Ok(groupDtos);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt to get user groups");
+            return Unauthorized(new { message = ex.Message });
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting user groups");
-            return StatusCode(500, new { message = "An error occurred while retrieving groups" });
+            _logger.LogError(ex, "Error getting user groups: {Message}", ex.Message);
+            return StatusCode(500, new { message = "An error occurred while retrieving groups", details = ex.Message });
         }
     }
 
