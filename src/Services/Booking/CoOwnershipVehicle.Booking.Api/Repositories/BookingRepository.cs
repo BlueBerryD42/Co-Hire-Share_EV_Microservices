@@ -154,17 +154,16 @@ public class BookingRepository : IBookingRepository
     {
         limit = Math.Clamp(limit, 1, 100);
 
-        return _context.Bookings
+        var query = _context.Bookings
             .AsNoTracking()
             .Where(b => b.UserId == userId && b.EndAt <= before)
+            .Include(b => b.CheckIns)
+                .ThenInclude(ci => ci.Photos)
+            .AsSplitQuery();
+
+        return query
             .OrderByDescending(b => b.EndAt)
             .Take(limit)
-            .Include(b => b.Vehicle)
-            .Include(b => b.Group)
-            .Include(b => b.User)
-            .Include(b => b.CheckIns)
-                .ThenInclude(ci => ci.Photos.Where(p => !p.IsDeleted))
-            .AsSplitQuery()
             .ToListAsync(cancellationToken);
     }
 

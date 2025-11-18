@@ -422,20 +422,22 @@ public class BookingService : IBookingService
             IsLateReturn = entity.IsLateReturn,
             LateReturnMinutes = entity.LateReturnMinutes,
             LateFeeAmount = entity.LateFeeAmount,
-            Photos = entity.Photos.Select(p => new CheckInPhotoDto
-            {
-                Id = p.Id,
-                CheckInId = entity.Id,
-                PhotoUrl = p.PhotoUrl,
-                ThumbnailUrl = p.ThumbnailUrl,
-                Description = p.Description,
-                Type = p.Type,
-                ContentType = p.ContentType,
-                CapturedAt = p.CapturedAt,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                IsDeleted = p.IsDeleted
-            }).ToList(),
+            Photos = entity.Photos
+                .Where(p => !p.IsDeleted)
+                .Select(p => new CheckInPhotoDto
+                {
+                    Id = p.Id,
+                    CheckInId = entity.Id,
+                    PhotoUrl = p.PhotoUrl,
+                    ThumbnailUrl = p.ThumbnailUrl,
+                    Description = p.Description,
+                    Type = p.Type,
+                    ContentType = p.ContentType,
+                    CapturedAt = p.CapturedAt,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    IsDeleted = p.IsDeleted
+                }).ToList(),
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
