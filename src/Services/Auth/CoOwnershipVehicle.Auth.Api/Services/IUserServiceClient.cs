@@ -39,22 +39,20 @@ public class UserServiceClient : IUserServiceClient
     {
         try
         {
-            var userServiceUrl = _configuration["ServiceUrls:UserApi"] 
-                ?? _configuration["UserServiceUrl"] 
-                ?? "http://localhost:61602";
-            
-            var requestUrl = $"{userServiceUrl}/api/user/internal/role/{userId}";
-            
+            // Use BaseAddress from HttpClient configuration (configured in Program.cs)
+            var requestUrl = $"/api/user/internal/role/{userId}";
+
             // Get service key for internal service-to-service communication
-            var serviceKey = _configuration["ServiceKeys:Internal"] 
+            var serviceKey = _configuration["ServiceKeys:Internal"]
                 ?? Environment.GetEnvironmentVariable("SERVICE_KEY_INTERNAL")
-                ?? "internal-service-key-change-in-production";
-            
+                ?? "internal-service-key-change-in-production-2024";  // Match .env default
+
             _httpClient.DefaultRequestHeaders.Clear();
             _httpClient.DefaultRequestHeaders.Add("X-Service-Key", serviceKey);
-            
-            _logger.LogDebug("Fetching user role info for {UserId} from User service at {Url}", userId, requestUrl);
-            
+
+            _logger.LogInformation("Fetching user role info for {UserId} from User service. BaseAddress: {BaseAddress}, RequestUrl: {RequestUrl}, ServiceKey: {ServiceKey}",
+                userId, _httpClient.BaseAddress?.ToString() ?? "NULL", requestUrl, serviceKey.Substring(0, Math.Min(10, serviceKey.Length)) + "...");
+
             var response = await _httpClient.GetAsync(requestUrl);
             
             if (!response.IsSuccessStatusCode)
