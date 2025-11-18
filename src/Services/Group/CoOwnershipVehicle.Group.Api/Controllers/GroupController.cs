@@ -237,6 +237,108 @@ public class GroupController : ControllerBase
     }
 
     /// <summary>
+    /// Get all groups (admin/staff only)
+    /// </summary>
+    [HttpGet("all")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> GetAllGroups([FromQuery] GroupListRequestDto? request = null)
+    {
+        try
+        {
+            var query = _context.OwnershipGroups
+                .Include(g => g.Members)
+                .AsQueryable();
+
+            // Apply search filter
+            if (request != null && !string.IsNullOrEmpty(request.Search))
+            {
+                var searchTerm = request.Search.ToLower();
+                query = query.Where(g => 
+                    (g.Name != null && g.Name.ToLower().Contains(searchTerm)) ||
+                    (g.Description != null && g.Description.ToLower().Contains(searchTerm)));
+            }
+
+            // Apply status filter
+            if (request != null && request.Status.HasValue)
+            {
+                query = query.Where(g => g.Status == (Domain.Entities.GroupStatus)request.Status.Value);
+            }
+
+            var groups = await query.ToListAsync();
+
+            // Fetch user data via HTTP
+            var accessToken = GetAccessToken();
+            var allMemberUserIds = groups.SelectMany(g => g.Members.Select(m => m.UserId)).Distinct().ToList();
+            var users = await _userServiceClient.GetUsersAsync(allMemberUserIds, accessToken);
+
+            var groupDtos = groups.Select(g => new GroupDto
+            {
+                Id = g.Id,
+                Name = g.Name,
+                Description = g.Description,
+                Status = (GroupStatus)g.Status,
+                CreatedBy = g.CreatedBy,
+                CreatedAt = g.CreatedAt,
+                Members = g.Members.Select(m =>
+                {
+                    var user = users.GetValueOrDefault(m.UserId);
+                    return new GroupMemberDto
+                    {
+                        Id = m.Id,
+                        UserId = m.UserId,
+                        UserFirstName = user?.FirstName ?? "Unknown",
+                        UserLastName = user?.LastName ?? "",
+                        UserEmail = user?.Email ?? "",
+                        SharePercentage = m.SharePercentage,
+                        RoleInGroup = (GroupRole)m.RoleInGroup,
+                        JoinedAt = m.JoinedAt
+                    };
+                }).ToList(),
+                Vehicles = new List<VehicleDto>()
+            }).ToList();
+
+            return Ok(groupDtos);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all groups");
+            return StatusCode(500, new { message = "An error occurred while retrieving groups" });
+        }
+    }
+
+    /// <summary>
+    /// Update group status (admin/staff only)
+    /// </summary>
+    [HttpPut("{id:guid}/status")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> UpdateGroupStatus(Guid id, [FromBody] UpdateGroupStatusDto request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var group = await _context.OwnershipGroups.FindAsync(id);
+            if (group == null)
+                return NotFound(new { message = "Group not found" });
+
+            group.Status = (Domain.Entities.GroupStatus)request.Status;
+            group.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Group {GroupId} status updated to {Status}", id, request.Status);
+
+            return Ok(new { message = "Group status updated successfully", groupId = id, status = request.Status });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating group status for {GroupId}", id);
+            return StatusCode(500, new { message = "An error occurred while updating group status" });
+        }
+    }
+
+    /// <summary>
     /// Create a new group
     /// </summary>
     [HttpPost]

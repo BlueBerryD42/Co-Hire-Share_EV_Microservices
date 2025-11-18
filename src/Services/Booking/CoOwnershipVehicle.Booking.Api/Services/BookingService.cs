@@ -144,6 +144,12 @@ public class BookingService : IBookingService
         return bookings.Select(MapBookingToDto).ToList();
     }
 
+    public async Task<List<BookingDto>> GetAllBookingsAsync(DateTime? from = null, DateTime? to = null, Guid? userId = null, Guid? groupId = null)
+    {
+        var bookings = await _bookingRepository.GetAllBookingsAsync(from, to, userId, groupId);
+        return bookings.Select(MapBookingToDto).ToList();
+    }
+
     public async Task<IReadOnlyList<BookingHistoryEntryDto>> GetUserBookingHistoryAsync(Guid userId, int limit = DefaultHistoryLimit)
     {
         var normalizedLimit = NormalizeHistoryLimit(limit);

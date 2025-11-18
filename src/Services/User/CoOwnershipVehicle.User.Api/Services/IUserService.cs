@@ -19,6 +19,7 @@ public interface IUserService
     Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto reviewDto, Guid reviewerId);
     Task<List<KycDocumentDto>> GetPendingKycDocumentsAsync();
     Task<bool> UpdateKycStatusAsync(Guid userId, KycStatus status, string? reason = null);
+    Task<UserListResponseDto> GetUsersAsync(UserListRequestDto request);
 }
 
 public class UserService : IUserService
@@ -437,6 +438,92 @@ public class UserService : IUserService
         {
             await UpdateKycStatusAsync(userId, KycStatus.InReview, "Insufficient documents");
         }
+    }
+
+    public async Task<UserListResponseDto> GetUsersAsync(UserListRequestDto request)
+    {
+        var query = _context.UserProfiles.AsQueryable();
+
+        // Apply search filter
+        if (!string.IsNullOrEmpty(request.Search))
+        {
+            var searchTerm = request.Search.ToLower();
+            query = query.Where(u =>
+                (u.FirstName != null && u.FirstName.ToLower().Contains(searchTerm)) ||
+                (u.LastName != null && u.LastName.ToLower().Contains(searchTerm)) ||
+                (u.Email != null && u.Email.ToLower().Contains(searchTerm)) ||
+                (u.Phone != null && u.Phone.Contains(searchTerm)));
+        }
+
+        // Apply role filter
+        if (request.Role.HasValue)
+        {
+            query = query.Where(u => u.Role == (Domain.Entities.UserRole)request.Role.Value);
+        }
+
+        // Apply KYC status filter
+        if (request.KycStatus.HasValue)
+        {
+            query = query.Where(u => u.KycStatus == (Domain.Entities.KycStatus)request.KycStatus.Value);
+        }
+
+        // Apply sorting
+        query = request.SortBy?.ToLower() switch
+        {
+            "email" => request.SortDirection?.ToLower() == "asc"
+                ? query.OrderBy(u => u.Email)
+                : query.OrderByDescending(u => u.Email),
+            "firstname" => request.SortDirection?.ToLower() == "asc"
+                ? query.OrderBy(u => u.FirstName)
+                : query.OrderByDescending(u => u.FirstName),
+            "lastname" => request.SortDirection?.ToLower() == "asc"
+                ? query.OrderBy(u => u.LastName)
+                : query.OrderByDescending(u => u.LastName),
+            "role" => request.SortDirection?.ToLower() == "asc"
+                ? query.OrderBy(u => u.Role)
+                : query.OrderByDescending(u => u.Role),
+            "kycstatus" => request.SortDirection?.ToLower() == "asc"
+                ? query.OrderBy(u => u.KycStatus)
+                : query.OrderByDescending(u => u.KycStatus),
+            _ => request.SortDirection?.ToLower() == "asc"
+                ? query.OrderBy(u => u.CreatedAt)
+                : query.OrderByDescending(u => u.CreatedAt)
+        };
+
+        // Get total count before pagination
+        var totalCount = await query.CountAsync();
+
+        // Apply pagination
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Max(1, Math.Min(100, request.PageSize));
+        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+        var users = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(u => new UserSummaryDto
+            {
+                Id = u.Id,
+                Email = u.Email ?? string.Empty,
+                FirstName = u.FirstName ?? string.Empty,
+                LastName = u.LastName ?? string.Empty,
+                Phone = u.Phone,
+                Role = (UserRole)u.Role,
+                KycStatus = (KycStatus)u.KycStatus,
+                AccountStatus = UserAccountStatus.Active, // UserProfiles doesn't have LockoutEnd, default to Active
+                CreatedAt = u.CreatedAt,
+                LastLoginAt = null // Not tracked in UserProfiles
+            })
+            .ToListAsync();
+
+        return new UserListResponseDto
+        {
+            Users = users,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = totalPages
+        };
     }
 }
 

@@ -110,6 +110,34 @@ public class BookingRepository : IBookingRepository
             .ToListAsync();
     }
 
+    public Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetAllBookingsAsync(DateTime? from = null, DateTime? to = null, Guid? userId = null, Guid? groupId = null)
+    {
+        var query = _context.Bookings.AsQueryable();
+
+        if (from.HasValue)
+        {
+            query = query.Where(b => b.EndAt >= from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            query = query.Where(b => b.StartAt <= to.Value);
+        }
+
+        if (userId.HasValue)
+        {
+            query = query.Where(b => b.UserId == userId.Value);
+        }
+
+        // Note: groupId filter would require joining with Vehicle table to get GroupId
+        // For now, we'll skip groupId filter as it requires Vehicle service data
+        // This can be enhanced later if needed
+
+        return query
+            .OrderByDescending(b => b.CreatedAt)
+            .ToListAsync();
+    }
+
     public Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetConflictingBookingsAsync(Guid vehicleId, DateTime startAt, DateTime endAt, Guid? excludeBookingId, Guid? excludeRecurringBookingId = null, CancellationToken cancellationToken = default)
     {
         return _context.Bookings

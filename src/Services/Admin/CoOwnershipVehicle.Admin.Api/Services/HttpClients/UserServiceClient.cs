@@ -27,10 +27,25 @@ public class UserServiceClient : IUserServiceClient
 
     private void SetAuthorizationHeader()
     {
+        // Clear existing authorization header first
+        _httpClient.DefaultRequestHeaders.Authorization = null;
+        
         var token = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
         if (!string.IsNullOrEmpty(token))
         {
-            _httpClient.DefaultRequestHeaders.Authorization = AuthenticationHeaderValue.Parse(token);
+            try
+            {
+                _httpClient.DefaultRequestHeaders.Authorization = AuthenticationHeaderValue.Parse(token);
+                _logger.LogDebug("Authorization header set successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse authorization header");
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Authorization token not found in request headers");
         }
     }
 
@@ -89,13 +104,30 @@ public class UserServiceClient : IUserServiceClient
             }
 
             var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-            var response = await _httpClient.GetAsync($"api/User/users{queryString}");
+            var requestUrl = $"api/User/users{queryString}";
+            _logger.LogInformation("Calling User service: {RequestUrl}, BaseAddress: {BaseAddress}", 
+                requestUrl, _httpClient.BaseAddress?.ToString() ?? "NULL");
+            
+            var response = await _httpClient.GetAsync(requestUrl);
 
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("User service response received. Content length: {Length}", content.Length);
+                _logger.LogDebug("User service response content: {Content}", content);
+                
                 var result = JsonSerializer.Deserialize<UserListResponseDto>(content, _jsonOptions);
-                return result?.Users?.Select(u => new UserProfileDto
+                
+                if (result == null)
+                {
+                    _logger.LogWarning("Failed to deserialize UserListResponseDto. Content: {Content}", content);
+                    return new List<UserProfileDto>();
+                }
+                
+                _logger.LogInformation("Deserialized UserListResponseDto. Users count: {Count}, TotalCount: {TotalCount}", 
+                    result.Users?.Count ?? 0, result.TotalCount);
+                
+                var users = result.Users?.Select(u => new UserProfileDto
                 {
                     Id = u.Id,
                     Email = u.Email,
@@ -106,10 +138,15 @@ public class UserServiceClient : IUserServiceClient
                     KycStatus = u.KycStatus,
                     CreatedAt = u.CreatedAt
                 }).ToList() ?? new List<UserProfileDto>();
+                
+                _logger.LogInformation("Returning {Count} users from UserServiceClient", users.Count);
+                return users;
             }
             else
             {
-                _logger.LogWarning("Failed to get users. Status: {StatusCode}", response.StatusCode);
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("Failed to get users. Status: {StatusCode}, Response: {Response}", 
+                    response.StatusCode, errorContent);
                 return new List<UserProfileDto>();
             }
         }

@@ -38,7 +38,8 @@ public class VehicleServiceClient : IVehicleServiceClient
         try
         {
             SetAuthorizationHeader();
-            var response = await _httpClient.GetAsync("api/Vehicle");
+            // Use admin endpoint to get all vehicles
+            var response = await _httpClient.GetAsync("api/Vehicle/all");
 
             if (response.IsSuccessStatusCode)
             {

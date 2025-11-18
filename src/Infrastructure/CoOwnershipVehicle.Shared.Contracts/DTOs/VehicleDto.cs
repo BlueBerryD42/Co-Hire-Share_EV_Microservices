@@ -17,6 +17,7 @@ public class VehicleDto
     public Guid? GroupId { get; set; }
     public string? GroupName { get; set; }
     public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }
 
 public class CreateVehicleDto
