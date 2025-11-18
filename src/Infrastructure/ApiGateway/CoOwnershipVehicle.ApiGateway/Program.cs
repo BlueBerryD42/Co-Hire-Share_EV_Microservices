@@ -182,14 +182,14 @@ app.MapGet("/status", () => new
     Services = new
     {
         AuthService = "https://localhost:61601",
-        UserService = "https://localhost:61602",
-        GroupService = "https://localhost:61603",
-        VehicleService = "https://localhost:61604",
+        UserService = "https://localhost:61604",
+        GroupService = "https://localhost:61600",
+        VehicleService = "https://localhost:61603",
         PaymentService = "https://localhost:61605",
-        BookingService = "https://localhost:61606",
-        AdminService = "https://localhost:61607",
-        AnalyticsService = "https://localhost:61608",
-        NotificationService = "https://localhost:61609"
+        BookingService = "https://localhost:7123",
+        AdminService = "https://localhost:61609",
+        AnalyticsService = "https://localhost:61606",
+        NotificationService = "https://localhost:59262"
     }
 });
 
@@ -225,19 +225,19 @@ app.MapGet("/", () => Results.Content(
             </div>
             
             <div class="service">
-                <h3> User Service (Port 61602)</h3>
+                <h3> User Service (Port 61604)</h3>
                 <p><span class="endpoint">/api/user/*</span></p>
                 <p>User profiles, KYC documents, profile management</p>
             </div>
             
             <div class="service">
-                <h3> Group Service (Port 61603)</h3>
+                <h3> Group Service (Port 61600)</h3>
                 <p><span class="endpoint">/api/group/*</span></p>
                 <p>Ownership groups, member management, shares</p>
             </div>
             
             <div class="service">
-                <h3> Vehicle Service (Port 61604)</h3>
+                <h3> Vehicle Service (Port 61603)</h3>
                 <p><span class="endpoint">/api/vehicle/*</span></p>
                 <p>Vehicle management, availability checking</p>
             </div>
@@ -249,25 +249,25 @@ app.MapGet("/", () => Results.Content(
             </div>
             
             <div class="service">
-                <h3> Booking Service (Port 61606)</h3>
+                <h3> Booking Service (Port 7123)</h3>
                 <p><span class="endpoint">/api/booking/*</span></p>
                 <p>Vehicle bookings, priority algorithms, calendar</p>
             </div>
             
             <div class="service">
-                <h3> Admin Service (Port 61607)</h3>
+                <h3> Admin Service (Port 61609)</h3>
                 <p><span class="endpoint">/api/admin/*</span></p>
                 <p>Administrative functions and system management</p>
             </div>
             
             <div class="service">
-                <h3> Analytics Service (Port 61608)</h3>
+                <h3> Analytics Service (Port 61606)</h3>
                 <p><span class="endpoint">/api/analytics/*</span></p>
                 <p>Analytics and reporting</p>
             </div>
             
             <div class="service">
-                <h3> Notification Service (Port 61609)</h3>
+                <h3> Notification Service (Port 59262)</h3>
                 <p><span class="endpoint">/api/notification/*</span></p>
                 <p>Notifications and alerts</p>
             </div>

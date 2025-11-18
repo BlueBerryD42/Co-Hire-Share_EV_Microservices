@@ -1,19 +1,21 @@
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using CoOwnershipVehicle.Domain.Entities;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace CoOwnershipVehicle.User.Api.Data;
 
-public class UserDbContext : IdentityDbContext<CoOwnershipVehicle.Domain.Entities.User, IdentityRole<Guid>, Guid>
+/// <summary>
+/// UserDbContext for User service.
+/// Uses UserProfile entity (NOT User) to clearly separate from Auth DB.
+/// UserProfile stores profile data only, NO authentication data.
+/// </summary>
+public class UserDbContext : DbContext
 {
     public UserDbContext(DbContextOptions<UserDbContext> options) : base(options)
     {
     }
 
     // User service entities - only what it actually needs
+    public DbSet<UserProfile> UserProfiles { get; set; }
     public DbSet<KycDocument> KycDocuments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -53,7 +55,7 @@ public class UserDbContext : IdentityDbContext<CoOwnershipVehicle.Domain.Entitie
         // Automatically trim unrelated domain entities
         var allowedDomainEntities = new HashSet<Type>
         {
-            typeof(CoOwnershipVehicle.Domain.Entities.User),
+            typeof(UserProfile),
             typeof(KycDocument)
         };
 
@@ -66,38 +68,36 @@ public class UserDbContext : IdentityDbContext<CoOwnershipVehicle.Domain.Entitie
             }
         }
 
-        // Configure Identity tables with custom names
-        builder.Entity<CoOwnershipVehicle.Domain.Entities.User>().ToTable("Users");
-        builder.Entity<IdentityRole<Guid>>().ToTable("Roles");
-        builder.Entity<IdentityUserRole<Guid>>().ToTable("UserRoles");
-        builder.Entity<IdentityUserClaim<Guid>>().ToTable("UserClaims");
-        builder.Entity<IdentityUserLogin<Guid>>().ToTable("UserLogins");
-        builder.Entity<IdentityUserToken<Guid>>().ToTable("UserTokens");
-        builder.Entity<IdentityRoleClaim<Guid>>().ToTable("RoleClaims");
-
-        // User entity configuration
-        builder.Entity<CoOwnershipVehicle.Domain.Entities.User>(entity =>
+        // Configure UserProfile table - separate entity from Auth DB's User
+        // User DB stores profile data only, NOT authentication data
+        builder.Entity<UserProfile>(entity =>
         {
+            // Explicitly set table name to UserProfiles (NOT Users)
+            entity.ToTable("UserProfiles", (string)null);
+            
             entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
             entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Phone).HasMaxLength(20);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.NormalizedEmail).HasMaxLength(256);
+            entity.Property(e => e.UserName).HasMaxLength(256);
+            entity.Property(e => e.NormalizedUserName).HasMaxLength(256);
+            // PhoneNumber removed - use Phone field instead
+            entity.Property(e => e.Address).HasMaxLength(500);
+            entity.Property(e => e.City).HasMaxLength(100);
+            entity.Property(e => e.Country).HasMaxLength(100);
+            entity.Property(e => e.PostalCode).HasMaxLength(20);
+            entity.Property(e => e.ConcurrencyStamp).HasMaxLength(256);
+            
             entity.Property(e => e.KycStatus).HasConversion<int>();
             entity.Property(e => e.Role).HasConversion<int>();
             
             entity.HasIndex(e => e.Email).IsUnique();
             entity.HasIndex(e => e.Phone);
-
-            // Ignore navigation properties not relevant to User service
-            entity.Ignore(e => e.GroupMemberships);
-            entity.Ignore(e => e.ExpensesCreated);
-            entity.Ignore(e => e.Payments);
-            entity.Ignore(e => e.Bookings);
-            entity.Ignore(e => e.CheckIns);
-            entity.Ignore(e => e.Votes);
-            entity.Ignore(e => e.AuditLogs);
         });
 
         // KycDocument entity configuration
+        // Note: KycDocument.UserId references UserProfile.Id (same Id as User in Auth DB)
         builder.Entity<KycDocument>(entity =>
         {
             entity.Property(e => e.DocumentType).HasConversion<int>();
@@ -106,12 +106,15 @@ public class UserDbContext : IdentityDbContext<CoOwnershipVehicle.Domain.Entitie
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.ReviewNotes).HasMaxLength(1000);
 
-            entity.HasOne(e => e.User)
+            // Configure relationship to UserProfile (not User)
+            // UserId foreign key points to UserProfile.Id
+            entity.HasOne<UserProfile>()
                   .WithMany(u => u.KycDocuments)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.Reviewer)
+            // Reviewer relationship - also points to UserProfile
+            entity.HasOne<UserProfile>()
                   .WithMany()
                   .HasForeignKey(e => e.ReviewedBy)
                   .OnDelete(DeleteBehavior.Restrict);

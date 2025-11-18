@@ -55,6 +55,8 @@ public class JwtTokenService : IJwtTokenService
         // Store refresh token (in production, use a secure store like Redis)
         await StoreRefreshTokenAsync(user.Id, refreshToken);
 
+        // Note: Profile fields are NOT stored in Auth DB - they're in User service database
+        // Return minimal user info - full profile should be fetched from User service
         return new LoginResponseDto
         {
             AccessToken = accessToken,
@@ -64,12 +66,13 @@ public class JwtTokenService : IJwtTokenService
             {
                 Id = user.Id,
                 Email = user.Email!,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                Phone = user.Phone,
-                KycStatus = user.KycStatus,
-                Role = user.Role,
-                CreatedAt = user.CreatedAt
+                // Profile fields not available in Auth DB - use defaults
+                FirstName = string.Empty,
+                LastName = string.Empty,
+                Phone = null,
+                KycStatus = Domain.Entities.KycStatus.Pending,
+                Role = Domain.Entities.UserRole.CoOwner,
+                CreatedAt = DateTime.UtcNow // Not stored in Auth DB
             }
         };
     }
@@ -147,14 +150,19 @@ public class JwtTokenService : IJwtTokenService
 
     private async Task<List<System.Security.Claims.Claim>> BuildClaimsAsync(User user)
     {
+        // Note: Profile fields (FirstName, LastName, Role, KycStatus) are NOT stored in Auth DB
+        // They are stored in User service database. For JWT claims, we use empty/default values.
+        // If needed, profile data can be fetched from User service via HTTP call.
         var claims = new List<System.Security.Claims.Claim>
         {
             new(System.Security.Claims.ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(System.Security.Claims.ClaimTypes.Email, user.Email ?? string.Empty),
-            new(System.Security.Claims.ClaimTypes.GivenName, user.FirstName ?? string.Empty),
-            new(System.Security.Claims.ClaimTypes.Surname, user.LastName ?? string.Empty),
-            new("role", user.Role.ToString()),
-            new("kyc_status", user.KycStatus.ToString()),
+            // Profile fields not available in Auth DB - use empty strings
+            // These can be populated from User service if needed
+            new(System.Security.Claims.ClaimTypes.GivenName, string.Empty),
+            new(System.Security.Claims.ClaimTypes.Surname, string.Empty),
+            new("role", Domain.Entities.UserRole.CoOwner.ToString()), // Default role
+            new("kyc_status", Domain.Entities.KycStatus.Pending.ToString()), // Default status
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat,
                 new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(),

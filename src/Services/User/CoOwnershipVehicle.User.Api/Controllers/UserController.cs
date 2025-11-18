@@ -32,7 +32,7 @@ public class UserController : ControllerBase
         {
             var userId = GetCurrentUserId();
             
-            // First, ensure user is synced from Auth service
+            // Sync user from Auth service (HTTP pattern, consistent with other services)
             var syncedUser = await _userSyncService.SyncUserAsync(userId);
             
             if (syncedUser == null)
@@ -41,15 +41,12 @@ public class UserController : ControllerBase
                 return NotFound(new { message = "User profile not found" });
             }
             
-            // Small delay to ensure database transaction is committed
-            await Task.Delay(100);
-            
-            // Then get the full profile with KYC documents
+            // Get the full profile with KYC documents
             var profile = await _userService.GetUserProfileAsync(userId);
             
             if (profile == null)
             {
-                _logger.LogWarning("User profile not found after sync for user {UserId}", userId);
+                _logger.LogWarning("User profile not found for user {UserId}", userId);
                 return NotFound(new { message = "User profile not found" });
             }
 

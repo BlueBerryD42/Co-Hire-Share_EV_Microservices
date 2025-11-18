@@ -27,17 +27,30 @@ public class AuthDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         builder.Entity<IdentityUserToken<Guid>>().ToTable("UserTokens");
         builder.Entity<IdentityRoleClaim<Guid>>().ToTable("RoleClaims");
 
-        // User entity configuration
+        // User entity configuration for Auth service
+        // NOTE: Auth service should ONLY store authentication-related data
+        // ALL profile fields (FirstName, LastName, Phone, Role, KycStatus, etc.) are stored in User service database
+        // Auth DB stores ONLY Identity fields: Email, UserName, PasswordHash, SecurityStamp, etc.
         builder.Entity<User>(entity =>
         {
-            entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Phone).HasMaxLength(20);
-            entity.Property(e => e.KycStatus).HasConversion<int>();
-            entity.Property(e => e.Role).HasConversion<int>();
-            
+            // Authentication fields (REQUIRED - these are stored in Auth DB)
             entity.HasIndex(e => e.Email).IsUnique();
-            entity.HasIndex(e => e.Phone);
+            entity.HasIndex(e => e.NormalizedEmail);
+            entity.HasIndex(e => e.NormalizedUserName);
+            
+            // Remove ALL profile fields from Auth DB - they belong ONLY in User service database
+            entity.Ignore(e => e.FirstName);
+            entity.Ignore(e => e.LastName);
+            entity.Ignore(e => e.Phone);
+            entity.Ignore(e => e.Address);
+            entity.Ignore(e => e.City);
+            entity.Ignore(e => e.Country);
+            entity.Ignore(e => e.PostalCode);
+            entity.Ignore(e => e.DateOfBirth);
+            entity.Ignore(e => e.KycStatus);
+            entity.Ignore(e => e.Role);
+            entity.Ignore(e => e.CreatedAt);
+            entity.Ignore(e => e.UpdatedAt);
             
             // Ignore navigation properties that aren't needed in Auth service
             entity.Ignore(e => e.KycDocuments);

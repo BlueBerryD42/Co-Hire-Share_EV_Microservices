@@ -44,7 +44,7 @@ public class UserService : IUserService
         _context.ChangeTracker.Clear();
         
         // Use AsNoTracking to ensure we get fresh data from database
-        var user = await _context.Users
+        var user = await _context.UserProfiles
             .Include(u => u.KycDocuments)
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == userId);
@@ -90,7 +90,7 @@ public class UserService : IUserService
 
     public async Task<UserProfileDto> UpdateUserProfileAsync(Guid userId, UpdateUserProfileDto updateDto)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await _context.UserProfiles.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null)
             throw new NotFoundException("User not found");
 
@@ -173,7 +173,7 @@ public class UserService : IUserService
 
     public async Task<KycDocumentDto> UploadKycDocumentAsync(Guid userId, UploadKycDocumentDto uploadDto)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await _context.UserProfiles.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null)
             throw new NotFoundException("User not found");
 
@@ -219,37 +219,44 @@ public class UserService : IUserService
     public async Task<List<KycDocumentDto>> GetUserKycDocumentsAsync(Guid userId)
     {
         var documents = await _context.KycDocuments
-            .Include(d => d.User)
             .Where(d => d.UserId == userId)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync();
 
-        return documents.Select(d => new KycDocumentDto
+        var userIds = documents.Select(d => d.UserId).Distinct().ToList();
+        var users = await _context.UserProfiles
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id);
+
+        return documents.Select(d => 
         {
-            Id = d.Id,
-            UserId = d.UserId,
-            UserName = $"{d.User.FirstName} {d.User.LastName}",
-            DocumentType = (KycDocumentType)d.DocumentType,
-            FileName = d.FileName,
-            StorageUrl = d.StorageUrl,
-            Status = (KycDocumentStatus)d.Status,
-            ReviewNotes = d.ReviewNotes,
-            ReviewedBy = d.ReviewedBy,
-            ReviewedAt = d.ReviewedAt,
-            UploadedAt = d.CreatedAt
+            var user = users.GetValueOrDefault(d.UserId);
+            return new KycDocumentDto
+            {
+                Id = d.Id,
+                UserId = d.UserId,
+                UserName = user != null ? $"{user.FirstName} {user.LastName}" : "Unknown",
+                DocumentType = (KycDocumentType)d.DocumentType,
+                FileName = d.FileName,
+                StorageUrl = d.StorageUrl,
+                Status = (KycDocumentStatus)d.Status,
+                ReviewNotes = d.ReviewNotes,
+                ReviewedBy = d.ReviewedBy,
+                ReviewedAt = d.ReviewedAt,
+                UploadedAt = d.CreatedAt
+            };
         }).ToList();
     }
 
     public async Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto reviewDto, Guid reviewerId)
     {
         var document = await _context.KycDocuments
-            .Include(d => d.User)
             .FirstOrDefaultAsync(d => d.Id == documentId);
 
         if (document == null)
             throw new NotFoundException("KYC document not found");
 
-        var reviewer = await _context.Users.FirstOrDefaultAsync(u => u.Id == reviewerId);
+        var reviewer = await _context.UserProfiles.FirstOrDefaultAsync(u => u.Id == reviewerId);
         if (reviewer == null)
             throw new NotFoundException("Reviewer not found");
 
@@ -267,11 +274,12 @@ public class UserService : IUserService
         _logger.LogInformation("KYC document {DocumentId} reviewed by {ReviewerId} with status {Status}", 
             documentId, reviewerId, reviewDto.Status);
 
+        var documentUser = await _context.UserProfiles.FirstOrDefaultAsync(u => u.Id == document.UserId);
         return new KycDocumentDto
         {
             Id = document.Id,
             UserId = document.UserId,
-            UserName = $"{document.User.FirstName} {document.User.LastName}",
+            UserName = documentUser != null ? $"{documentUser.FirstName} {documentUser.LastName}" : "Unknown",
             DocumentType = (KycDocumentType)document.DocumentType,
             FileName = document.FileName,
             StorageUrl = document.StorageUrl,
@@ -287,28 +295,36 @@ public class UserService : IUserService
     public async Task<List<KycDocumentDto>> GetPendingKycDocumentsAsync()
     {
         var documents = await _context.KycDocuments
-            .Include(d => d.User)
             .Where(d => d.Status == Domain.Entities.KycDocumentStatus.Pending || 
                        d.Status == Domain.Entities.KycDocumentStatus.UnderReview)
             .OrderBy(d => d.CreatedAt)
             .ToListAsync();
 
-        return documents.Select(d => new KycDocumentDto
+        var userIds = documents.Select(d => d.UserId).Distinct().ToList();
+        var users = await _context.UserProfiles
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id);
+
+        return documents.Select(d => 
         {
-            Id = d.Id,
-            UserId = d.UserId,
-            UserName = $"{d.User.FirstName} {d.User.LastName}",
-            DocumentType = (KycDocumentType)d.DocumentType,
-            FileName = d.FileName,
-            StorageUrl = d.StorageUrl,
-            Status = (KycDocumentStatus)d.Status,
-            UploadedAt = d.CreatedAt
+            var user = users.GetValueOrDefault(d.UserId);
+            return new KycDocumentDto
+            {
+                Id = d.Id,
+                UserId = d.UserId,
+                UserName = user != null ? $"{user.FirstName} {user.LastName}" : "Unknown",
+                DocumentType = (KycDocumentType)d.DocumentType,
+                FileName = d.FileName,
+                StorageUrl = d.StorageUrl,
+                Status = (KycDocumentStatus)d.Status,
+                UploadedAt = d.CreatedAt
+            };
         }).ToList();
     }
 
     public async Task<bool> UpdateKycStatusAsync(Guid userId, KycStatus status, string? reason = null)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await _context.UserProfiles.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null)
             return false;
 
@@ -348,7 +364,7 @@ public class UserService : IUserService
 
     private async Task UpdateOverallKycStatusAsync(Guid userId)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await _context.UserProfiles.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null) return;
 
         var documents = await _context.KycDocuments
