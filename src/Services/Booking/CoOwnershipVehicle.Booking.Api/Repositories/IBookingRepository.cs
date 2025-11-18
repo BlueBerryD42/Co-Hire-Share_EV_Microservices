@@ -16,7 +16,6 @@ public interface IBookingRepository
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetUserBookingsAsync(Guid userId, DateTime? from = null, DateTime? to = null);
     Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetVehicleBookingsAsync(Guid vehicleId, DateTime? from = null, DateTime? to = null);
-    Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetAllBookingsAsync(DateTime? from = null, DateTime? to = null, Guid? userId = null, Guid? groupId = null);
     Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetConflictingBookingsAsync(Guid vehicleId, DateTime startAt, DateTime endAt, Guid? excludeBookingId, Guid? excludeRecurringBookingId = null, CancellationToken cancellationToken = default);
     Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetBookingsForPriorityQueueAsync(Guid vehicleId, DateTime startAt, DateTime endAt, CancellationToken cancellationToken = default);
     Task<CoOwnershipVehicle.Domain.Entities.Booking?> GetBookingWithDetailsAsync(Guid bookingId, CancellationToken cancellationToken = default);

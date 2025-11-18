@@ -50,8 +50,7 @@ public class BookingServiceClient : IBookingServiceClient
                 queryParams.Add($"groupId={groupId.Value}");
 
             var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-            // Use admin endpoint to get all bookings
-            var response = await _httpClient.GetAsync($"api/Booking/all{queryString}");
+            var response = await _httpClient.GetAsync($"api/Booking/my-bookings{queryString}");
 
             if (response.IsSuccessStatusCode)
             {

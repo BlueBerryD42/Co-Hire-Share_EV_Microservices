@@ -38,19 +38,9 @@ public class GroupServiceClient : IGroupServiceClient
         try
         {
             SetAuthorizationHeader();
-            var queryParams = new List<string>();
-            
-            if (request != null)
-            {
-                if (!string.IsNullOrEmpty(request.Search))
-                    queryParams.Add($"search={Uri.EscapeDataString(request.Search)}");
-                if (request.Status.HasValue)
-                    queryParams.Add($"status={request.Status.Value}");
-            }
-
-            var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-            // Use admin endpoint to get all groups
-            var response = await _httpClient.GetAsync($"api/Group/all{queryString}");
+            // Note: Group service may not have admin endpoints yet, so we'll need to call the regular endpoint
+            // For admin access, we might need to add admin-specific endpoints to Group service
+            var response = await _httpClient.GetAsync("api/Group");
 
             if (response.IsSuccessStatusCode)
             {

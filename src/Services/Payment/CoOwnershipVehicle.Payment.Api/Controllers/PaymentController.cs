@@ -97,54 +97,6 @@ public class PaymentController : ControllerBase
     }
 
     /// <summary>
-    /// Get all payments (admin/staff only)
-    /// </summary>
-    [HttpGet("payments")]
-    [Authorize(Roles = "SystemAdmin,Staff")]
-    public async Task<IActionResult> GetAllPayments([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null, [FromQuery] PaymentStatus? status = null)
-    {
-        try
-        {
-            var query = _context.Payments
-                .Include(p => p.Invoice)
-                    .ThenInclude(i => i.Expense)
-                .Include(p => p.Payer)
-                .AsQueryable();
-
-            if (from.HasValue)
-                query = query.Where(p => p.CreatedAt >= from.Value);
-            if (to.HasValue)
-                query = query.Where(p => p.CreatedAt <= to.Value);
-            if (status.HasValue)
-                query = query.Where(p => p.Status == (Domain.Entities.PaymentStatus)status.Value);
-
-            var payments = await query
-                .OrderByDescending(p => p.CreatedAt)
-                .Select(p => new PaymentDto
-                {
-                    Id = p.Id,
-                    InvoiceId = p.InvoiceId,
-                    PayerId = p.PayerId,
-                    Amount = p.Amount,
-                    Method = (PaymentMethod)p.Method,
-                    Status = (PaymentStatus)p.Status,
-                    TransactionReference = p.TransactionReference,
-                    Notes = p.Notes,
-                    CreatedAt = p.CreatedAt,
-                    PaidAt = p.PaidAt
-                })
-                .ToListAsync();
-
-            return Ok(payments);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting all payments");
-            return StatusCode(500, new { message = "An error occurred while retrieving payments" });
-        }
-    }
-
-    /// <summary>
     /// Get expenses for user's groups
     /// </summary>
     [HttpGet("expenses")]

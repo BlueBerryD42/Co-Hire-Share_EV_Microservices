@@ -90,43 +90,6 @@ public class VehicleController : ControllerBase
         return Ok(vehicleList);
     }
 
-    /// <summary>
-    /// Get all vehicles (admin/staff only)
-    /// </summary>
-    [HttpGet("all")]
-    [Authorize(Roles = "SystemAdmin,Staff")]
-    [ProducesResponseType(typeof(List<VehicleDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAllVehicles()
-    {
-        try
-        {
-            var vehicles = await _context.Vehicles.ToListAsync();
-
-            var vehicleDtos = vehicles.Select(v => new VehicleDto
-            {
-                Id = v.Id,
-                Vin = v.Vin,
-                PlateNumber = v.PlateNumber,
-                Model = v.Model,
-                Year = v.Year,
-                Color = v.Color,
-                Status = (VehicleStatus)v.Status,
-                LastServiceDate = v.LastServiceDate,
-                Odometer = v.Odometer,
-                GroupId = v.GroupId,
-                CreatedAt = v.CreatedAt,
-                UpdatedAt = v.UpdatedAt
-            }).ToList();
-
-            return Ok(vehicleDtos);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting all vehicles");
-            return StatusCode(500, new { message = "An error occurred while retrieving vehicles" });
-        }
-    }
-
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetVehicle(Guid id)
     {
