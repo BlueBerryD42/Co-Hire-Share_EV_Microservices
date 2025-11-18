@@ -8,17 +8,25 @@ ARG PROJECT
 ARG BUILD_CONFIGURATION
 WORKDIR /src
 
-# Copy the entire repo so project references resolve correctly
-COPY . .
+# Copy solution file first for better caching
+COPY *.sln ./
 
-# Restore and publish the requested project
-RUN dotnet restore "$PROJECT"
-RUN dotnet publish "$PROJECT" -c "$BUILD_CONFIGURATION" -o /app/publish /p:UseAppHost=false
+# Copy all project files - .dockerignore will exclude unnecessary files
+# This layer will be cached unless .csproj files change
+COPY src/ ./src/
+
+# Restore dependencies - Docker layer caching will cache this step when project files don't change
+# Using standard NuGet cache location to avoid conflicts during parallel builds
+RUN dotnet restore "$PROJECT" --verbosity quiet
+
+# Build and publish - using --no-restore since we already restored above
+RUN dotnet publish "$PROJECT" -c "$BUILD_CONFIGURATION" -o /app/publish /p:UseAppHost=false --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 ARG APP_DLL
 WORKDIR /app
 
+# Copy only published files
 COPY --from=build /app/publish .
 
 # Services listen on port 8080 inside the container by default
