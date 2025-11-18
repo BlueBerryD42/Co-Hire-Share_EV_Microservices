@@ -117,5 +117,109 @@ public class BookingServiceClient : IBookingServiceClient
             return null;
         }
     }
+
+    public async Task<List<CheckInDto>> GetCheckInsAsync(DateTime? from = null, DateTime? to = null, Guid? userId = null, Guid? vehicleId = null, Guid? bookingId = null)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var queryParams = new List<string>();
+            
+            if (from.HasValue)
+                queryParams.Add($"from={from.Value:yyyy-MM-ddTHH:mm:ssZ}");
+            if (to.HasValue)
+                queryParams.Add($"to={to.Value:yyyy-MM-ddTHH:mm:ssZ}");
+            if (userId.HasValue)
+                queryParams.Add($"userId={userId.Value}");
+            if (vehicleId.HasValue)
+                queryParams.Add($"vehicleId={vehicleId.Value}");
+            if (bookingId.HasValue)
+                queryParams.Add($"bookingId={bookingId.Value}");
+
+            var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
+            var response = await _httpClient.GetAsync($"api/CheckIn{queryString}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<List<CheckInDto>>(content, _jsonOptions) ?? new List<CheckInDto>();
+            }
+            else
+            {
+                _logger.LogWarning("Failed to get check-ins. Status: {StatusCode}", response.StatusCode);
+                return new List<CheckInDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Booking service to get check-ins");
+            return new List<CheckInDto>();
+        }
+    }
+
+    public async Task<CheckInDto?> GetCheckInAsync(Guid checkInId)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/CheckIn/{checkInId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<CheckInDto>(content, _jsonOptions);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+            else
+            {
+                _logger.LogWarning("Failed to get check-in {CheckInId}. Status: {StatusCode}", checkInId, response.StatusCode);
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Booking service to get check-in {CheckInId}", checkInId);
+            return null;
+        }
+    }
+
+    public async Task<bool> ApproveCheckInAsync(Guid checkInId, ApproveCheckInDto request)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var json = JsonSerializer.Serialize(request, _jsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync($"api/CheckIn/{checkInId}/approve", content);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Booking service to approve check-in {CheckInId}", checkInId);
+            return false;
+        }
+    }
+
+    public async Task<bool> RejectCheckInAsync(Guid checkInId, RejectCheckInDto request)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var json = JsonSerializer.Serialize(request, _jsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync($"api/CheckIn/{checkInId}/reject", content);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Booking service to reject check-in {CheckInId}", checkInId);
+            return false;
+        }
+    }
 }
 

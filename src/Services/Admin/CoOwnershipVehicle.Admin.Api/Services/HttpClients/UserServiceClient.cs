@@ -229,5 +229,83 @@ public class UserServiceClient : IUserServiceClient
             return false;
         }
     }
+
+    public async Task<List<KycDocumentDto>> GetUserKycDocumentsAsync(Guid userId)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/User/kyc/documents/{userId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<List<KycDocumentDto>>(content, _jsonOptions) ?? new List<KycDocumentDto>();
+            }
+            else
+            {
+                _logger.LogWarning("Failed to get KYC documents for user {UserId}. Status: {StatusCode}", userId, response.StatusCode);
+                return new List<KycDocumentDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling User service to get KYC documents for user {UserId}", userId);
+            return new List<KycDocumentDto>();
+        }
+    }
+
+    public async Task<KycDocumentDto?> GetKycDocumentAsync(Guid documentId)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/User/kyc/documents/{documentId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<KycDocumentDto>(content, _jsonOptions);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+            else
+            {
+                _logger.LogWarning("Failed to get KYC document {DocumentId}. Status: {StatusCode}", documentId, response.StatusCode);
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling User service to get KYC document {DocumentId}", documentId);
+            return null;
+        }
+    }
+
+    public async Task<byte[]?> DownloadKycDocumentAsync(Guid documentId)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/User/kyc/documents/{documentId}/download");
+
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadAsByteArrayAsync();
+            }
+            else
+            {
+                _logger.LogWarning("Failed to download KYC document {DocumentId}. Status: {StatusCode}", documentId, response.StatusCode);
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling User service to download KYC document {DocumentId}", documentId);
+            return null;
+        }
+    }
 }
 

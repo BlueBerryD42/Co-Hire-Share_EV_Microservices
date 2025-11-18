@@ -105,5 +105,109 @@ public class VehicleServiceClient : IVehicleServiceClient
             return 0;
         }
     }
+
+    public async Task<List<MaintenanceScheduleItemDto>> GetMaintenanceSchedulesAsync(MaintenanceScheduleRequestDto? request = null)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var queryParams = new List<string>();
+            
+            if (request != null)
+            {
+                if (request.Status.HasValue)
+                    queryParams.Add($"status={(int)request.Status.Value}");
+                if (request.Page > 1)
+                    queryParams.Add($"page={request.Page}");
+                if (request.PageSize != 20)
+                    queryParams.Add($"pageSize={request.PageSize}");
+            }
+
+            var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
+            var response = await _httpClient.GetAsync($"api/Maintenance/schedules{queryString}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var pagedResponse = JsonSerializer.Deserialize<PagedResponseDto<MaintenanceScheduleItemDto>>(content, _jsonOptions);
+                return pagedResponse?.Items ?? new List<MaintenanceScheduleItemDto>();
+            }
+            else
+            {
+                _logger.LogWarning("Failed to get maintenance schedules. Status: {StatusCode}", response.StatusCode);
+                return new List<MaintenanceScheduleItemDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Vehicle service to get maintenance schedules");
+            return new List<MaintenanceScheduleItemDto>();
+        }
+    }
+
+    public async Task<MaintenanceScheduleItemDto?> GetMaintenanceScheduleAsync(Guid maintenanceId)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"api/Maintenance/schedules/{maintenanceId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<MaintenanceScheduleItemDto>(content, _jsonOptions);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+            else
+            {
+                _logger.LogWarning("Failed to get maintenance schedule {MaintenanceId}. Status: {StatusCode}", maintenanceId, response.StatusCode);
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Vehicle service to get maintenance schedule {MaintenanceId}", maintenanceId);
+            return null;
+        }
+    }
+
+    public async Task<bool> CreateMaintenanceScheduleAsync(CreateMaintenanceDto request)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var json = JsonSerializer.Serialize(request, _jsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync("api/Maintenance/schedules", content);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Vehicle service to create maintenance schedule");
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateMaintenanceScheduleAsync(Guid maintenanceId, UpdateMaintenanceDto request)
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var json = JsonSerializer.Serialize(request, _jsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PutAsync($"api/Maintenance/schedules/{maintenanceId}", content);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Vehicle service to update maintenance schedule {MaintenanceId}", maintenanceId);
+            return false;
+        }
+    }
 }
 

@@ -1,4 +1,6 @@
+using System.ComponentModel.DataAnnotations;
 using CoOwnershipVehicle.Domain.Entities;
+using CoOwnershipVehicle.Domain.Enums;
 
 namespace CoOwnershipVehicle.Shared.Contracts.DTOs;
 
@@ -244,6 +246,57 @@ public class PendingKycUserDto
     public List<KycDocumentDto> Documents { get; set; } = new();
 }
 
+public class KycDocumentFilterDto
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? Search { get; set; }
+    public KycDocumentStatus? Status { get; set; }
+    public KycDocumentType? DocumentType { get; set; }
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+    public string? SortBy { get; set; } = "UploadedAt";
+    public string? SortDirection { get; set; } = "desc";
+}
+
+public class PendingKycUserListResponseDto
+{
+    public List<PendingKycUserDto> Users { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}
+
+public class BulkReviewKycDocumentsDto
+{
+    [Required]
+    public List<Guid> DocumentIds { get; set; } = new();
+    
+    [Required]
+    public KycDocumentStatus Status { get; set; }
+    
+    public string? ReviewNotes { get; set; }
+}
+
+public class KycReviewStatisticsDto
+{
+    public int TotalPending { get; set; }
+    public int TotalUnderReview { get; set; }
+    public int TotalApproved { get; set; }
+    public int TotalRejected { get; set; }
+    public int TotalRequiresUpdate { get; set; }
+    public int ApprovedToday { get; set; }
+    public int RejectedToday { get; set; }
+    public int ApprovedThisWeek { get; set; }
+    public int RejectedThisWeek { get; set; }
+    public int ApprovedThisMonth { get; set; }
+    public int RejectedThisMonth { get; set; }
+    public double AverageReviewTimeHours { get; set; }
+    public Dictionary<string, int> DocumentsByType { get; set; } = new();
+    public Dictionary<string, int> DocumentsByStatus { get; set; } = new();
+}
+
 public enum UserAccountStatus
 {
     Active = 0,
@@ -333,50 +386,6 @@ public class GroupVehicleDto
     public int Odometer { get; set; }
     public int TotalBookings { get; set; }
     public decimal TotalRevenue { get; set; }
-}
-
-// Vehicle Management DTOs
-public class VehicleListRequestDto
-{
-    public int Page { get; set; } = 1;
-    public int PageSize { get; set; } = 20;
-    public string? Search { get; set; }
-    public VehicleStatus? Status { get; set; }
-    public Guid? GroupId { get; set; }
-    public string? SortBy { get; set; } = "CreatedAt";
-    public string? SortDirection { get; set; } = "desc";
-}
-
-public class VehicleListResponseDto
-{
-    public List<VehicleSummaryDto> Vehicles { get; set; } = new();
-    public int TotalCount { get; set; }
-    public int Page { get; set; }
-    public int PageSize { get; set; }
-    public int TotalPages { get; set; }
-}
-
-public class VehicleSummaryDto
-{
-    public Guid Id { get; set; }
-    public string Vin { get; set; } = string.Empty;
-    public string PlateNumber { get; set; } = string.Empty;
-    public string Model { get; set; } = string.Empty;
-    public int Year { get; set; }
-    public string? Color { get; set; }
-    public VehicleStatus Status { get; set; }
-    public DateTime? LastServiceDate { get; set; }
-    public int Odometer { get; set; }
-    public Guid? GroupId { get; set; }
-    public string? GroupName { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public int TotalBookings { get; set; }
-}
-
-public class UpdateVehicleStatusDto
-{
-    public VehicleStatus Status { get; set; }
-    public string? Reason { get; set; }
 }
 
 public class GroupFinancialSummaryDto
@@ -509,6 +518,37 @@ public class GroupAuditEntryDto
     public DateTime Timestamp { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
+}
+
+public class AuditLogRequestDto
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? Search { get; set; }
+    public string? ActionType { get; set; }
+    public string? Module { get; set; }
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+}
+
+public class AuditLogResponseDto
+{
+    public List<AuditLogEntryDto> Logs { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}
+
+public class AuditLogEntryDto
+{
+    public Guid Id { get; set; }
+    public string ActionType { get; set; } = string.Empty;
+    public string Module { get; set; } = string.Empty;
+    public string Details { get; set; } = string.Empty;
+    public string UserName { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; }
+    public string? IpAddress { get; set; }
 }
 
 public enum GroupHealthStatus
@@ -820,3 +860,190 @@ public enum InterventionType
         Error = 4,
         Critical = 5
     }
+
+    // Check-In Management DTOs
+    public class CheckInListRequestDto
+    {
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 20;
+        public string? Status { get; set; }
+        public Guid? UserId { get; set; }
+        public Guid? VehicleId { get; set; }
+        public Guid? BookingId { get; set; }
+        public DateTime? FromDate { get; set; }
+        public DateTime? ToDate { get; set; }
+        public string? SortBy { get; set; } = "CheckInTime";
+        public string? SortDirection { get; set; } = "desc";
+    }
+
+    public class CheckInListResponseDto
+    {
+        public List<CheckInSummaryDto> CheckIns { get; set; } = new();
+        public int TotalCount { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int TotalPages { get; set; }
+    }
+
+    public class CheckInSummaryDto
+    {
+        public Guid Id { get; set; }
+        public Guid BookingId { get; set; }
+        public Guid UserId { get; set; }
+        public string UserName { get; set; } = string.Empty;
+        public Guid? VehicleId { get; set; }
+        public string? VehicleMake { get; set; }
+        public string? VehicleModel { get; set; }
+        public string? VehiclePlateNumber { get; set; }
+        public CheckInType Type { get; set; }
+        public int OdometerReading { get; set; }
+        public DateTime CheckInTime { get; set; }
+        public string Status { get; set; } = "Pending";
+        public string? Notes { get; set; }
+        public bool IsLateReturn { get; set; }
+        public double? LateReturnMinutes { get; set; }
+        public decimal? LateFeeAmount { get; set; }
+        public int? BatteryPercentage { get; set; }
+        public List<CheckInPhotoDto> Photos { get; set; } = new();
+    }
+
+    public class ApproveCheckInDto
+    {
+        public string? Notes { get; set; }
+    }
+
+    public class RejectCheckInDto
+    {
+        [Required]
+        public string Reason { get; set; } = string.Empty;
+    }
+
+    // Maintenance Management DTOs
+    public class MaintenanceListRequestDto
+    {
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 20;
+        public string? Status { get; set; }
+        public Guid? VehicleId { get; set; }
+        public MaintenanceServiceType? ServiceType { get; set; }
+        public DateTime? FromDate { get; set; }
+        public DateTime? ToDate { get; set; }
+        public string? SortBy { get; set; } = "ScheduledDate";
+        public string? SortDirection { get; set; } = "desc";
+    }
+
+    public class MaintenanceListResponseDto
+    {
+        public List<MaintenanceSummaryDto> Maintenance { get; set; } = new();
+        public int TotalCount { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int TotalPages { get; set; }
+    }
+
+    public class MaintenanceSummaryDto
+    {
+        public Guid Id { get; set; }
+        public Guid VehicleId { get; set; }
+        public string? VehicleMake { get; set; }
+        public string? VehicleModel { get; set; }
+        public string? VehiclePlate { get; set; }
+        public MaintenanceServiceType ServiceType { get; set; }
+        public string ServiceTypeName { get; set; } = string.Empty;
+        public DateTime ScheduledDate { get; set; }
+        public DateTime? ServiceCompletedDate { get; set; }
+        public string Status { get; set; } = "Scheduled";
+        public decimal? Cost { get; set; }
+        public decimal? EstimatedCost { get; set; }
+        public decimal? ActualCost { get; set; }
+        public string? Provider { get; set; }
+        public string? Notes { get; set; }
+        public int? OdometerReading { get; set; }
+        public MaintenancePriority Priority { get; set; }
+    }
+
+    public class CreateMaintenanceDto
+    {
+        [Required]
+        public Guid VehicleId { get; set; }
+        
+        [Required]
+        public MaintenanceServiceType ServiceType { get; set; }
+        
+        [Required]
+        public DateTime ScheduledDate { get; set; }
+        
+        public string? Provider { get; set; }
+        
+        public decimal? EstimatedCost { get; set; }
+        
+        public int? EstimatedDurationMinutes { get; set; }
+        
+        public MaintenancePriority Priority { get; set; } = MaintenancePriority.Medium;
+        
+        [StringLength(500)]
+        public string? Notes { get; set; }
+    }
+
+    public class UpdateMaintenanceDto
+    {
+        public MaintenanceServiceType? ServiceType { get; set; }
+        
+        public DateTime? ScheduledDate { get; set; }
+        
+        public DateTime? ServiceCompletedDate { get; set; }
+        
+        public string? Status { get; set; }
+        
+        public string? Provider { get; set; }
+        
+        public decimal? EstimatedCost { get; set; }
+        
+        public decimal? ActualCost { get; set; }
+        
+        public int? EstimatedDurationMinutes { get; set; }
+        
+        public int? ActualDurationMinutes { get; set; }
+        
+        public int? OdometerReading { get; set; }
+        
+        public int? OdometerAtService { get; set; }
+        
+        [StringLength(2000)]
+        public string? WorkPerformed { get; set; }
+        
+        [StringLength(2000)]
+        public string? PartsUsed { get; set; }
+        
+        [StringLength(500)]
+        public string? Notes { get; set; }
+        
+        public MaintenancePriority? Priority { get; set; }
+    }
+
+// Vehicle Management DTOs
+public class VehicleListRequestDto
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? Search { get; set; }
+    public VehicleStatus? Status { get; set; }
+    public Guid? GroupId { get; set; }
+    public string? SortBy { get; set; } = "CreatedAt";
+    public string? SortDirection { get; set; } = "desc";
+}
+
+public class VehicleListResponseDto
+{
+    public List<VehicleDto> Vehicles { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}
+
+public class UpdateVehicleStatusDto
+{
+    public VehicleStatus Status { get; set; }
+    public string? Reason { get; set; }
+}
