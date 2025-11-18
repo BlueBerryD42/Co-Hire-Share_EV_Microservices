@@ -137,19 +137,23 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                 principalColumn: "Id",
                 onDelete: ReferentialAction.Cascade);
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_GroupId",
-                table: "Vehicles",
-                column: "GroupId",
-                principalTable: "OwnershipGroups",
-                principalColumn: "Id");
+            // NOTE: FK constraints for Vehicles.GroupId and Vehicles.OwnershipGroupId are intentionally
+            // NOT created because in microservices architecture, GroupId references Group Service (different DB)
+            // See: scripts/fix-vehicle-groupid-fk.sql for more details
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_OwnershipGroupId",
-                table: "Vehicles",
-                column: "OwnershipGroupId",
-                principalTable: "OwnershipGroups",
-                principalColumn: "Id");
+            // migrationBuilder.AddForeignKey(
+            //     name: "FK_Vehicles_OwnershipGroups_GroupId",
+            //     table: "Vehicles",
+            //     column: "GroupId",
+            //     principalTable: "OwnershipGroups",
+            //     principalColumn: "Id");
+
+            // migrationBuilder.AddForeignKey(
+            //     name: "FK_Vehicles_OwnershipGroups_OwnershipGroupId",
+            //     table: "Vehicles",
+            //     column: "OwnershipGroupId",
+            //     principalTable: "OwnershipGroups",
+            //     principalColumn: "Id");
         }
 
         /// <inheritdoc />
@@ -159,13 +163,14 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                 name: "FK_RecurringBooking_OwnershipGroups_GroupId",
                 table: "RecurringBooking");
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_GroupId",
-                table: "Vehicles");
+            // FK constraints were not created in Up(), so don't drop them in Down()
+            // migrationBuilder.DropForeignKey(
+            //     name: "FK_Vehicles_OwnershipGroups_GroupId",
+            //     table: "Vehicles");
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_OwnershipGroupId",
-                table: "Vehicles");
+            // migrationBuilder.DropForeignKey(
+            //     name: "FK_Vehicles_OwnershipGroups_OwnershipGroupId",
+            //     table: "Vehicles");
 
             migrationBuilder.DropTable(
                 name: "FundTransaction");
