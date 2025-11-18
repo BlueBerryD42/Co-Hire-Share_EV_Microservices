@@ -71,6 +71,7 @@ public class UserController : ControllerBase
     /// Uses service key authentication for internal service-to-service communication.
     /// </summary>
     [HttpGet("internal/role/{userId:guid}")]
+    [AllowAnonymous]  // Bypass JWT auth - use service key instead
     public async Task<IActionResult> GetUserRoleForToken(Guid userId, [FromHeader(Name = "X-Service-Key")] string? serviceKey)
     {
         try
