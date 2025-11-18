@@ -131,7 +131,7 @@ try
         programLogger.LogInformation("Redis parsed from simple format");
     }
 
-    // ✅ Combine reliability settings from both branches
+    // Combine reliability settings from both branches
     configuration.AbortOnConnectFail = false;
     configuration.ConnectRetry = 5;
     configuration.ConnectTimeout = 30000;
@@ -179,7 +179,7 @@ catch (Exception ex)
     redisConnection = null;
 }
 
-// ✅ Register Redis DI services safely
+// Register Redis DI services safely
 if (redisConnection != null)
 {
     builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(redisConnection);
@@ -195,6 +195,16 @@ else
     builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer?>(sp => null);
     builder.Services.AddScoped<StackExchange.Redis.IDatabase?>(sp => null);
 }
+
+// Add HTTP Client for User Service (for fetching user profile data during JWT generation)
+builder.Services.AddHttpClient<IUserServiceClient, UserServiceClient>(client =>
+{
+    var userServiceUrl = builder.Configuration["ServiceUrls:UserApi"] 
+        ?? builder.Configuration["UserServiceUrl"] 
+        ?? "http://localhost:61602";
+    client.BaseAddress = new Uri(userServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(5); // Short timeout for internal calls
+});
 
 // Add application services
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();

@@ -22,14 +22,71 @@ namespace CoOwnershipVehicle.Notification.Api.Migrations.NotificationDb
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.BookingTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<TimeSpan>("Duration")
+                        .HasColumnType("time");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<TimeSpan>("PreferredStartTime")
+                        .HasColumnType("time");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int>("UsageCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("BookingTemplate");
+                });
+
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckInPhoto", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("CapturedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("CheckInId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -38,8 +95,29 @@ namespace CoOwnershipVehicle.Notification.Api.Migrations.NotificationDb
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
+
                     b.Property<string>("PhotoUrl")
                         .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("StoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ThumbnailPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ThumbnailUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
@@ -56,28 +134,53 @@ namespace CoOwnershipVehicle.Notification.Api.Migrations.NotificationDb
                     b.ToTable("CheckInPhoto");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentSignature", b =>
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.FundTransaction", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("ApprovedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("BalanceBefore")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("DocumentId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("SignatureReference")
+                    b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<DateTime>("SignedAt")
+                    b.Property<Guid?>("GroupFundId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("InitiatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("TransactionDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("SignerId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -86,7 +189,210 @@ namespace CoOwnershipVehicle.Notification.Api.Migrations.NotificationDb
 
                     b.HasKey("Id");
 
-                    b.ToTable("DocumentSignature");
+                    b.HasIndex("GroupFundId");
+
+                    b.ToTable("FundTransaction");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupFund", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("LastUpdated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("ReserveBalance")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalBalance")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GroupFund");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.LateReturnFee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CalculationMethod")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("CheckInId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ExpenseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("FeeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("InvoiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LateDurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("OriginalFeeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("WaivedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("WaivedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WaivedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LateReturnFee");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.MaintenanceRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("ActualCost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("ActualDurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CompletionPercentage")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("EstimatedCost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("EstimatedDurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ExpenseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("NextServiceDue")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("NextServiceOdometer")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("OdometerAtService")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OdometerReading")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PartsReplaced")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PartsUsed")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("PerformedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("ScheduledDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ServiceCompletedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ServiceProvider")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("ServiceProviderRating")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ServiceProviderReview")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("ServiceType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WorkPerformed")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MaintenanceRecord");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Notification", b =>
@@ -207,6 +513,94 @@ namespace CoOwnershipVehicle.Notification.Api.Migrations.NotificationDb
                         .IsUnique();
 
                     b.ToTable("NotificationTemplates");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.RecurringBooking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancellationReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DaysOfWeekMask")
+                        .HasColumnType("int");
+
+                    b.Property<TimeSpan>("EndTime")
+                        .HasColumnType("time");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Interval")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastGeneratedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastGenerationRunAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Pattern")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("PausedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Purpose")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly?>("RecurrenceEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("RecurrenceStartDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeSpan>("StartTime")
+                        .HasColumnType("time");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RecurringBooking");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.FundTransaction", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.GroupFund", null)
+                        .WithMany("Transactions")
+                        .HasForeignKey("GroupFundId");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupFund", b =>
+                {
+                    b.Navigation("Transactions");
                 });
 #pragma warning restore 612, 618
         }

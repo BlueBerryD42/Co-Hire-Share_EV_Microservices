@@ -19,7 +19,7 @@
       ]
     },
     {
-      "DownstreamPathTemplate": "/api/user/{everything}",
+      "DownstreamPathTemplate": "/api/User/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
@@ -27,7 +27,7 @@
           "Port": 8080
         }
       ],
-      "UpstreamPathTemplate": "/api/user/{everything}",
+      "UpstreamPathTemplate": "/api/User/{everything}",
       "UpstreamHttpMethod": [
         "GET",
         "POST",

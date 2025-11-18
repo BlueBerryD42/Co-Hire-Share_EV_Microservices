@@ -69,10 +69,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("VehicleId");
-
                     b.ToTable("BookingTemplate");
                 });
 
@@ -311,8 +307,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasIndex("ShareToken")
                         .IsUnique();
 
-                    b.HasIndex("SharedBy");
-
                     b.HasIndex("ShareToken", "IsRevoked", "ExpiresAt");
 
                     b.ToTable("DocumentShares");
@@ -489,8 +483,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedBy");
-
                     b.HasIndex("GroupId");
 
                     b.HasIndex("Name");
@@ -523,8 +515,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasIndex("TagId");
 
                     b.HasIndex("TaggedAt");
-
-                    b.HasIndex("TaggedBy");
 
                     b.ToTable("DocumentTagMappings");
                 });
@@ -585,8 +575,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasKey("Id");
 
                     b.HasIndex("Category");
-
-                    b.HasIndex("CreatedBy");
 
                     b.HasIndex("IsActive");
 
@@ -663,8 +651,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("UploadedAt");
 
-                    b.HasIndex("UploadedBy");
-
                     b.HasIndex("DocumentId", "IsCurrent");
 
                     b.HasIndex("DocumentId", "VersionNumber")
@@ -729,8 +715,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .HasDefaultValueSql("GETUTCDATE()");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ApprovedBy");
 
                     b.HasIndex("GroupFundId");
 
@@ -816,8 +800,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
-
                     b.HasIndex("GroupId", "UserId")
                         .IsUnique();
 
@@ -886,10 +868,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .HasColumnType("nvarchar(500)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("VehicleId");
 
                     b.ToTable("LateReturnFee");
                 });
@@ -997,8 +975,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
 
                     b.HasIndex("GroupId");
 
-                    b.HasIndex("VehicleId");
-
                     b.ToTable("MaintenanceRecord");
                 });
 
@@ -1032,8 +1008,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .HasDefaultValueSql("GETUTCDATE()");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CreatedBy");
 
                     b.HasIndex("Name");
 
@@ -1177,10 +1151,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.HasKey("Id");
 
                     b.HasIndex("GroupId");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("VehicleId");
 
                     b.ToTable("RecurringBooking");
                 });
@@ -1370,171 +1340,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.ToTable("SigningCertificates");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.User", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("AccessFailedCount")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Address")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("City")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("ConcurrencyStamp")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Country")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DateOfBirth")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Email")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<bool>("EmailConfirmed")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<int>("KycStatus")
-                        .HasColumnType("int");
-
-                    b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<bool>("LockoutEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTimeOffset?>("LockoutEnd")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("NormalizedEmail")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NormalizedUserName")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PasswordHash")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Phone")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("PhoneNumber")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("PhoneNumberConfirmed")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("PostalCode")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<int>("Role")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SecurityStamp")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("TwoFactorEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UserName")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Email")
-                        .IsUnique()
-                        .HasFilter("[Email] IS NOT NULL");
-
-                    b.HasIndex("Phone");
-
-                    b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Color")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("GroupId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("LastServiceDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Model")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<int>("Odometer")
-                        .HasColumnType("int");
-
-                    b.Property<string>("PlateNumber")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<string>("Vin")
-                        .IsRequired()
-                        .HasMaxLength(17)
-                        .HasColumnType("nvarchar(17)");
-
-                    b.Property<int>("Year")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GroupId");
-
-                    b.HasIndex("PlateNumber")
-                        .IsUnique();
-
-                    b.HasIndex("Vin")
-                        .IsUnique();
-
-                    b.ToTable("Vehicles");
-                });
-
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vote", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1584,23 +1389,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.ToTable("Votes");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.BookingTemplate", b =>
-                {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId");
-
-                    b.Navigation("User");
-
-                    b.Navigation("Vehicle");
-                });
-
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Document", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
@@ -1627,15 +1415,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("Document");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentShare", b =>
@@ -1646,15 +1426,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Sharer")
-                        .WithMany()
-                        .HasForeignKey("SharedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("Document");
-
-                    b.Navigation("Sharer");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentShareAccess", b =>
@@ -1676,31 +1448,15 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Signer")
-                        .WithMany()
-                        .HasForeignKey("SignerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("Document");
-
-                    b.Navigation("Signer");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentTag", b =>
                 {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Creator")
-                        .WithMany()
-                        .HasForeignKey("CreatedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
                         .WithMany()
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.NoAction);
-
-                    b.Navigation("Creator");
 
                     b.Navigation("Group");
                 });
@@ -1719,28 +1475,9 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "TaggerUser")
-                        .WithMany()
-                        .HasForeignKey("TaggedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("Document");
 
                     b.Navigation("Tag");
-
-                    b.Navigation("TaggerUser");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentTemplate", b =>
-                {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Creator")
-                        .WithMany()
-                        .HasForeignKey("CreatedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Creator");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.DocumentVersion", b =>
@@ -1751,24 +1488,11 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Uploader")
-                        .WithMany()
-                        .HasForeignKey("UploadedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("Document");
-
-                    b.Navigation("Uploader");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.FundTransaction", b =>
                 {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Approver")
-                        .WithMany("ApprovedFundTransactions")
-                        .HasForeignKey("ApprovedBy")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.GroupFund", null)
                         .WithMany("Transactions")
                         .HasForeignKey("GroupFundId");
@@ -1779,17 +1503,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Initiator")
-                        .WithMany("InitiatedFundTransactions")
-                        .HasForeignKey("InitiatedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Approver");
-
                     b.Navigation("Group");
-
-                    b.Navigation("Initiator");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.GroupFund", b =>
@@ -1811,34 +1525,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
-                        .WithMany("GroupMemberships")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("Group");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.LateReturnFee", b =>
-                {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-
-                    b.Navigation("Vehicle");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.MaintenanceRecord", b =>
@@ -1847,43 +1534,16 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .WithMany()
                         .HasForeignKey("GroupId");
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany("MaintenanceRecords")
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("Group");
-
-                    b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", b =>
-                {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Creator")
-                        .WithMany()
-                        .HasForeignKey("CreatedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Creator");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Proposal", b =>
                 {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Creator")
-                        .WithMany()
-                        .HasForeignKey("CreatedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
                         .WithMany("Proposals")
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Creator");
 
                     b.Navigation("Group");
                 });
@@ -1891,28 +1551,12 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.RecurringBooking", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
-                        .WithMany("RecurringBookings")
+                        .WithMany()
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
-                        .WithMany("RecurringBookings")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany("RecurringBookings")
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("Group");
-
-                    b.Navigation("User");
-
-                    b.Navigation("Vehicle");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.SavedDocumentSearch", b =>
@@ -1922,15 +1566,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Cascade);
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("Group");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.SignatureReminder", b =>
@@ -1955,16 +1591,6 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.Navigation("Document");
                 });
 
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
-                {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.OwnershipGroup", "Group")
-                        .WithMany("Vehicles")
-                        .HasForeignKey("GroupId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Group");
-                });
-
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vote", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.Proposal", "Proposal")
@@ -1973,15 +1599,7 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.User", "Voter")
-                        .WithMany("Votes")
-                        .HasForeignKey("VoterId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("Proposal");
-
-                    b.Navigation("Voter");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Document", b =>
@@ -2028,35 +1646,11 @@ namespace CoOwnershipVehicle.Group.Api.Migrations.GroupDb
                     b.Navigation("Members");
 
                     b.Navigation("Proposals");
-
-                    b.Navigation("RecurringBookings");
-
-                    b.Navigation("Vehicles");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Proposal", b =>
                 {
                     b.Navigation("Votes");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.User", b =>
-                {
-                    b.Navigation("ApprovedFundTransactions");
-
-                    b.Navigation("GroupMemberships");
-
-                    b.Navigation("InitiatedFundTransactions");
-
-                    b.Navigation("RecurringBookings");
-
-                    b.Navigation("Votes");
-                });
-
-            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
-                {
-                    b.Navigation("MaintenanceRecords");
-
-                    b.Navigation("RecurringBookings");
                 });
 #pragma warning restore 612, 618
         }

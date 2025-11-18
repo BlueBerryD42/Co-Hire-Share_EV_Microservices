@@ -39,31 +39,10 @@ public class UserProfileUpdatedConsumer : IConsumer<UserProfileUpdatedEvent>
                 return;
             }
 
-            // Update user profile data in Auth service
-            user.FirstName = message.FirstName;
-            user.LastName = message.LastName;
-            user.Phone = message.Phone;
-            user.Address = message.Address;
-            user.City = message.City;
-            user.Country = message.Country;
-            user.PostalCode = message.PostalCode;
-            user.DateOfBirth = message.DateOfBirth;
-            user.Role = (Domain.Entities.UserRole)message.Role;
-            user.KycStatus = (Domain.Entities.KycStatus)message.KycStatus;
-            user.UpdatedAt = message.UpdatedAt;
-
-            // Save changes using UserManager to ensure proper Identity handling
-            var result = await _userManager.UpdateAsync(user);
-            
-            if (result.Succeeded)
-            {
-                _logger.LogInformation("Successfully synchronized user profile data for user {UserId}", message.UserId);
-            }
-            else
-            {
-                _logger.LogError("Failed to update user profile in Auth service for user {UserId}. Errors: {Errors}", 
-                    message.UserId, string.Join(", ", result.Errors.Select(e => e.Description)));
-            }
+            // Auth DB no longer stores profile data - all profile data is in User service database
+            // This consumer is kept for backward compatibility but does nothing
+            // Profile data will be fetched from User service when needed (e.g., for JWT claims)
+            _logger.LogInformation("User profile updated event received for {UserId}. Auth DB no longer stores profile data - skipping sync.", message.UserId);
         }
         catch (Exception ex)
         {

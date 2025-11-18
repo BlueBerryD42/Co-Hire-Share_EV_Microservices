@@ -20,6 +20,7 @@ public class JwtTokenService : IJwtTokenService
     private readonly ILogger<JwtTokenService> _logger;
     private readonly IDatabase? _redisDatabase;
     private readonly string _keyPrefix;
+    private readonly IUserServiceClient? _userServiceClient;
     
     // Fallback in-memory storage when Redis is not available
     private static readonly Dictionary<string, Guid> _inMemoryRefreshTokens = new();
@@ -28,13 +29,15 @@ public class JwtTokenService : IJwtTokenService
         IConfiguration configuration,
         UserManager<User> userManager,
         ILogger<JwtTokenService> logger,
-        IDatabase? redisDatabase)
+        IDatabase? redisDatabase,
+        IUserServiceClient? userServiceClient = null)
     {
         _configuration = configuration;
         _userManager = userManager;
         _logger = logger;
         _redisDatabase = redisDatabase;
         _keyPrefix = CoOwnershipVehicle.Shared.Configuration.EnvironmentHelper.GetRedisConfigParams(configuration).KeyPrefix;
+        _userServiceClient = userServiceClient;
         
         if (_redisDatabase == null)
         {
@@ -55,6 +58,15 @@ public class JwtTokenService : IJwtTokenService
         // Store refresh token (in production, use a secure store like Redis)
         await StoreRefreshTokenAsync(user.Id, refreshToken);
 
+        // Extract user info from claims for the response DTO
+        var firstName = claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.GivenName)?.Value ?? string.Empty;
+        var lastName = claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Surname)?.Value ?? string.Empty;
+        var roleClaim = claims.FirstOrDefault(c => c.Type == "role")?.Value ?? "CoOwner";
+        var kycClaim = claims.FirstOrDefault(c => c.Type == "kyc_status")?.Value ?? "Pending";
+        
+        Enum.TryParse<UserRole>(roleClaim, out var userRole);
+        Enum.TryParse<KycStatus>(kycClaim, out var kycStatus);
+
         return new LoginResponseDto
         {
             AccessToken = accessToken,
@@ -64,12 +76,12 @@ public class JwtTokenService : IJwtTokenService
             {
                 Id = user.Id,
                 Email = user.Email!,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                Phone = user.Phone,
-                KycStatus = user.KycStatus,
-                Role = user.Role,
-                CreatedAt = user.CreatedAt
+                FirstName = firstName,
+                LastName = lastName,
+                Phone = null, // Phone not included in role info endpoint
+                KycStatus = kycStatus,
+                Role = userRole,
+                CreatedAt = DateTime.UtcNow // Not stored in Auth DB
             }
         };
     }
@@ -147,22 +159,56 @@ public class JwtTokenService : IJwtTokenService
 
     private async Task<List<System.Security.Claims.Claim>> BuildClaimsAsync(User user)
     {
+        // Fetch user profile data from User service for JWT claims
+        UserRoleInfo? roleInfo = null;
+        if (_userServiceClient != null)
+        {
+            try
+            {
+                roleInfo = await _userServiceClient.GetUserRoleInfoAsync(user.Id);
+                if (roleInfo != null)
+                {
+                    _logger.LogDebug("Successfully fetched user role info for {UserId}: Role={Role}, KycStatus={KycStatus}", 
+                        user.Id, roleInfo.Role, roleInfo.KycStatus);
+                }
+                else
+                {
+                    _logger.LogWarning("User role info not found for {UserId}, using defaults", user.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch user role info for {UserId} from User service, using defaults", user.Id);
+            }
+        }
+        else
+        {
+            _logger.LogWarning("UserServiceClient not available, using default role values for {UserId}", user.Id);
+        }
+
+        // Use fetched role info or defaults
+        var userRole = roleInfo?.Role ?? Domain.Entities.UserRole.CoOwner;
+        var kycStatus = roleInfo?.KycStatus ?? Domain.Entities.KycStatus.Pending;
+        var firstName = roleInfo?.FirstName ?? string.Empty;
+        var lastName = roleInfo?.LastName ?? string.Empty;
+
         var claims = new List<System.Security.Claims.Claim>
         {
             new(System.Security.Claims.ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(System.Security.Claims.ClaimTypes.Email, user.Email ?? string.Empty),
-            new(System.Security.Claims.ClaimTypes.GivenName, user.FirstName ?? string.Empty),
-            new(System.Security.Claims.ClaimTypes.Surname, user.LastName ?? string.Empty),
-            new("role", user.Role.ToString()),
-            new("kyc_status", user.KycStatus.ToString()),
+            new(System.Security.Claims.ClaimTypes.GivenName, firstName),
+            new(System.Security.Claims.ClaimTypes.Surname, lastName),
+            new("role", userRole.ToString()), // Actual role from UserProfile
+            new("kyc_status", kycStatus.ToString()), // Actual KYC status from UserProfile
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat,
                 new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(),
                 System.Security.Claims.ClaimValueTypes.Integer64)
         };
 
-        var roles = await _userManager.GetRolesAsync(user);
-        foreach (var role in roles)
+        // Add ASP.NET Identity roles (for [Authorize(Roles = "...")] attributes)
+        var identityRoles = await _userManager.GetRolesAsync(user);
+        foreach (var role in identityRoles)
         {
             claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, role));
         }

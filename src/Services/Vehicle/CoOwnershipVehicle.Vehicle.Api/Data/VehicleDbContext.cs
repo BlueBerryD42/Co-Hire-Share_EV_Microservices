@@ -26,6 +26,14 @@ public class VehicleDbContext : DbContext
     {
         base.OnModelCreating(builder);
 
+        // Explicitly ignore Identity entities - Vehicle service doesn't use Identity
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRoleClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserLogin<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserToken<Guid>>();
+
 		// Ignore entities not relevant to Vehicle service
         builder.Ignore<KycDocument>();
         builder.Ignore<Invoice>();
@@ -101,7 +109,7 @@ builder.Entity<MaintenanceSchedule>(entity =>
     entity.HasIndex(e => e.Status);
 });
 
-// ✅ Gộp cấu hình MaintenanceRecord từ cả hai bên
+//  Gộp cấu hình MaintenanceRecord từ cả hai bên
 builder.Entity<MaintenanceRecord>(entity =>
 {
     entity.ToTable("MaintenanceRecords");

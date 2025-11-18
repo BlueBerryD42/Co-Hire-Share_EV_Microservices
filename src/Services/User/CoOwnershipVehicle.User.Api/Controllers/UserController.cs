@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.User.Api.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace CoOwnershipVehicle.User.Api.Controllers;
 
@@ -32,7 +33,7 @@ public class UserController : ControllerBase
         {
             var userId = GetCurrentUserId();
             
-            // First, ensure user is synced from Auth service
+            // Sync user from Auth service (HTTP pattern, consistent with other services)
             var syncedUser = await _userSyncService.SyncUserAsync(userId);
             
             if (syncedUser == null)
@@ -41,24 +42,68 @@ public class UserController : ControllerBase
                 return NotFound(new { message = "User profile not found" });
             }
             
-            // Small delay to ensure database transaction is committed
-            await Task.Delay(100);
-            
-            // Then get the full profile with KYC documents
+            // Get the full profile with KYC documents
             var profile = await _userService.GetUserProfileAsync(userId);
             
             if (profile == null)
             {
-                _logger.LogWarning("User profile not found after sync for user {UserId}", userId);
+                _logger.LogWarning("User profile not found for user {UserId}", userId);
                 return NotFound(new { message = "User profile not found" });
             }
 
             return Ok(profile);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt to get profile");
+            return Unauthorized(new { message = ex.Message });
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting user profile");
-            return StatusCode(500, new { message = "An error occurred while retrieving profile" });
+            _logger.LogError(ex, "Error retrieving user profile: {Message}", ex.Message);
+            return StatusCode(500, new { message = "An error occurred while retrieving profile", details = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Internal endpoint: Get user role for JWT token generation (Auth service only)
+    /// This endpoint is called by Auth service during token generation to get the user's role.
+    /// Uses service key authentication for internal service-to-service communication.
+    /// </summary>
+    [HttpGet("internal/role/{userId:guid}")]
+    public async Task<IActionResult> GetUserRoleForToken(Guid userId, [FromHeader(Name = "X-Service-Key")] string? serviceKey)
+    {
+        try
+        {
+            // Verify service key for internal service calls
+            var expectedServiceKey = HttpContext.RequestServices.GetRequiredService<IConfiguration>()["ServiceKeys:Internal"] 
+                ?? Environment.GetEnvironmentVariable("SERVICE_KEY_INTERNAL");
+            
+            if (string.IsNullOrEmpty(expectedServiceKey) || serviceKey != expectedServiceKey)
+            {
+                _logger.LogWarning("Unauthorized internal service call attempt for user role lookup");
+                return Unauthorized(new { message = "Invalid service key" });
+            }
+
+            var profile = await _userService.GetUserProfileAsync(userId);
+            
+            if (profile == null)
+                return NotFound(new { message = "User not found" });
+
+            // Return only role information needed for JWT token
+            return Ok(new
+            {
+                UserId = profile.Id,
+                Role = profile.Role.ToString(),
+                KycStatus = profile.KycStatus.ToString(),
+                FirstName = profile.FirstName,
+                LastName = profile.LastName
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting user role for token generation {UserId}", userId);
+            return StatusCode(500, new { message = "An error occurred while retrieving user role" });
         }
     }
 

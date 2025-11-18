@@ -37,12 +37,51 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("IsLateReturn")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("LateFeeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<double?>("LateReturnMinutes")
+                        .HasColumnType("float");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
                     b.Property<int>("Odometer")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("SignatureCapturedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SignatureCertificateUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("SignatureDevice")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SignatureDeviceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SignatureHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("SignatureIpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<bool?>("SignatureMatchesPrevious")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SignatureMetadataJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("SignatureReference")
                         .HasMaxLength(500)
@@ -73,8 +112,15 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("CapturedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("CheckInId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -83,8 +129,29 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
+
                     b.Property<string>("PhotoUrl")
                         .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("StoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ThumbnailPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ThumbnailUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
@@ -101,14 +168,87 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                     b.ToTable("CheckInPhoto");
                 });
 
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.LateReturnFee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CalculationMethod")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("CheckInId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ExpenseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("FeeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("InvoiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LateDurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("OriginalFeeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("WaivedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("WaivedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WaivedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CheckInId")
+                        .IsUnique();
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("LateReturnFee");
+                });
+
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.MaintenanceRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<decimal>("ActualCost")
+                    b.Property<decimal?>("ActualCost")
+                        .IsRequired()
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("ActualDurationMinutes")
+                        .HasColumnType("int");
 
                     b.Property<int>("CompletionPercentage")
                         .HasColumnType("int");
@@ -116,7 +256,16 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<decimal?>("EstimatedCost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("EstimatedDurationMinutes")
+                        .HasColumnType("int");
+
                     b.Property<Guid?>("ExpenseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("GroupId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("NextServiceDue")
@@ -125,17 +274,38 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                     b.Property<int?>("NextServiceOdometer")
                         .HasColumnType("int");
 
-                    b.Property<int>("OdometerReading")
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("OdometerAtService")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OdometerReading")
                         .HasColumnType("int");
 
                     b.Property<string>("PartsReplaced")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<string>("PartsUsed")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<Guid>("PerformedBy")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("ServiceDate")
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("ScheduledDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ServiceCompletedDate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("ServiceProvider")
@@ -153,6 +323,9 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                     b.Property<int>("ServiceType")
                         .HasColumnType("int");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -168,9 +341,9 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
 
                     b.HasIndex("OdometerReading");
 
-                    b.HasIndex("ServiceDate");
+                    b.HasIndex("ScheduledDate");
 
-                    b.HasIndex("VehicleId");
+                    b.HasIndex("VehicleId", "Status", "ScheduledDate");
 
                     b.ToTable("MaintenanceRecords", (string)null);
                 });
@@ -248,6 +421,82 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                     b.HasIndex("VehicleId");
 
                     b.ToTable("MaintenanceSchedules", (string)null);
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.RecurringBooking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancellationReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DaysOfWeekMask")
+                        .HasColumnType("int");
+
+                    b.Property<TimeSpan>("EndTime")
+                        .HasColumnType("time");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Interval")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastGeneratedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastGenerationRunAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Pattern")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("PausedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Purpose")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly?>("RecurrenceEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("RecurrenceStartDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeSpan>("StartTime")
+                        .HasColumnType("time");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("RecurringBooking");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
@@ -377,9 +626,11 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckIn", b =>
                 {
-                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", null)
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
                         .WithMany("CheckIns")
                         .HasForeignKey("VehicleId");
+
+                    b.Navigation("Vehicle");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckInPhoto", b =>
@@ -393,10 +644,29 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                     b.Navigation("CheckIn");
                 });
 
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.LateReturnFee", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.CheckIn", "CheckIn")
+                        .WithOne("LateReturnFee")
+                        .HasForeignKey("CoOwnershipVehicle.Domain.Entities.LateReturnFee", "CheckInId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CheckIn");
+
+                    b.Navigation("Vehicle");
+                });
+
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.MaintenanceRecord", b =>
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
+                        .WithMany("MaintenanceRecords")
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -408,6 +678,17 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                 {
                     b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
                         .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Vehicle");
+                });
+
+            modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.RecurringBooking", b =>
+                {
+                    b.HasOne("CoOwnershipVehicle.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany("RecurringBookings")
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -428,12 +709,18 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.CheckIn", b =>
                 {
+                    b.Navigation("LateReturnFee");
+
                     b.Navigation("Photos");
                 });
 
             modelBuilder.Entity("CoOwnershipVehicle.Domain.Entities.Vehicle", b =>
                 {
                     b.Navigation("CheckIns");
+
+                    b.Navigation("MaintenanceRecords");
+
+                    b.Navigation("RecurringBookings");
                 });
 #pragma warning restore 612, 618
         }
