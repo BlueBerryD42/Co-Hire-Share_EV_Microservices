@@ -8,6 +8,7 @@ using CoOwnershipVehicle.Shared.Configuration;
 using CoOwnershipVehicle.Vehicle.Api.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using CoOwnershipVehicle.Vehicle.Api.Consumers;
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -76,7 +77,14 @@ namespace CoOwnershipVehicle.Vehicle.Api
         public static void ConfigureServices(WebApplicationBuilder builder)
         {
             // Add services to the container.
-            builder.Services.AddControllers();
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    // Use camelCase for JSON serialization (to match frontend)
+                    options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+                    // Allow both string and numeric enum values
+                    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+                });
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>
             {
@@ -136,6 +144,8 @@ namespace CoOwnershipVehicle.Vehicle.Api
             // Add MassTransit for message bus (must be registered before services that use IPublishEndpoint)
             builder.Services.AddMassTransit(x =>
             {
+                x.AddConsumer<GroupCreatedConsumer>();
+
                 x.UsingRabbitMq((context, cfg) =>
                 {
                     cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));

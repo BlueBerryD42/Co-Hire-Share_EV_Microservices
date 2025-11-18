@@ -18,6 +18,7 @@ public class VehicleDbContext : DbContext
 
     // Vehicle health tracking
     public DbSet<VehicleHealthScore> VehicleHealthScores { get; set; }
+    public DbSet<OwnershipGroup> OwnershipGroups { get; set; }
 
     // Note: User, OwnershipGroup, GroupMember, Booking, Expense entities are NOT included here.
     // Vehicle service only stores foreign key IDs (Guid) and fetches related data via HTTP calls or events.
@@ -60,7 +61,6 @@ public class VehicleDbContext : DbContext
 
         // Ignore cross-service entities - Vehicle service only stores foreign key IDs
         builder.Ignore<User>();
-        builder.Ignore<OwnershipGroup>();
         builder.Ignore<GroupMember>();
         builder.Ignore<Booking>();
         builder.Ignore<Expense>();
@@ -81,9 +81,20 @@ public class VehicleDbContext : DbContext
             // The relationship exists at the application level. We just store the ID.
             entity.Ignore(e => e.Group); // Ignore the navigation property
 
+            entity.HasOne<OwnershipGroup>()
+                .WithMany()
+                .HasForeignKey(e => e.GroupId);
+
             entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.Vin).IsUnique();
             entity.HasIndex(e => e.PlateNumber).IsUnique();
+        });
+
+        builder.Entity<OwnershipGroup>(entity =>
+        {
+            entity.ToTable("OwnershipGroups");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired();
         });
 
 // MaintenanceSchedule entity configuration

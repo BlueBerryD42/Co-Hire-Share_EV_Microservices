@@ -126,19 +126,55 @@ public class VehicleController : ControllerBase
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            if (createDto.GroupId == null || createDto.GroupId == Guid.Empty)
+            {
+                return BadRequest(new { message = "GroupId is required." });
+            }
+
             var userId = GetCurrentUserId();
 
-            // Ultra-robust, manual role check that checks for both short and long role claim types
+            // Get user's system role
             var roles = User.Claims
                 .Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role)
                 .Select(c => c.Value);
 
             var isSystemAdmin = roles.Contains("SystemAdmin");
-            var isGroupAdmin = roles.Contains("GroupAdmin");
 
-            if (!isSystemAdmin && !isGroupAdmin)
+            var accessToken = GetAccessToken();
+            // If not system admin, verify user is a member of the target group
+            if (!isSystemAdmin)
             {
-                 return Forbidden(new { message = "Insufficient permissions to create vehicle for this group" });
+                await Task.Delay(5000); // Temporary delay to mitigate race condition
+
+                // Get user's groups to verify they're a member of the target group
+                var userGroups = await _groupServiceClient.GetUserGroups(accessToken);
+                var targetGroup = userGroups.FirstOrDefault(g => g.Id == createDto.GroupId);
+
+                if (targetGroup == null)
+                {
+                    _logger.LogWarning("User {UserId} attempted to add vehicle to group {GroupId} but is not a member", userId, createDto.GroupId);
+                    return Forbidden(new { message = "You are not a member of this group" });
+                }
+
+                _logger.LogInformation("User {UserId} is a member of group {GroupId}, allowing vehicle creation", userId, createDto.GroupId);
+            }
+
+            // ### FIX: Validate GroupId by calling Group Service directly ###
+            // This replaces the check against the local, potentially stale, database table.
+            try
+            {
+                var groupDetails = await _groupServiceClient.GetGroupDetailsAsync(createDto.GroupId.Value, accessToken);
+                if (groupDetails == null)
+                {
+                     _logger.LogWarning("Validation failed: Group with ID {GroupId} not found via GroupServiceClient.", createDto.GroupId);
+                    return BadRequest(new { message = $"Group with ID {createDto.GroupId} could not be found or verified." });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating GroupId {GroupId} with Group Service.", createDto.GroupId);
+                // Depending on the client's behavior, it might throw on a 404.
+                return BadRequest(new { message = $"Error validating group with ID {createDto.GroupId}. It may not exist." });
             }
 
             // Check if VIN already exists

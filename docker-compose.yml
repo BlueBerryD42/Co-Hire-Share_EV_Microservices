@@ -148,6 +148,9 @@ services:
         APP_DLL: CoOwnershipVehicle.Vehicle.Api.dll
     ports:
       - "61604:8080"
+    environment:
+      <<: *common-env
+      GroupService__BaseUrl: "http://group-api:8080"
     networks:
       - coownership
     deploy:
