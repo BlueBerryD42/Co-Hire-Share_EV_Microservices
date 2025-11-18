@@ -140,8 +140,6 @@ public class BookingRepository : IBookingRepository
     public Task<CoOwnershipVehicle.Domain.Entities.Booking?> GetBookingWithDetailsAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
         return _context.Bookings
-            .Include(b => b.LateReturnFees)
-                .ThenInclude(f => f.CheckIn)
             .Include(b => b.CheckIns)
                 .ThenInclude(ci => ci.Photos)
             .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
@@ -150,6 +148,23 @@ public class BookingRepository : IBookingRepository
     public Task<CoOwnershipVehicle.Domain.Entities.Booking?> GetBookingWithVehicleAndUserAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
         return _context.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
+    }
+
+    public Task<List<CoOwnershipVehicle.Domain.Entities.Booking>> GetUserBookingHistoryAsync(Guid userId, DateTime before, int limit, CancellationToken cancellationToken = default)
+    {
+        limit = Math.Clamp(limit, 1, 100);
+
+        var query = _context.Bookings
+            .AsNoTracking()
+            .Where(b => b.UserId == userId && b.EndAt <= before)
+            .Include(b => b.CheckIns)
+                .ThenInclude(ci => ci.Photos)
+            .AsSplitQuery();
+
+        return query
+            .OrderByDescending(b => b.EndAt)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
     }
 
 }

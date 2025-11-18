@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using CoOwnershipVehicle.Domain.Entities;
 
@@ -85,6 +87,12 @@ public class PriorityCalculationDto
     public decimal HistoricalUsage { get; set; }
     public int DaysSinceLastBooking { get; set; }
     public decimal CalculatedScore { get; set; }
+}
+
+public class BookingHistoryEntryDto
+{
+    public BookingDto Booking { get; set; } = new();
+    public IReadOnlyList<CheckInDto> CheckIns { get; set; } = Array.Empty<CheckInDto>();
 }
 
 

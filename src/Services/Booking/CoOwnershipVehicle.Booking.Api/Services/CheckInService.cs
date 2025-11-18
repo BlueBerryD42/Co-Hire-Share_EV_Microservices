@@ -42,6 +42,18 @@ public class CheckInService : ICheckInService
             throw new UnauthorizedAccessException("You cannot start a trip for this booking.");
         }
 
+        if (DateTime.UtcNow > booking.EndAt)
+        {
+            _logger.LogWarning("User {UserId} attempted to start a trip for booking {BookingId} after it ended at {EndAt}.", userId, booking.Id, booking.EndAt);
+            throw new InvalidOperationException("This booking has already ended. Please create a new booking to start a trip.");
+        }
+
+        if (await HasPendingCheckOutAsync(booking.Id, cancellationToken))
+        {
+            _logger.LogWarning("User {UserId} attempted to start a trip for booking {BookingId} while another trip was still in progress.", userId, booking.Id);
+            throw new InvalidOperationException("Trip already in progress. Please complete the checkout before starting again.");
+        }
+
         var checkIn = new CheckIn
         {
             Id = Guid.NewGuid(),
@@ -52,7 +64,7 @@ public class CheckInService : ICheckInService
             Odometer = request.OdometerReading,
             Notes = request.Notes,
             SignatureReference = request.SignatureReference,
-            CheckInTime = DateTime.UtcNow,
+            CheckInTime = request.ClientTimestamp ?? DateTime.UtcNow,
             Photos = MapPhotos(request.Photos)
         };
 
@@ -98,7 +110,7 @@ public class CheckInService : ICheckInService
             Odometer = request.OdometerReading,
             Notes = request.Notes,
             SignatureReference = request.SignatureReference,
-            CheckInTime = DateTime.UtcNow,
+            CheckInTime = request.ClientTimestamp ?? DateTime.UtcNow,
             Photos = MapPhotos(request.Photos)
         };
 
@@ -129,6 +141,23 @@ public class CheckInService : ICheckInService
 
         var entries = await _checkInRepository.GetByBookingAsync(bookingId, cancellationToken);
         return entries.Select(MapToDto).ToList();
+    }
+
+    private async Task<bool> HasPendingCheckOutAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        var latestCheckOut = await _checkInRepository.GetLatestAsync(bookingId, CheckInType.CheckOut, cancellationToken);
+        if (latestCheckOut == null)
+        {
+            return false;
+        }
+
+        var latestCheckIn = await _checkInRepository.GetLatestAsync(bookingId, CheckInType.CheckIn, cancellationToken);
+        if (latestCheckIn == null)
+        {
+            return true;
+        }
+
+        return latestCheckOut.CheckInTime >= latestCheckIn.CheckInTime;
     }
 
     private decimal CalculateFee(decimal distance)
