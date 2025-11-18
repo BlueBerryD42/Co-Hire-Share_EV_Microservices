@@ -11,22 +11,6 @@ x-dotnet-service: &dotnet-service
     <<: *common-env
 
 services:
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: kiettran
-      RABBITMQ_DEFAULT_PASS: 12345
-    networks:
-      - coownership
-    healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   api-gateway:
     <<: *dotnet-service
     build:
@@ -36,7 +20,6 @@ services:
         PROJECT: src/Infrastructure/ApiGateway/CoOwnershipVehicle.ApiGateway/CoOwnershipVehicle.ApiGateway.csproj
         APP_DLL: CoOwnershipVehicle.ApiGateway.dll
     depends_on:
-      - rabbitmq
       - auth-api
       - user-api
       - group-api
@@ -60,9 +43,6 @@ services:
       args:
         PROJECT: src/Services/Auth/CoOwnershipVehicle.Auth.Api/CoOwnershipVehicle.Auth.Api.csproj
         APP_DLL: CoOwnershipVehicle.Auth.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61601:8080"
     environment:
@@ -78,9 +58,6 @@ services:
       args:
         PROJECT: src/Services/User/CoOwnershipVehicle.User.Api/CoOwnershipVehicle.User.Api.csproj
         APP_DLL: CoOwnershipVehicle.User.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61602:8080"
     environment:
@@ -96,9 +73,6 @@ services:
       args:
         PROJECT: src/Services/Group/CoOwnershipVehicle.Group.Api/CoOwnershipVehicle.Group.Api.csproj
         APP_DLL: CoOwnershipVehicle.Group.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61603:8080"
     environment:
@@ -115,9 +89,6 @@ services:
       args:
         PROJECT: src/Services/Vehicle/CoOwnershipVehicle.Vehicle.Api/CoOwnershipVehicle.Vehicle.Api.csproj
         APP_DLL: CoOwnershipVehicle.Vehicle.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61604:8080"
     environment:
@@ -133,9 +104,6 @@ services:
       args:
         PROJECT: src/Services/Payment/CoOwnershipVehicle.Payment.Api/CoOwnershipVehicle.Payment.Api.csproj
         APP_DLL: CoOwnershipVehicle.Payment.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61605:8080"
     environment:
@@ -151,9 +119,6 @@ services:
       args:
         PROJECT: src/Services/Booking/CoOwnershipVehicle.Booking.Api/CoOwnershipVehicle.Booking.Api.csproj
         APP_DLL: CoOwnershipVehicle.Booking.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61606:8080"
     environment:
@@ -169,9 +134,6 @@ services:
       args:
         PROJECT: src/Services/Admin/CoOwnershipVehicle.Admin.Api/CoOwnershipVehicle.Admin.Api.csproj
         APP_DLL: CoOwnershipVehicle.Admin.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61607:8080"
     environment:
@@ -188,9 +150,6 @@ services:
       args:
         PROJECT: src/Services/Analytics/CoOwnershipVehicle.Analytics.Api/CoOwnershipVehicle.Analytics.Api.csproj
         APP_DLL: CoOwnershipVehicle.Analytics.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61608:8080"
     environment:
@@ -206,9 +165,6 @@ services:
       args:
         PROJECT: src/Services/Notification/CoOwnershipVehicle.Notification.Api/CoOwnershipVehicle.Notification.Api.csproj
         APP_DLL: CoOwnershipVehicle.Notification.Api.dll
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     ports:
       - "61609:8080"
     environment:
