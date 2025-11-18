@@ -19,6 +19,14 @@ public class AnalyticsDbContext : DbContext
     {
         base.OnModelCreating(builder);
 
+        // Explicitly ignore Identity entities - Analytics service doesn't use Identity
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRoleClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserLogin<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserToken<Guid>>();
+
         // Ignore all entities that are not part of the Analytics service
         builder.Ignore<User>();
         builder.Ignore<KycDocument>();

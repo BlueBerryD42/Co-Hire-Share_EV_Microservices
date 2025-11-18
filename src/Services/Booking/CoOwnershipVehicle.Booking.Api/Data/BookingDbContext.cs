@@ -17,6 +17,14 @@ public class BookingDbContext : DbContext
     {
         base.OnModelCreating(builder);
 
+        // Explicitly ignore Identity entities - Booking service doesn't use Identity
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRoleClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserLogin<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserToken<Guid>>();
+
         builder.Ignore<User>();
         builder.Ignore<OwnershipGroup>();
         builder.Ignore<GroupMember>();
