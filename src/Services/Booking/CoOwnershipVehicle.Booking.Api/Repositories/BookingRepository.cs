@@ -140,8 +140,6 @@ public class BookingRepository : IBookingRepository
     public Task<CoOwnershipVehicle.Domain.Entities.Booking?> GetBookingWithDetailsAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
         return _context.Bookings
-            .Include(b => b.LateReturnFees)
-                .ThenInclude(f => f.CheckIn)
             .Include(b => b.CheckIns)
                 .ThenInclude(ci => ci.Photos)
             .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);

@@ -52,7 +52,7 @@ public class CheckInService : ICheckInService
             Odometer = request.OdometerReading,
             Notes = request.Notes,
             SignatureReference = request.SignatureReference,
-            CheckInTime = DateTime.UtcNow,
+            CheckInTime = request.ClientTimestamp ?? DateTime.UtcNow,
             Photos = MapPhotos(request.Photos)
         };
 
@@ -98,7 +98,7 @@ public class CheckInService : ICheckInService
             Odometer = request.OdometerReading,
             Notes = request.Notes,
             SignatureReference = request.SignatureReference,
-            CheckInTime = DateTime.UtcNow,
+            CheckInTime = request.ClientTimestamp ?? DateTime.UtcNow,
             Photos = MapPhotos(request.Photos)
         };
 

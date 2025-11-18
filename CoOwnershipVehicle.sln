@@ -21,8 +21,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Data", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Domain", "src\Core\CoOwnershipVehicle.Domain\CoOwnershipVehicle.Domain.csproj", "{2DA0DFCF-2CFB-44A7-80E0-2BBDB609BEC4}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Api", "src\Services\CoOwnershipVehicle.Api\CoOwnershipVehicle.Api.csproj", "{6C0953EC-209E-41D9-A602-FCB826BC3297}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Shared", "src\Infrastructure\CoOwnershipVehicle.Shared\CoOwnershipVehicle.Shared.csproj", "{5A845A59-9048-4130-AD08-DCD4F995AB4C}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Shared.Contracts", "src\Infrastructure\CoOwnershipVehicle.Shared.Contracts\CoOwnershipVehicle.Shared.Contracts.csproj", "{FFA55DCF-55DC-4EEC-B288-9220479D7D44}"
@@ -38,8 +36,6 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Booking.Api", "src\Services\Booking\CoOwnershipVehicle.Booking.Api\CoOwnershipVehicle.Booking.Api.csproj", "{B8810135-3489-4E5B-97DF-D83CC02E445C}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.Payment.Api", "src\Services\Payment\CoOwnershipVehicle.Payment.Api\CoOwnershipVehicle.Payment.Api.csproj", "{72E6C64F-4BDF-4108-8B35-9D592A9394E0}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoOwnershipVehicle.ApiGateway", "src\Infrastructure\ApiGateway\CoOwnershipVehicle.ApiGateway\CoOwnershipVehicle.ApiGateway.csproj", "{B909B70B-76AA-487B-A74F-72625D862234}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoOwnershipVehicle.Vehicle.Api.Tests", "tests\Unit\CoOwnershipVehicle.Vehicle.Api.Tests\CoOwnershipVehicle.Vehicle.Api.Tests.csproj", "{9CF8491F-FBFF-1386-5716-2FDE99D03B82}"
 EndProject
@@ -91,18 +87,6 @@ Global
 		{2DA0DFCF-2CFB-44A7-80E0-2BBDB609BEC4}.Release|x64.Build.0 = Release|Any CPU
 		{2DA0DFCF-2CFB-44A7-80E0-2BBDB609BEC4}.Release|x86.ActiveCfg = Release|Any CPU
 		{2DA0DFCF-2CFB-44A7-80E0-2BBDB609BEC4}.Release|x86.Build.0 = Release|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Debug|x64.Build.0 = Debug|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Debug|x86.Build.0 = Debug|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Release|x64.ActiveCfg = Release|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Release|x64.Build.0 = Release|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Release|x86.ActiveCfg = Release|Any CPU
-		{6C0953EC-209E-41D9-A602-FCB826BC3297}.Release|x86.Build.0 = Release|Any CPU
 		{FFA55DCF-55DC-4EEC-B288-9220479D7D44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{FFA55DCF-55DC-4EEC-B288-9220479D7D44}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FFA55DCF-55DC-4EEC-B288-9220479D7D44}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -322,7 +306,6 @@ Global
 		{5A845A59-9048-4130-AD08-DCD4F995AB4C} = {9A56A4F1-5396-4241-9EBC-8E1C41042C34}
 		{FFA55DCF-55DC-4EEC-B288-9220479D7D44} = {9A56A4F1-5396-4241-9EBC-8E1C41042C34}
 		{B909B70B-76AA-487B-A74F-72625D862234} = {9A56A4F1-5396-4241-9EBC-8E1C41042C34}
-		{6C0953EC-209E-41D9-A602-FCB826BC3297} = {DDE62CE3-4C5B-4049-B39B-864BB254E24E}
 		{8E7BD56C-4262-4F8B-BD68-AB02D8F7CC86} = {DDE62CE3-4C5B-4049-B39B-864BB254E24E}
 		{89243142-A79D-41F8-9F8E-59A21C8A8F72} = {DDE62CE3-4C5B-4049-B39B-864BB254E24E}
 		{F76B1A2C-5A19-4EE0-86BB-52675A7380F2} = {DDE62CE3-4C5B-4049-B39B-864BB254E24E}

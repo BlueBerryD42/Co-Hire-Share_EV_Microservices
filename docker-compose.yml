@@ -29,7 +29,6 @@ services:
       - admin-api
       - analytics-api
       - notification-api
-      - coownership-api
     ports:
       - "61600:8080"
     networks:
@@ -152,19 +151,6 @@ services:
         APP_DLL: CoOwnershipVehicle.Notification.Api.dll
     ports:
       - "61609:8080"
-    networks:
-      - coownership
-
-  coownership-api:
-    <<: *dotnet-service
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        PROJECT: src/Services/CoOwnershipVehicle.Api/CoOwnershipVehicle.Api.csproj
-        APP_DLL: CoOwnershipVehicle.Api.dll
-    ports:
-      - "61710:8080"
     networks:
       - coownership
 
