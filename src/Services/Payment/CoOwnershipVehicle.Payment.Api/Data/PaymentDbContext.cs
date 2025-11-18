@@ -21,6 +21,14 @@ public class PaymentDbContext : DbContext
     {
         base.OnModelCreating(builder);
 
+        // Explicitly ignore Identity entities - Payment service doesn't use Identity
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityRoleClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserRole<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserClaim<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserLogin<Guid>>();
+        builder.Ignore<Microsoft.AspNetCore.Identity.IdentityUserToken<Guid>>();
+
         // Ignore entities not relevant to Payment service
         builder.Ignore<KycDocument>();
         builder.Ignore<Booking>();
