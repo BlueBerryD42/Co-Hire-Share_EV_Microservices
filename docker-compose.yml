@@ -126,6 +126,7 @@ services:
     environment:
       <<: *common-env
       SIGNATURE_REMINDER_BASE_URL: "http://localhost:61600"  # Use API Gateway for external access
+      ServiceUrls__User: "http://user-api:8080"  # Use Docker service name for inter-service communication
     networks:
       - coownership
     deploy:

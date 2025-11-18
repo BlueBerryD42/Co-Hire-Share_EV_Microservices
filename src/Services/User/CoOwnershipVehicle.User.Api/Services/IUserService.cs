@@ -11,6 +11,7 @@ namespace CoOwnershipVehicle.User.Api.Services;
 public interface IUserService
 {
     Task<UserProfileDto?> GetUserProfileAsync(Guid userId);
+    Task<UserProfileDto?> GetUserByEmailAsync(string email);
     Task<UserProfileDto> UpdateUserProfileAsync(Guid userId, UpdateUserProfileDto updateDto);
     // ChangePasswordAsync removed - password changes should be handled by Auth service only
     Task<KycDocumentDto> UploadKycDocumentAsync(Guid userId, UploadKycDocumentDto uploadDto);
@@ -167,6 +168,39 @@ public class UserService : IUserService
         }
 
         return (await GetUserProfileAsync(userId))!;
+    }
+
+    public async Task<UserProfileDto?> GetUserByEmailAsync(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return null;
+
+        var normalizedEmail = email.ToUpperInvariant();
+        var user = await _context.UserProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail || u.Email == email);
+
+        if (user == null)
+            return null;
+
+        return new UserProfileDto
+        {
+            Id = user.Id,
+            Email = user.Email!,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Phone = user.Phone,
+            Address = user.Address,
+            City = user.City,
+            Country = user.Country,
+            PostalCode = user.PostalCode,
+            DateOfBirth = user.DateOfBirth,
+            KycStatus = (KycStatus)user.KycStatus,
+            Role = (UserRole)user.Role,
+            CreatedAt = user.CreatedAt,
+            UpdatedAt = user.UpdatedAt,
+            KycDocuments = new List<KycDocumentDto>() // Don't load documents for search
+        };
     }
 
     // ChangePasswordAsync method removed - password changes should be handled by Auth service only

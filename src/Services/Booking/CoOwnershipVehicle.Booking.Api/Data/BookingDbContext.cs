@@ -98,7 +98,7 @@ public class BookingDbContext : DbContext
         builder.Entity<CheckInPhoto>(entity =>
         {
             entity.ToTable("CheckInPhoto");
-            entity.Property(e => e.PhotoUrl).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.PhotoUrl).IsRequired().HasMaxLength(4000);
             entity.Property(e => e.Description).HasMaxLength(200);
             entity.Property(e => e.Type).HasConversion<int>();
 

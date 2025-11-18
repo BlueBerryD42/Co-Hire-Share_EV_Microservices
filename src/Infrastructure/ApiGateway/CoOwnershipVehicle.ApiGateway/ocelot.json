@@ -65,8 +65,8 @@
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
-          "Host": "localhost",
-          "Port": 61603
+          "Host": "group-api",
+          "Port": 8080
         }
       ],
       "UpstreamPathTemplate": "/api/proposal/{everything}",
@@ -109,7 +109,7 @@
       "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
-      "DownstreamPathTemplate": "/api/booking/{everything}",
+      "DownstreamPathTemplate": "/api/Booking/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
@@ -117,7 +117,19 @@
           "Port": 8080
         }
       ],
-      "UpstreamPathTemplate": "/api/booking/{everything}",
+      "UpstreamPathTemplate": "/api/Booking/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
+    },
+    {
+      "DownstreamPathTemplate": "/api/CheckIn/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "booking-api",
+          "Port": 8080
+        }
+      ],
+      "UpstreamPathTemplate": "/api/CheckIn/{everything}",
       "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {

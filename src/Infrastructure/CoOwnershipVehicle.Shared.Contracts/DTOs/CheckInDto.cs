@@ -45,7 +45,7 @@ public class CheckInPhotoDto
 public class CheckInPhotoInputDto
 {
     [Required]
-    [StringLength(500)]
+    [StringLength(4000)]
     public string PhotoUrl { get; set; } = string.Empty;
 
     [Required]
@@ -111,6 +111,8 @@ public class StartTripDto
     [StringLength(500)]
     public string? SignatureReference { get; set; }
 
+    public DateTime? ClientTimestamp { get; set; }
+
     public List<CheckInPhotoInputDto> Photos { get; set; } = new();
 }
 
@@ -127,6 +129,8 @@ public class EndTripDto
 
     [StringLength(500)]
     public string? SignatureReference { get; set; }
+
+    public DateTime? ClientTimestamp { get; set; }
 
     public List<CheckInPhotoInputDto> Photos { get; set; } = new();
 }
