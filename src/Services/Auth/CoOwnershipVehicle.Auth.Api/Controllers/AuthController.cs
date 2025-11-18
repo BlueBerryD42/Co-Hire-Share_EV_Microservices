@@ -616,6 +616,101 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Correct email address during verification process
+    /// Allows users to fix their email if they registered with an incorrect address
+    /// Only works for unconfirmed email accounts
+    /// </summary>
+    [HttpPost("correct-email")]
+    public async Task<IActionResult> CorrectEmail([FromBody] CorrectEmailRequest request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            // Validate that current and new emails are different
+            if (request.CurrentEmail.Equals(request.NewEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { message = "New email must be different from current email" });
+            }
+
+            // Find user by current email
+            var user = await _userManager.FindByEmailAsync(request.CurrentEmail);
+            if (user == null)
+            {
+                _logger.LogWarning("Email correction attempt for non-existent user: {Email}", request.CurrentEmail);
+                return BadRequest(new { message = "User not found with the provided email address" });
+            }
+
+            // Check if email is already confirmed
+            if (user.EmailConfirmed)
+            {
+                _logger.LogWarning("Email correction attempt for already confirmed email: {Email}", request.CurrentEmail);
+                return BadRequest(new { message = "Cannot change email for already verified accounts. Please use the account settings to update your email." });
+            }
+
+            // Check if new email is already in use
+            var existingUserWithNewEmail = await _userManager.FindByEmailAsync(request.NewEmail);
+            if (existingUserWithNewEmail != null)
+            {
+                _logger.LogWarning("Email correction attempt with email that already exists: {NewEmail}", request.NewEmail);
+                return BadRequest(new { message = "An account with this email already exists" });
+            }
+
+            _logger.LogInformation("Correcting email for user {UserId} from {OldEmail} to {NewEmail}",
+                user.Id, request.CurrentEmail, request.NewEmail);
+
+            // Update email and username
+            user.Email = request.NewEmail;
+            user.UserName = request.NewEmail;
+            user.NormalizedEmail = request.NewEmail.ToUpperInvariant();
+            user.NormalizedUserName = request.NewEmail.ToUpperInvariant();
+
+            // Update user in database
+            var updateResult = await _userManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
+            {
+                _logger.LogError("Failed to update user email. Errors: {Errors}",
+                    string.Join(", ", updateResult.Errors.Select(e => e.Description)));
+                return StatusCode(500, new { message = "Failed to update email address", errors = updateResult.Errors });
+            }
+
+            // Generate new confirmation token for the new email
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var confirmationLink = GenerateConfirmationLink(user.Id, token);
+
+            // Send confirmation email to the new email address
+            var emailSent = await _emailService.SendEmailConfirmationAsync(request.NewEmail, confirmationLink);
+
+            if (emailSent)
+            {
+                _logger.LogInformation("Email successfully corrected and confirmation email sent to {NewEmail}", request.NewEmail);
+                return Ok(new
+                {
+                    message = "Email address updated successfully. A new confirmation email has been sent to your new email address.",
+                    newEmail = request.NewEmail
+                });
+            }
+
+            // If email sending failed, we still updated the email in database
+            _logger.LogWarning("Email was updated but confirmation email failed to send to {NewEmail}", request.NewEmail);
+            return Ok(new
+            {
+                message = "Email address updated but failed to send confirmation email. Please use the resend confirmation endpoint.",
+                newEmail = request.NewEmail
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error correcting email from {CurrentEmail} to {NewEmail}",
+                request.CurrentEmail, request.NewEmail);
+            return StatusCode(500, new { message = "An error occurred while correcting email address" });
+        }
+    }
+
+    /// <summary>
     /// Change user password (requires authentication)
     /// </summary>
     [HttpPost("change-password")]
@@ -784,4 +879,10 @@ public class ConfirmEmailRequest
 public class ResendConfirmationRequest
 {
     public string Email { get; set; } = string.Empty;
+}
+
+public class CorrectEmailRequest
+{
+    public string CurrentEmail { get; set; } = string.Empty;
+    public string NewEmail { get; set; } = string.Empty;
 }
