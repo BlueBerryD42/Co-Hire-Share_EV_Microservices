@@ -43,9 +43,11 @@ services:
       dockerfile: Dockerfile.dev
     environment:
       PROJECT: src/Services/Group/CoOwnershipVehicle.Group.Api/CoOwnershipVehicle.Group.Api.csproj
+      FileStorage__LocalStoragePath: "/app/storage/documents"
     volumes:
       - ./src:/src
       - group-api-nuget:/root/.nuget
+      - group-documents:/app/storage/documents
     command: bash -c "dotnet restore ${PROJECT} && dotnet watch run --project ${PROJECT} --urls http://0.0.0.0:8080"
 
   vehicle-api:
@@ -119,4 +121,5 @@ volumes:
   admin-api-nuget:
   analytics-api-nuget:
   notification-api-nuget:
+  group-documents:
 

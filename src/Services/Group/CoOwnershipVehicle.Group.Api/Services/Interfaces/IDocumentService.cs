@@ -22,6 +22,7 @@ public interface IDocumentService
     Task<SendForSigningResponse> SendForSigningAsync(Guid documentId, SendForSigningRequest request, Guid userId, string baseUrl);
     Task<SignDocumentResponse> SignDocumentAsync(Guid documentId, SignDocumentRequest request, Guid userId, string ipAddress, string? userAgent);
     Task<DocumentSignatureStatusResponse> GetSignatureStatusAsync(Guid documentId, Guid userId);
+    Task<List<PendingSignatureResponse>> GetMyPendingSignaturesAsync(Guid userId);
     Task<SigningCertificateResponse> GetSigningCertificateAsync(Guid documentId, Guid userId, string? baseUrl = null);
     Task<CertificateVerificationResult> VerifyCertificateAsync(string certificateId, string? providedHash = null);
     Task<(bool IsValid, string ErrorMessage)> ValidateFileAsync(IFormFile file);
@@ -36,4 +37,7 @@ public interface IDocumentService
     Task<SendReminderResponse> SendManualReminderAsync(Guid documentId, SendReminderRequest request, Guid userId, string baseUrl);
     Task<ReminderHistoryResponse> GetReminderHistoryAsync(Guid documentId, Guid userId);
     Task<bool> SendTestEmailAsync(string email, string subject, string message);
+
+    // Diagnostics
+    Task<DocumentStorageHealthResponse> CheckDocumentStorageHealthAsync(Guid groupId, Guid userId);
 }

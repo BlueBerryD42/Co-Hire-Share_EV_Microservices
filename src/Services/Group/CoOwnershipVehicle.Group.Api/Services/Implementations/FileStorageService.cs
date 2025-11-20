@@ -14,9 +14,18 @@ public class FileStorageService : IFileStorageService
         _logger = logger;
 
         // Ensure storage directory exists for local storage
-        if (_options.StorageType == StorageType.Local && !string.IsNullOrEmpty(_options.LocalStoragePath))
+        if (_options.StorageType == StorageType.Local)
         {
+            // Set default path if not configured
+            if (string.IsNullOrEmpty(_options.LocalStoragePath))
+            {
+                _options.LocalStoragePath = Path.Combine(Directory.GetCurrentDirectory(), "Storage", "Documents");
+                _logger.LogWarning("LocalStoragePath not configured. Using default: {Path}", _options.LocalStoragePath);
+            }
+
+            // Create directory if it doesn't exist
             Directory.CreateDirectory(_options.LocalStoragePath);
+            _logger.LogInformation("File storage initialized at: {Path}", _options.LocalStoragePath);
         }
     }
 
@@ -161,18 +170,22 @@ public class FileStorageService : IFileStorageService
     // Local Storage Implementation
     private async Task<string> UploadToLocalStorageAsync(Stream fileStream, string storageKey)
     {
-        _logger.LogInformation("Uploading to local storage. Stream length: {StreamLength}", fileStream.Length);
+        _logger.LogInformation("Uploading to local storage. StorageKey: {StorageKey}, Stream length: {StreamLength}",
+            storageKey, fileStream.Length);
+
         var filePath = Path.Combine(_options.LocalStoragePath!, storageKey);
         var directory = Path.GetDirectoryName(filePath);
 
         if (!string.IsNullOrEmpty(directory))
         {
             Directory.CreateDirectory(directory);
+            _logger.LogDebug("Created directory: {Directory}", directory);
         }
 
         using var fileOutput = File.Create(filePath);
         await fileStream.CopyToAsync(fileOutput);
 
+        _logger.LogInformation("Successfully uploaded file to: {FilePath}", filePath);
         return storageKey;
     }
 
@@ -180,12 +193,18 @@ public class FileStorageService : IFileStorageService
     {
         var filePath = Path.Combine(_options.LocalStoragePath!, storageKey);
 
+        _logger.LogDebug("Attempting to download file. StorageKey: {StorageKey}, FullPath: {FilePath}",
+            storageKey, filePath);
+
         if (!File.Exists(filePath))
         {
-            throw new FileNotFoundException($"File not found: {storageKey}");
+            _logger.LogWarning("File not found in storage. StorageKey: {StorageKey}, FullPath: {FilePath}",
+                storageKey, filePath);
+            throw new FileNotFoundException($"File not found: {storageKey}. Full path: {filePath}");
         }
 
         Stream stream = File.OpenRead(filePath);
+        _logger.LogInformation("Successfully opened file for download. StorageKey: {StorageKey}", storageKey);
         return Task.FromResult(stream);
     }
 
