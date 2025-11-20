@@ -119,6 +119,13 @@ builder.Services.AddHttpClient<IPaymentServiceClient, PaymentServiceClient>(clie
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
+// Register OpenAI Service Client
+builder.Services.AddHttpClient<CoOwnershipVehicle.Analytics.Api.Services.HttpClients.IOpenAIServiceClient, CoOwnershipVehicle.Analytics.Api.Services.HttpClients.OpenAIServiceClient>(client =>
+{
+    // Base URL will be set in the client constructor from configuration
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
+
 // JWT Authentication
 var jwtConfig = EnvironmentHelper.GetJwtConfigParams(builder.Configuration);
 

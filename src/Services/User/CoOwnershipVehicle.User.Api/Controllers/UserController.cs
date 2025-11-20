@@ -1,9 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.User.Api.Services;
 using Microsoft.Extensions.Configuration;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace CoOwnershipVehicle.User.Api.Controllers;
 
@@ -15,12 +19,18 @@ public class UserController : ControllerBase
     private readonly IUserService _userService;
     private readonly IUserSyncService _userSyncService;
     private readonly ILogger<UserController> _logger;
+    private readonly IWebHostEnvironment _environment;
 
-    public UserController(IUserService userService, IUserSyncService userSyncService, ILogger<UserController> logger)
+    public UserController(
+        IUserService userService, 
+        IUserSyncService userSyncService, 
+        ILogger<UserController> logger,
+        IWebHostEnvironment environment)
     {
         _userService = userService;
         _userSyncService = userSyncService;
         _logger = logger;
+        _environment = environment;
     }
 
     /// <summary>
@@ -357,6 +367,201 @@ public class UserController : ControllerBase
             _logger.LogError(ex, "Error reviewing KYC document {DocumentId}", documentId);
             return StatusCode(500, new { message = "An error occurred while reviewing document" });
         }
+    }
+
+    /// <summary>
+    /// Get KYC document by ID
+    /// </summary>
+    [HttpGet("kyc/document/{documentId:guid}")]
+    [Authorize]
+    public async Task<IActionResult> GetKycDocument(Guid documentId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var documents = await _userService.GetUserKycDocumentsAsync(userId);
+            var document = documents.FirstOrDefault(d => d.Id == documentId);
+            
+            // Also allow admin/staff to get any document
+            if (document == null && (User.IsInRole("SystemAdmin") || User.IsInRole("Staff")))
+            {
+                document = await _userService.GetKycDocumentByIdAsync(documentId);
+            }
+            
+            if (document == null)
+                return NotFound(new { message = "KYC document not found" });
+            
+            return Ok(document);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting KYC document {DocumentId}", documentId);
+            return StatusCode(500, new { message = "An error occurred while retrieving document" });
+        }
+    }
+
+    /// <summary>
+    /// Download KYC document file
+    /// </summary>
+    [HttpGet("kyc/documents/{documentId:guid}/download")]
+    [Authorize]
+    public async Task<IActionResult> DownloadKycDocument(Guid documentId)
+    {
+        try
+        {
+            KycDocumentDto? document = null;
+            var userId = GetCurrentUserId();
+            
+            // Try to get document - first check if user owns it
+            var userDocuments = await _userService.GetUserKycDocumentsAsync(userId);
+            document = userDocuments.FirstOrDefault(d => d.Id == documentId);
+            
+            // If not found and user is admin/staff, get by ID directly
+            if (document == null && (User.IsInRole("SystemAdmin") || User.IsInRole("Staff")))
+            {
+                document = await _userService.GetKycDocumentByIdAsync(documentId);
+            }
+            
+            if (document == null)
+            {
+                _logger.LogWarning("KYC document not found. DocumentId: {DocumentId}, UserId: {UserId}", documentId, userId);
+                return NotFound(new { message = "KYC document not found" });
+            }
+            
+            // Extract file name from storage URL
+            // Support both formats:
+            // 1. New format: /api/User/kyc/files/{fileId}.{ext}
+            // 2. Old format: https://storage.coownership.com/kyc/{fileId}/{fileName}
+            var storageUrl = document.StorageUrl;
+            string? fileName = null;
+            
+            if (string.IsNullOrEmpty(storageUrl))
+            {
+                _logger.LogWarning("Storage URL is empty for document {DocumentId}", documentId);
+                return NotFound(new { message = "Document file not found - storage URL is empty" });
+            }
+            
+            // Try new format first: /api/User/kyc/files/{fileId}.{ext}
+            if (storageUrl.Contains("/kyc/files/"))
+            {
+                fileName = storageUrl.Substring(storageUrl.LastIndexOf('/') + 1);
+            }
+            // Try old format: https://storage.coownership.com/kyc/{fileId}/{fileName}
+            else if (storageUrl.Contains("storage.coownership.com/kyc/"))
+            {
+                var parts = storageUrl.Split('/');
+                if (parts.Length > 0)
+                {
+                    fileName = parts[parts.Length - 1]; // Last part is the filename
+                }
+            }
+            // Fallback: use document.FileName if available
+            else if (!string.IsNullOrEmpty(document.FileName))
+            {
+                // Try to extract GUID from storageUrl and use it with extension from FileName
+                var guidMatch = System.Text.RegularExpressions.Regex.Match(storageUrl, @"([a-f0-9-]{36})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (guidMatch.Success)
+                {
+                    var fileExtension = Path.GetExtension(document.FileName);
+                    fileName = $"{guidMatch.Value}{fileExtension}";
+                }
+                else
+                {
+                    fileName = document.FileName;
+                }
+            }
+            
+            if (string.IsNullOrEmpty(fileName))
+            {
+                _logger.LogWarning("Could not extract file name from storage URL: {StorageUrl}", storageUrl);
+                return NotFound(new { message = "Document file not found - could not determine file name" });
+            }
+            
+            var filePath = Path.Combine(_environment.ContentRootPath, "wwwroot", "files", "kyc", fileName);
+            
+            _logger.LogInformation("Attempting to download KYC document. DocumentId: {DocumentId}, StorageUrl: {StorageUrl}, FileName: {FileName}, FilePath: {FilePath}", 
+                documentId, storageUrl, fileName, filePath);
+            
+            if (!System.IO.File.Exists(filePath))
+            {
+                _logger.LogWarning("KYC document file not found at path: {FilePath}. ContentRootPath: {ContentRootPath}. Listing directory contents...", 
+                    filePath, _environment.ContentRootPath);
+                
+                // List files in directory for debugging
+                var kycDir = Path.Combine(_environment.ContentRootPath, "wwwroot", "files", "kyc");
+                if (Directory.Exists(kycDir))
+                {
+                    var files = Directory.GetFiles(kycDir);
+                    _logger.LogInformation("Files in KYC directory ({KycDir}): {Files}", kycDir, string.Join(", ", files.Select(f => Path.GetFileName(f))));
+                }
+                else
+                {
+                    _logger.LogWarning("KYC directory does not exist: {KycDir}", kycDir);
+                }
+                
+                return NotFound(new { message = "Document file not found on server. The file may not have been uploaded yet or was uploaded before the file storage system was implemented." });
+            }
+            
+            var fileBytes = await System.IO.File.ReadAllBytesAsync(filePath);
+            var contentType = GetContentType(document.FileName);
+            
+            _logger.LogInformation("Successfully serving KYC document. DocumentId: {DocumentId}, FileSize: {FileSize} bytes", 
+                documentId, fileBytes.Length);
+            
+            return File(fileBytes, contentType, document.FileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading KYC document {DocumentId}", documentId);
+            return StatusCode(500, new { message = "An error occurred while downloading document" });
+        }
+    }
+
+    /// <summary>
+    /// Serve KYC file directly (for img src tags)
+    /// </summary>
+    [HttpGet("kyc/files/{fileName}")]
+    [Authorize]
+    public async Task<IActionResult> GetKycFile(string fileName)
+    {
+        try
+        {
+            var filePath = Path.Combine(_environment.ContentRootPath, "wwwroot", "files", "kyc", fileName);
+            
+            _logger.LogInformation("Attempting to serve KYC file. FileName: {FileName}, FilePath: {FilePath}", fileName, filePath);
+            
+            if (!System.IO.File.Exists(filePath))
+            {
+                _logger.LogWarning("KYC file not found at path: {FilePath}. ContentRootPath: {ContentRootPath}", 
+                    filePath, _environment.ContentRootPath);
+                return NotFound();
+            }
+            
+            var fileBytes = await System.IO.File.ReadAllBytesAsync(filePath);
+            var contentType = GetContentType(fileName);
+            
+            return File(fileBytes, contentType);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error serving KYC file {FileName}", fileName);
+            return StatusCode(500);
+        }
+    }
+
+    private string GetContentType(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".pdf" => "application/pdf",
+            ".bmp" => "image/bmp",
+            ".webp" => "image/webp",
+            _ => "application/octet-stream"
+        };
     }
 
     /// <summary>

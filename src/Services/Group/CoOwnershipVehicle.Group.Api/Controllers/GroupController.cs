@@ -245,6 +245,24 @@ public class GroupController : ControllerBase
     {
         try
         {
+            var userId = GetCurrentUserId();
+            var userClaims = HttpContext.User.Claims.Select(c => $"{c.Type}={c.Value}").ToList();
+            var userRoles = HttpContext.User.Claims
+                .Where(c => c.Type == System.Security.Claims.ClaimTypes.Role || c.Type == "role")
+                .Select(c => c.Value)
+                .ToList();
+            
+            _logger.LogInformation("GetAllGroups called. UserId: {UserId}, Request: {@Request}", userId, request);
+            _logger.LogInformation("User claims: {Claims}, Roles: {Roles}", 
+                string.Join(", ", userClaims), 
+                string.Join(", ", userRoles));
+            
+            // Check if user has required role
+            var hasSystemAdmin = HttpContext.User.IsInRole("SystemAdmin");
+            var hasStaff = HttpContext.User.IsInRole("Staff");
+            _logger.LogInformation("User role check - IsInRole(SystemAdmin): {HasSystemAdmin}, IsInRole(Staff): {HasStaff}", 
+                hasSystemAdmin, hasStaff);
+            
             var query = _context.OwnershipGroups
                 .Include(g => g.Members)
                 .AsQueryable();
@@ -265,6 +283,7 @@ public class GroupController : ControllerBase
             }
 
             var groups = await query.ToListAsync();
+            _logger.LogInformation("Found {Count} groups from database", groups.Count);
 
             // Fetch user data via HTTP
             var accessToken = GetAccessToken();
@@ -297,6 +316,7 @@ public class GroupController : ControllerBase
                 Vehicles = new List<VehicleDto>()
             }).ToList();
 
+            _logger.LogInformation("Returning {Count} group DTOs", groupDtos.Count);
             return Ok(groupDtos);
         }
         catch (Exception ex)

@@ -260,7 +260,7 @@ public class UserServiceClient : IUserServiceClient
         try
         {
             SetAuthorizationHeader();
-            var response = await _httpClient.GetAsync($"api/User/kyc/documents/{documentId}");
+            var response = await _httpClient.GetAsync($"api/User/kyc/document/{documentId}");
 
             if (response.IsSuccessStatusCode)
             {

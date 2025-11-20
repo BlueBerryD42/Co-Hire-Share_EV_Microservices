@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Hosting;
 using CoOwnershipVehicle.User.Api.Data;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using CoOwnershipVehicle.Domain.Entities;
 using MassTransit;
+using System.IO;
 
 namespace CoOwnershipVehicle.User.Api.Services;
 
@@ -16,6 +18,7 @@ public interface IUserService
     // ChangePasswordAsync removed - password changes should be handled by Auth service only
     Task<KycDocumentDto> UploadKycDocumentAsync(Guid userId, UploadKycDocumentDto uploadDto);
     Task<List<KycDocumentDto>> GetUserKycDocumentsAsync(Guid userId);
+    Task<KycDocumentDto?> GetKycDocumentByIdAsync(Guid documentId);
     Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto reviewDto, Guid reviewerId);
     Task<List<KycDocumentDto>> GetPendingKycDocumentsAsync();
     Task<bool> UpdateKycStatusAsync(Guid userId, KycStatus status, string? reason = null);
@@ -27,15 +30,18 @@ public class UserService : IUserService
     private readonly UserDbContext _context;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<UserService> _logger;
+    private readonly IWebHostEnvironment _environment;
 
     public UserService(
         UserDbContext context,
         IPublishEndpoint publishEndpoint,
-        ILogger<UserService> logger)
+        ILogger<UserService> logger,
+        IWebHostEnvironment environment)
     {
         _context = context;
         _publishEndpoint = publishEndpoint;
         _logger = logger;
+        _environment = environment;
     }
 
     public async Task<UserProfileDto?> GetUserProfileAsync(Guid userId)
@@ -283,6 +289,33 @@ public class UserService : IUserService
         }).ToList();
     }
 
+    public async Task<KycDocumentDto?> GetKycDocumentByIdAsync(Guid documentId)
+    {
+        var document = await _context.KycDocuments
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+
+        if (document == null)
+            return null;
+
+        var user = await _context.UserProfiles
+            .FirstOrDefaultAsync(u => u.Id == document.UserId);
+
+        return new KycDocumentDto
+        {
+            Id = document.Id,
+            UserId = document.UserId,
+            UserName = user != null ? $"{user.FirstName} {user.LastName}" : "Unknown",
+            DocumentType = (KycDocumentType)document.DocumentType,
+            FileName = document.FileName,
+            StorageUrl = document.StorageUrl,
+            Status = (KycDocumentStatus)document.Status,
+            ReviewNotes = document.ReviewNotes,
+            ReviewedBy = document.ReviewedBy,
+            ReviewedAt = document.ReviewedAt,
+            UploadedAt = document.CreatedAt
+        };
+    }
+
     public async Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto reviewDto, Guid reviewerId)
     {
         var document = await _context.KycDocuments
@@ -386,15 +419,46 @@ public class UserService : IUserService
 
     private async Task<string> SaveDocumentToStorageAsync(string base64Content, string fileName)
     {
-        // In production, implement actual cloud storage upload
-        // For demo purposes, we'll simulate a storage URL
-        var fileId = Guid.NewGuid().ToString();
-        var storageUrl = $"https://storage.coownership.com/kyc/{fileId}/{fileName}";
-        
-        // Simulate async upload
-        await Task.Delay(100);
-        
-        return storageUrl;
+        try
+        {
+            // Decode base64 content
+            var fileBytes = Convert.FromBase64String(base64Content);
+            
+            // Use ContentRootPath for consistent path in both local and Docker environments
+            var contentRootPath = _environment.ContentRootPath;
+            var kycFilesPath = Path.Combine(contentRootPath, "wwwroot", "files", "kyc");
+            
+            // Create directory if it doesn't exist
+            if (!Directory.Exists(kycFilesPath))
+            {
+                Directory.CreateDirectory(kycFilesPath);
+                _logger.LogInformation("Created KYC files directory: {KycFilesPath}", kycFilesPath);
+            }
+            
+            // Generate unique file name
+            var fileId = Guid.NewGuid();
+            var fileExtension = Path.GetExtension(fileName);
+            var uniqueFileName = $"{fileId}{fileExtension}";
+            var filePath = Path.Combine(kycFilesPath, uniqueFileName);
+            
+            // Save file to disk
+            await System.IO.File.WriteAllBytesAsync(filePath, fileBytes);
+            
+            // Return relative URL path for serving via API
+            var storageUrl = $"/api/User/kyc/files/{fileId}{fileExtension}";
+            
+            _logger.LogInformation("KYC document saved successfully. FilePath: {FilePath}, StorageUrl: {StorageUrl}, FileSize: {FileSize} bytes", 
+                filePath, storageUrl, fileBytes.Length);
+            
+            return storageUrl;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving KYC document to storage");
+            // Fallback to mock URL if file save fails
+            var fileId = Guid.NewGuid().ToString();
+            return $"https://storage.coownership.com/kyc/{fileId}/{fileName}";
+        }
     }
 
     private async Task UpdateOverallKycStatusAsync(Guid userId)

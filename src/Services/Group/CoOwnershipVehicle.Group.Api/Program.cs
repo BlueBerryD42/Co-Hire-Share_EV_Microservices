@@ -7,6 +7,7 @@ using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Security.Claims;
 using MassTransit; // Added for MassTransit
 
 var builder = WebApplication.CreateBuilder(args);
@@ -211,7 +212,9 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtConfig.Audience,
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero,
-        RoleClaimType = "role" // Map "role" claim to User.IsInRole()
+        // Use ClaimTypes.Role to match Admin service and JWT token format
+        // This ensures role claims from JWT tokens work correctly
+        RoleClaimType = ClaimTypes.Role
     };
 
     Console.WriteLine($"[DIAGNOSTIC_LOG] RoleClaimType is set to: {options.TokenValidationParameters.RoleClaimType}");

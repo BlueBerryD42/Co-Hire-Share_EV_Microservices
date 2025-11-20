@@ -3,6 +3,7 @@ using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Security.Claims;
 using CoOwnershipVehicle.Vehicle.Api.Data;
 using CoOwnershipVehicle.Shared.Configuration;
 using CoOwnershipVehicle.Vehicle.Api.Services;
@@ -201,10 +202,11 @@ namespace CoOwnershipVehicle.Vehicle.Api
                     ValidAudience = jwtConfig.Audience,
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero,
-                    RoleClaimType = "role" // Map "role" claim to User.IsInRole()
+                    // Use ClaimTypes.Role to match Admin service and JWT token format
+                    // This ensures role claims from JWT tokens work correctly
+                    RoleClaimType = ClaimTypes.Role
                 };
 
-                // DIAGNOSTIC LOG: Print the configured RoleClaimType
                 Console.WriteLine($"[DIAGNOSTIC_LOG] RoleClaimType is set to: {options.TokenValidationParameters.RoleClaimType}");
             });
 
