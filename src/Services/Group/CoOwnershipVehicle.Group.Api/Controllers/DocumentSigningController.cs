@@ -180,4 +180,24 @@ public class DocumentSigningController : BaseAuthenticatedController
             return StatusCode(500, new { error = "An error occurred while retrieving signature status" });
         }
     }
+
+    /// <summary>
+    /// Get documents pending signature for the current user
+    /// </summary>
+    [HttpGet("my-pending-signatures")]
+    [ProducesResponseType(typeof(List<PendingSignatureResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<PendingSignatureResponse>>> GetMyPendingSignatures()
+    {
+        try
+        {
+            var userId = GetUserId();
+            var result = await _documentService.GetMyPendingSignaturesAsync(userId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error retrieving pending signatures for user");
+            return StatusCode(500, new { error = "An error occurred while retrieving your pending signatures" });
+        }
+    }
 }

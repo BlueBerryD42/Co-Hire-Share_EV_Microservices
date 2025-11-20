@@ -406,6 +406,11 @@ public class DocumentController : BaseAuthenticatedController
             Logger.LogWarning(ex, "Document not found for preview");
             return NotFound(new { error = ex.Message });
         }
+        catch (FileNotFoundException ex)
+        {
+            Logger.LogWarning(ex, "Document file not found in storage");
+            return NotFound(new { error = ex.Message });
+        }
         catch (UnauthorizedAccessException ex)
         {
             Logger.LogWarning(ex, "Unauthorized document preview attempt");
@@ -453,6 +458,33 @@ public class DocumentController : BaseAuthenticatedController
         {
             Logger.LogError(ex, "Error retrieving download tracking");
             return StatusCode(500, new { error = "An error occurred while retrieving download tracking" });
+        }
+    }
+
+    /// <summary>
+    /// Check storage health for documents in a group (diagnostics)
+    /// </summary>
+    [HttpGet("group/{groupId}/storage-health")]
+    [ProducesResponseType(typeof(DocumentStorageHealthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DocumentStorageHealthResponse>> CheckStorageHealth(Guid groupId)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var health = await _documentService.CheckDocumentStorageHealthAsync(groupId, userId);
+            return Ok(health);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Logger.LogWarning(ex, "Unauthorized access to storage health check");
+            return Unauthorized(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error checking storage health");
+            return StatusCode(500, new { error = "An error occurred while checking storage health" });
         }
     }
 }

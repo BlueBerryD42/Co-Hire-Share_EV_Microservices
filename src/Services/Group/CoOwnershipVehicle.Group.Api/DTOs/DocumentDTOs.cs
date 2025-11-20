@@ -466,3 +466,41 @@ public class ReminderHistoryItem
     public ReminderDeliveryStatus Status { get; set; }
     public string? Message { get; set; }
 }
+
+// Diagnostic DTOs
+public class DocumentStorageHealthResponse
+{
+    public Guid GroupId { get; set; }
+    public string StoragePath { get; set; } = string.Empty;
+    public int TotalDocuments { get; set; }
+    public int DocumentsWithMissingFiles { get; set; }
+    public int DocumentsWithFiles { get; set; }
+    public List<MissingFileInfo> MissingFiles { get; set; } = new();
+}
+
+public class MissingFileInfo
+{
+    public Guid DocumentId { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public string StorageKey { get; set; } = string.Empty;
+    public DateTime UploadedAt { get; set; }
+    public string UploadedBy { get; set; } = string.Empty;
+    public long FileSize { get; set; }
+}
+
+// Pending Signature Response
+public class PendingSignatureResponse
+{
+    public Guid DocumentId { get; set; }
+    public Guid GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public DocumentType DocumentType { get; set; }
+    public string SigningToken { get; set; } = string.Empty;
+    public DateTime? DueDate { get; set; }
+    public DateTime SentAt { get; set; }
+    public int SignatureOrder { get; set; }
+    public SigningMode SigningMode { get; set; }
+    public bool IsMyTurn { get; set; }
+}
