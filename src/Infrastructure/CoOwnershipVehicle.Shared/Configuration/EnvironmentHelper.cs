@@ -139,7 +139,7 @@ public static class EnvironmentHelper
         return new DatabaseConnectionParams
         {
             Server = GetEnvironmentVariable("DB_SERVER", configuration) ?? "localhost",
-            Database = GetEnvironmentVariable("DB_DATABASE", configuration) ?? "",
+            Database = GetEnvironmentVariable("DB_VEHICLE", configuration) ?? "CoOwnershipVehicle_Vehicle",
             User = GetEnvironmentVariable("DB_USER", configuration) ?? "sa",
             Password = GetEnvironmentVariable("DB_PASSWORD", configuration) ?? "",
             TrustServerCertificate = GetEnvironmentVariable("DB_TRUST_CERT", configuration) ?? "true",

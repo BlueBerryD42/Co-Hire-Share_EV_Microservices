@@ -80,10 +80,7 @@ public class VehicleDbContext : DbContext
             // IMPORTANT: Do not create a database-level foreign key constraint to the Group table in another service.
             // The relationship exists at the application level. We just store the ID.
             entity.Ignore(e => e.Group); // Ignore the navigation property
-
-            entity.HasOne<OwnershipGroup>()
-                .WithMany()
-                .HasForeignKey(e => e.GroupId);
+            // Removed: entity.HasOne<OwnershipGroup>().WithMany().HasForeignKey(e => e.GroupId);
 
             entity.HasIndex(e => e.GroupId);
             entity.HasIndex(e => e.Vin).IsUnique();

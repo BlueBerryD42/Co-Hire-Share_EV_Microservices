@@ -4,6 +4,7 @@ using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Admin.Api.Services;
 using CoOwnershipVehicle.Domain.Entities;
 using System.Security.Claims;
+using System.IO;
 
 namespace CoOwnershipVehicle.Admin.Api.Controllers;
 
@@ -436,19 +437,163 @@ public class AdminController : ControllerBase
     /// <summary>
     /// Get users with pending KYC reviews
     /// </summary>
-    /// <returns>List of users with pending KYC</returns>
+    /// <param name="filter">Filter parameters for KYC documents</param>
+    /// <returns>Paginated list of users with pending KYC</returns>
     [HttpGet("users/pending-kyc")]
     [Authorize(Roles = "SystemAdmin,Staff")]
-    [ProducesResponseType(typeof(List<PendingKycUserDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PendingKycUserListResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<List<PendingKycUserDto>>> GetPendingKycUsers()
+    public async Task<ActionResult<PendingKycUserListResponseDto>> GetPendingKycUsers([FromQuery] KycDocumentFilterDto? filter)
     {
         return await ExecuteAdminActionAsync(
-            () => _adminService.GetPendingKycUsersAsync(),
+            () => _adminService.GetPendingKycUsersAsync(filter),
             "Error retrieving pending KYC users",
             "SystemAdmin", "Staff"
         );
+    }
+
+    /// <summary>
+    /// Get KYC document details
+    /// </summary>
+    /// <param name="documentId">Document ID</param>
+    /// <returns>KYC document details</returns>
+    [HttpGet("kyc/documents/{documentId:guid}")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(KycDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<KycDocumentDto>> GetKycDocumentDetails(Guid documentId)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var document = await _adminService.GetKycDocumentDetailsAsync(documentId);
+            return Ok(document);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving KYC document {DocumentId}", documentId);
+            return StatusCode(500, new { message = "An error occurred while retrieving KYC document" });
+        }
+    }
+
+    /// <summary>
+    /// Download KYC document file
+    /// </summary>
+    /// <param name="documentId">Document ID</param>
+    /// <returns>Document file</returns>
+    [HttpGet("kyc/documents/{documentId:guid}/download")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> DownloadKycDocument(Guid documentId)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var fileBytes = await _adminService.DownloadKycDocumentAsync(documentId);
+            var document = await _adminService.GetKycDocumentDetailsAsync(documentId);
+            var fileName = document.FileName;
+            var contentType = GetContentType(fileName);
+
+            return File(fileBytes, contentType, fileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading KYC document {DocumentId}", documentId);
+            return StatusCode(500, new { message = "An error occurred while downloading KYC document" });
+        }
+    }
+
+    /// <summary>
+    /// Bulk review multiple KYC documents
+    /// </summary>
+    /// <param name="request">Bulk review request</param>
+    /// <returns>Success status</returns>
+    [HttpPost("kyc/documents/bulk-review")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> BulkReviewKycDocuments([FromBody] BulkReviewKycDocumentsDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var adminUserId = GetCurrentUserId();
+            var success = await _adminService.BulkReviewKycDocumentsAsync(request, adminUserId);
+
+            if (!success)
+                return BadRequest(new { message = "Failed to review documents" });
+
+            return Ok(new { message = "Documents reviewed successfully" });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error bulk reviewing KYC documents");
+            return StatusCode(500, new { message = "An error occurred while reviewing documents" });
+        }
+    }
+
+    /// <summary>
+    /// Get KYC review statistics
+    /// </summary>
+    /// <returns>KYC review statistics</returns>
+    [HttpGet("kyc/statistics")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(KycReviewStatisticsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<KycReviewStatisticsDto>> GetKycStatistics()
+    {
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetKycStatisticsAsync(),
+            "Error retrieving KYC statistics",
+            "SystemAdmin", "Staff"
+        );
+    }
+
+    private string GetContentType(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".pdf" => "application/pdf",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".bmp" => "image/bmp",
+            ".tiff" or ".tif" => "image/tiff",
+            _ => "application/octet-stream"
+        };
     }
 
     /// <summary>
@@ -656,6 +801,30 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Get system-wide audit logs with filtering and pagination
+    /// </summary>
+    /// <param name="request">Audit log request parameters</param>
+    /// <returns>Paginated audit logs</returns>
+    [HttpGet("audit")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(AuditLogResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<AuditLogResponseDto>> GetAuditLogs([FromQuery] AuditLogRequestDto request)
+    {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetAuditLogsAsync(request),
+            "retrieving audit logs",
+            "SystemAdmin", "Staff"
+        );
+    }
+
+    /// <summary>
     /// Intervene in group operations (freeze, message, appoint admin)
     /// </summary>
     /// <param name="id">Group ID</param>
@@ -722,100 +891,6 @@ public class AdminController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving group health for group {GroupId}", id);
             return StatusCode(500, new { message = "An error occurred while retrieving group health" });
-        }
-    }
-
-    /// <summary>
-    /// Get paginated list of vehicles with filtering and search
-    /// </summary>
-    /// <param name="request">Vehicle list request parameters</param>
-    /// <returns>Paginated list of vehicles</returns>
-    [HttpGet("vehicles")]
-    [Authorize(Roles = "SystemAdmin,Staff")]
-    [ProducesResponseType(typeof(VehicleListResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<VehicleListResponseDto>> GetVehicles([FromQuery] VehicleListRequestDto request)
-    {
-        if (!UserHasAnyRole("SystemAdmin", "Staff"))
-        {
-            return StatusCode(StatusCodes.Status403Forbidden);
-        }
-
-        return await ExecuteAdminActionAsync(
-            () => _adminService.GetVehiclesAsync(request),
-            "Error retrieving vehicles",
-            "SystemAdmin", "Staff"
-        );
-    }
-
-    /// <summary>
-    /// Get detailed information about a specific vehicle
-    /// </summary>
-    /// <param name="id">Vehicle ID</param>
-    /// <returns>Detailed vehicle information</returns>
-    [HttpGet("vehicles/{id}")]
-    [Authorize(Roles = "SystemAdmin,Staff")]
-    [ProducesResponseType(typeof(VehicleSummaryDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<VehicleSummaryDto>> GetVehicleDetails(Guid id)
-    {
-        try
-        {
-            if (!UserHasAnyRole("SystemAdmin", "Staff"))
-            {
-                return StatusCode(StatusCodes.Status403Forbidden);
-            }
-
-            var result = await _adminService.GetVehicleDetailsAsync(id);
-            return Ok(result);
-        }
-        catch (ArgumentException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving vehicle details for vehicle {VehicleId}", id);
-            return StatusCode(500, new { message = "An error occurred while retrieving vehicle details" });
-        }
-    }
-
-    /// <summary>
-    /// Update vehicle status
-    /// </summary>
-    /// <param name="id">Vehicle ID</param>
-    /// <param name="request">Status update request</param>
-    /// <returns>Success status</returns>
-    [HttpPut("vehicles/{id}/status")]
-    [Authorize(Roles = "SystemAdmin,Staff")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] UpdateVehicleStatusDto request)
-    {
-        try
-        {
-            if (!UserHasAnyRole("SystemAdmin", "Staff"))
-            {
-                return StatusCode(StatusCodes.Status403Forbidden);
-            }
-
-            var adminUserId = GetCurrentUserId();
-            var result = await _adminService.UpdateVehicleStatusAsync(id, request.Status, adminUserId);
-            
-            if (!result)
-                return NotFound(new { message = "Vehicle not found" });
-
-            return Ok(new { message = "Vehicle status updated successfully" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating vehicle status for vehicle {VehicleId}", id);
-            return StatusCode(500, new { message = "An error occurred while updating vehicle status" });
         }
     }
 
@@ -988,6 +1063,277 @@ public class AdminController : ControllerBase
         }, "retrieving dispute statistics", "SystemAdmin", "Staff");
     }
 
+    // Check-In Management Endpoints
+    /// <summary>
+    /// Get paginated list of check-ins with filtering
+    /// </summary>
+    /// <param name="request">Check-in list request parameters</param>
+    /// <returns>Paginated list of check-ins</returns>
+    [HttpGet("checkins")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(CheckInListResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<CheckInListResponseDto>> GetCheckIns([FromQuery] CheckInListRequestDto request)
+    {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetCheckInsAsync(request),
+            "retrieving check-ins",
+            "SystemAdmin", "Staff"
+        );
+    }
+
+    /// <summary>
+    /// Get detailed information about a specific check-in
+    /// </summary>
+    /// <param name="checkInId">Check-in ID</param>
+    /// <returns>Detailed check-in information</returns>
+    [HttpGet("checkins/{checkInId}")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(CheckInSummaryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<CheckInSummaryDto>> GetCheckInDetails(Guid checkInId)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var result = await _adminService.GetCheckInDetailsAsync(checkInId);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving check-in details for {CheckInId}", checkInId);
+            return StatusCode(500, new { message = "An error occurred while retrieving check-in details" });
+        }
+    }
+
+    /// <summary>
+    /// Approve a check-in
+    /// </summary>
+    /// <param name="checkInId">Check-in ID</param>
+    /// <param name="request">Approve request</param>
+    /// <returns>Success status</returns>
+    [HttpPost("checkins/{checkInId}/approve")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ApproveCheckIn(Guid checkInId, [FromBody] ApproveCheckInDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var adminUserId = GetCurrentUserId();
+            var result = await _adminService.ApproveCheckInAsync(checkInId, request, adminUserId);
+            
+            if (!result)
+                return NotFound(new { message = "Check-in not found" });
+
+            return Ok(new { message = "Check-in approved successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error approving check-in {CheckInId}", checkInId);
+            return StatusCode(500, new { message = "An error occurred while approving check-in" });
+        }
+    }
+
+    /// <summary>
+    /// Reject a check-in
+    /// </summary>
+    /// <param name="checkInId">Check-in ID</param>
+    /// <param name="request">Reject request</param>
+    /// <returns>Success status</returns>
+    [HttpPost("checkins/{checkInId}/reject")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RejectCheckIn(Guid checkInId, [FromBody] RejectCheckInDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var adminUserId = GetCurrentUserId();
+            var result = await _adminService.RejectCheckInAsync(checkInId, request, adminUserId);
+            
+            if (!result)
+                return NotFound(new { message = "Check-in not found" });
+
+            return Ok(new { message = "Check-in rejected successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rejecting check-in {CheckInId}", checkInId);
+            return StatusCode(500, new { message = "An error occurred while rejecting check-in" });
+        }
+    }
+
+    // Maintenance Management Endpoints
+    /// <summary>
+    /// Get paginated list of maintenance records with filtering
+    /// </summary>
+    /// <param name="request">Maintenance list request parameters</param>
+    /// <returns>Paginated list of maintenance records</returns>
+    [HttpGet("maintenance")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(MaintenanceListResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<MaintenanceListResponseDto>> GetMaintenance([FromQuery] MaintenanceListRequestDto request)
+    {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetMaintenanceAsync(request),
+            "retrieving maintenance records",
+            "SystemAdmin", "Staff"
+        );
+    }
+
+    /// <summary>
+    /// Get detailed information about a specific maintenance record
+    /// </summary>
+    /// <param name="maintenanceId">Maintenance record ID</param>
+    /// <returns>Detailed maintenance information</returns>
+    [HttpGet("maintenance/{maintenanceId}")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(MaintenanceSummaryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<MaintenanceSummaryDto>> GetMaintenanceDetails(Guid maintenanceId)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var result = await _adminService.GetMaintenanceDetailsAsync(maintenanceId);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving maintenance details for {MaintenanceId}", maintenanceId);
+            return StatusCode(500, new { message = "An error occurred while retrieving maintenance details" });
+        }
+    }
+
+    /// <summary>
+    /// Create a new maintenance record
+    /// </summary>
+    /// <param name="request">Create maintenance request</param>
+    /// <returns>Success status</returns>
+    [HttpPost("maintenance")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> CreateMaintenance([FromBody] CreateMaintenanceDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var adminUserId = GetCurrentUserId();
+            var result = await _adminService.CreateMaintenanceAsync(request, adminUserId);
+            
+            if (!result)
+                return BadRequest(new { message = "Failed to create maintenance record" });
+
+            return Ok(new { message = "Maintenance record created successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating maintenance record");
+            return StatusCode(500, new { message = "An error occurred while creating maintenance record" });
+        }
+    }
+
+    /// <summary>
+    /// Update a maintenance record
+    /// </summary>
+    /// <param name="maintenanceId">Maintenance record ID</param>
+    /// <param name="request">Update maintenance request</param>
+    /// <returns>Success status</returns>
+    [HttpPut("maintenance/{maintenanceId}")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UpdateMaintenance(Guid maintenanceId, [FromBody] UpdateMaintenanceDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var adminUserId = GetCurrentUserId();
+            var result = await _adminService.UpdateMaintenanceAsync(maintenanceId, request, adminUserId);
+            
+            if (!result)
+                return NotFound(new { message = "Maintenance record not found" });
+
+            return Ok(new { message = "Maintenance record updated successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating maintenance record {MaintenanceId}", maintenanceId);
+            return StatusCode(500, new { message = "An error occurred while updating maintenance record" });
+        }
+    }
+
     private Guid GetCurrentUserId()
     {
         var userIdClaim = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -1006,6 +1352,103 @@ public class AdminController : ControllerBase
         }
 
         return roles.Any(role => HttpContext.User?.IsInRole(role) == true);
+    }
+
+    // Vehicle Management Endpoints
+    /// <summary>
+    /// Get paginated list of vehicles with filtering
+    /// </summary>
+    /// <param name="request">Vehicle list request parameters</param>
+    /// <returns>Paginated list of vehicles</returns>
+    [HttpGet("vehicles")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(VehicleListResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<VehicleListResponseDto>> GetVehicles([FromQuery] VehicleListRequestDto request)
+    {
+        if (!UserHasAnyRole("SystemAdmin", "Staff"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        return await ExecuteAdminActionAsync(
+            () => _adminService.GetVehiclesAsync(request),
+            "retrieving vehicles",
+            "SystemAdmin", "Staff"
+        );
+    }
+
+    /// <summary>
+    /// Get detailed information about a specific vehicle
+    /// </summary>
+    /// <param name="vehicleId">Vehicle ID</param>
+    /// <returns>Detailed vehicle information</returns>
+    [HttpGet("vehicles/{vehicleId}")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(typeof(VehicleDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<VehicleDto>> GetVehicleDetails(Guid vehicleId)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var vehicle = await _adminService.GetVehicleDetailsAsync(vehicleId);
+            if (vehicle == null)
+                return NotFound(new { message = "Vehicle not found" });
+
+            return Ok(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving vehicle details for {VehicleId}", vehicleId);
+            return StatusCode(500, new { message = "An error occurred while retrieving vehicle details" });
+        }
+    }
+
+    /// <summary>
+    /// Update vehicle status
+    /// </summary>
+    /// <param name="vehicleId">Vehicle ID</param>
+    /// <param name="request">Update vehicle status request</param>
+    /// <returns>Success status</returns>
+    [HttpPut("vehicles/{vehicleId}/status")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UpdateVehicleStatus(Guid vehicleId, [FromBody] UpdateVehicleStatusDto request)
+    {
+        try
+        {
+            if (!UserHasAnyRole("SystemAdmin", "Staff"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var adminUserId = GetCurrentUserId();
+            var result = await _adminService.UpdateVehicleStatusAsync(vehicleId, request, adminUserId);
+            
+            if (!result)
+                return NotFound(new { message = "Vehicle not found" });
+
+            return Ok(new { message = "Vehicle status updated successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating vehicle status for {VehicleId}", vehicleId);
+            return StatusCode(500, new { message = "An error occurred while updating vehicle status" });
+        }
     }
 }
 

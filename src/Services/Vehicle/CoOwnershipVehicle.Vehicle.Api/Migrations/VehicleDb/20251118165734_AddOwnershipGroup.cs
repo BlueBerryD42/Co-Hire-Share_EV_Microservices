@@ -27,162 +27,106 @@ namespace CoOwnershipVehicle.Vehicle.Api.Migrations.VehicleDb
                 oldType: "nvarchar(500)",
                 oldMaxLength: 500);
 
-            migrationBuilder.CreateTable(
-                name: "OwnershipGroups",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    Status = table.Column<int>(type: "int", nullable: false),
-                    CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_OwnershipGroups", x => x.Id);
-                });
+            migrationBuilder.Sql(@"
+                IF OBJECT_ID(N'dbo.OwnershipGroups', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [dbo].[OwnershipGroups] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [Name] nvarchar(200) NOT NULL,
+                        [Description] nvarchar(1000) NULL,
+                        [Status] int NOT NULL,
+                        [CreatedBy] uniqueidentifier NOT NULL,
+                        [CreatedAt] datetime2 NOT NULL,
+                        [UpdatedAt] datetime2 NOT NULL,
+                        CONSTRAINT [PK_OwnershipGroups] PRIMARY KEY ([Id])
+                    );
+                END");
 
-            migrationBuilder.CreateTable(
-                name: "GroupFund",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    GroupId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    TotalBalance = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    ReserveBalance = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    LastUpdated = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_GroupFund", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_GroupFund_OwnershipGroups_GroupId",
-                        column: x => x.GroupId,
-                        principalTable: "OwnershipGroups",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+            migrationBuilder.Sql(@"
+                IF OBJECT_ID(N'dbo.GroupFund', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [dbo].[GroupFund] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [GroupId] uniqueidentifier NOT NULL,
+                        [TotalBalance] decimal(18, 2) NOT NULL,
+                        [ReserveBalance] decimal(18, 2) NOT NULL,
+                        [LastUpdated] datetime2 NOT NULL,
+                        [CreatedAt] datetime2 NOT NULL,
+                        [UpdatedAt] datetime2 NOT NULL,
+                        CONSTRAINT [PK_GroupFund] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_GroupFund_OwnershipGroups_GroupId] FOREIGN KEY ([GroupId]) REFERENCES [dbo].[OwnershipGroups] ([Id]) ON DELETE CASCADE
+                    );
+                END");
 
-            migrationBuilder.CreateTable(
-                name: "FundTransaction",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    GroupId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    InitiatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Type = table.Column<int>(type: "int", nullable: false),
-                    Amount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    BalanceBefore = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    BalanceAfter = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    Status = table.Column<int>(type: "int", nullable: false),
-                    ApprovedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    TransactionDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Reference = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    GroupFundId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_FundTransaction", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_FundTransaction_GroupFund_GroupFundId",
-                        column: x => x.GroupFundId,
-                        principalTable: "GroupFund",
-                        principalColumn: "Id");
-                    table.ForeignKey(
-                        name: "FK_FundTransaction_OwnershipGroups_GroupId",
-                        column: x => x.GroupId,
-                        principalTable: "OwnershipGroups",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+            migrationBuilder.Sql(@"
+                IF OBJECT_ID(N'dbo.FundTransaction', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [dbo].[FundTransaction] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [GroupId] uniqueidentifier NOT NULL,
+                        [InitiatedBy] uniqueidentifier NOT NULL,
+                        [Type] int NOT NULL,
+                        [Amount] decimal(18, 2) NOT NULL,
+                        [BalanceBefore] decimal(18, 2) NOT NULL,
+                        [BalanceAfter] decimal(18, 2) NOT NULL,
+                        [Description] nvarchar(500) NOT NULL,
+                        [Status] int NOT NULL,
+                        [ApprovedBy] uniqueidentifier NULL,
+                        [TransactionDate] datetime2 NOT NULL,
+                        [Reference] nvarchar(200) NULL,
+                        [GroupFundId] uniqueidentifier NULL,
+                        [CreatedAt] datetime2 NOT NULL,
+                        [UpdatedAt] datetime2 NOT NULL,
+                        CONSTRAINT [PK_FundTransaction] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_FundTransaction_GroupFund_GroupFundId] FOREIGN KEY ([GroupFundId]) REFERENCES [dbo].[GroupFund] ([Id]),
+                        CONSTRAINT [FK_FundTransaction_OwnershipGroups_GroupId] FOREIGN KEY ([GroupId]) REFERENCES [dbo].[OwnershipGroups] ([Id]) ON DELETE CASCADE
+                    );
+                END");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Vehicles_OwnershipGroupId",
-                table: "Vehicles",
-                column: "OwnershipGroupId");
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Vehicles_OwnershipGroupId' AND object_id = OBJECT_ID('dbo.Vehicles'))
+                BEGIN
+                    CREATE INDEX [IX_Vehicles_OwnershipGroupId] ON [dbo].[Vehicles] ([OwnershipGroupId]);
+                END");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_RecurringBooking_GroupId",
-                table: "RecurringBooking",
-                column: "GroupId");
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_RecurringBooking_GroupId' AND object_id = OBJECT_ID('dbo.RecurringBooking'))
+                BEGIN
+                    CREATE INDEX [IX_RecurringBooking_GroupId] ON [dbo].[RecurringBooking] ([GroupId]);
+                END");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_FundTransaction_GroupFundId",
-                table: "FundTransaction",
-                column: "GroupFundId");
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_FundTransaction_GroupFundId' AND object_id = OBJECT_ID('dbo.FundTransaction'))
+                BEGIN
+                    CREATE INDEX [IX_FundTransaction_GroupFundId] ON [dbo].[FundTransaction] ([GroupFundId]);
+                END");
+            
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_FundTransaction_GroupId' AND object_id = OBJECT_ID('dbo.FundTransaction'))
+                BEGIN
+                    CREATE INDEX [IX_FundTransaction_GroupId] ON [dbo].[FundTransaction] ([GroupId]);
+                END");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_FundTransaction_GroupId",
-                table: "FundTransaction",
-                column: "GroupId");
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_GroupFund_GroupId' AND object_id = OBJECT_ID('dbo.GroupFund'))
+                BEGIN
+                    CREATE UNIQUE INDEX [IX_GroupFund_GroupId] ON [dbo].[GroupFund] ([GroupId]);
+                END");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_GroupFund_GroupId",
-                table: "GroupFund",
-                column: "GroupId",
-                unique: true);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_RecurringBooking_OwnershipGroups_GroupId",
-                table: "RecurringBooking",
-                column: "GroupId",
-                principalTable: "OwnershipGroups",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_GroupId",
-                table: "Vehicles",
-                column: "GroupId",
-                principalTable: "OwnershipGroups",
-                principalColumn: "Id");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_OwnershipGroupId",
-                table: "Vehicles",
-                column: "OwnershipGroupId",
-                principalTable: "OwnershipGroups",
-                principalColumn: "Id");
+            // NOTE: All FK constraints referencing GroupId are intentionally NOT created
+            // because in microservices architecture, GroupId references Group Service (different DB)
+            // See: scripts/fix-vehicle-groupid-fk.sql for more details
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_RecurringBooking_OwnershipGroups_GroupId",
-                table: "RecurringBooking");
+            migrationBuilder.Sql(@"DROP TABLE IF EXISTS [dbo].[FundTransaction]");
+            migrationBuilder.Sql(@"DROP TABLE IF EXISTS [dbo].[GroupFund]");
+            migrationBuilder.Sql(@"DROP TABLE IF EXISTS [dbo].[OwnershipGroups]");
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_GroupId",
-                table: "Vehicles");
-
-            migrationBuilder.DropForeignKey(
-                name: "FK_Vehicles_OwnershipGroups_OwnershipGroupId",
-                table: "Vehicles");
-
-            migrationBuilder.DropTable(
-                name: "FundTransaction");
-
-            migrationBuilder.DropTable(
-                name: "GroupFund");
-
-            migrationBuilder.DropTable(
-                name: "OwnershipGroups");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Vehicles_OwnershipGroupId",
-                table: "Vehicles");
-
-            migrationBuilder.DropIndex(
-                name: "IX_RecurringBooking_GroupId",
-                table: "RecurringBooking");
+            migrationBuilder.Sql(@"DROP INDEX IF EXISTS [IX_Vehicles_OwnershipGroupId] ON [dbo].[Vehicles]");
+            migrationBuilder.Sql(@"DROP INDEX IF EXISTS [IX_RecurringBooking_GroupId] ON [dbo].[RecurringBooking]");
 
             migrationBuilder.DropColumn(
                 name: "OwnershipGroupId",
