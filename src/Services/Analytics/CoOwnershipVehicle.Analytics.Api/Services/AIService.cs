@@ -2,6 +2,7 @@ using CoOwnershipVehicle.Analytics.Api.Data;
 using CoOwnershipVehicle.Analytics.Api.Data.Entities;
 using CoOwnershipVehicle.Analytics.Api.Models;
 using CoOwnershipVehicle.Analytics.Api.Services.HttpClients;
+using CoOwnershipVehicle.Analytics.Api.Services.Prompts;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,7 @@ public class AIService : IAIService
 	private readonly IGroupServiceClient _groupServiceClient;
 	private readonly IBookingServiceClient _bookingServiceClient;
 	private readonly IPaymentServiceClient _paymentServiceClient;
+	private readonly IOpenAIServiceClient _openAIServiceClient;
 	private readonly ILogger<AIService> _logger;
 
 	public AIService(
@@ -21,12 +23,14 @@ public class AIService : IAIService
 		IGroupServiceClient groupServiceClient,
 		IBookingServiceClient bookingServiceClient,
 		IPaymentServiceClient paymentServiceClient,
+		IOpenAIServiceClient openAIServiceClient,
 		ILogger<AIService> logger)
 	{
 		_context = context;
 		_groupServiceClient = groupServiceClient;
 		_bookingServiceClient = bookingServiceClient;
 		_paymentServiceClient = paymentServiceClient;
+		_openAIServiceClient = openAIServiceClient;
 		_logger = logger;
 	}
 
@@ -51,6 +55,114 @@ public class AIService : IAIService
 				return null;
 			}
 		}
+
+		// Try AI API first
+		try
+		{
+			// Prepare data for AI prompt
+			var members = userAnalytics
+				.GroupBy(x => x.UserId)
+				.Select(g => new
+				{
+					UserId = g.Key,
+					Ownership = g.Average(x => (double)x.OwnershipShare),
+					Usage = g.Average(x => (double)x.UsageShare),
+					TotalUsageHours = g.Sum(x => x.TotalUsageHours)
+				})
+				.ToList();
+
+			if (members.Count > 0)
+			{
+				// Normalize usage if needed
+				var anyUsageShareMissing = members.Any(m => double.IsNaN(m.Usage) || double.IsInfinity(m.Usage));
+				if (anyUsageShareMissing || members.All(m => m.Usage == 0))
+				{
+					var totalHours = members.Sum(m => m.TotalUsageHours);
+					if (totalHours > 0)
+					{
+						members = members.Select(m => new
+						{
+							m.UserId,
+							m.Ownership,
+							Usage = (double)m.TotalUsageHours / totalHours,
+							m.TotalUsageHours
+						}).ToList();
+					}
+				}
+
+				var memberData = members.Select(m => new MemberFairnessData
+				{
+					UserId = m.UserId,
+					OwnershipPercentage = (decimal)(m.Ownership * 100.0),
+					UsagePercentage = (decimal)(m.Usage * 100.0)
+				}).ToList();
+
+				// Get historical trends
+				var historicalTrends = await _context.FairnessTrends
+					.Where(t => t.GroupId == groupId)
+					.OrderByDescending(t => t.PeriodEnd)
+					.Take(6)
+					.Select(t => new FairnessTrendPoint
+					{
+						PeriodStart = t.PeriodStart,
+						PeriodEnd = t.PeriodEnd,
+						GroupFairnessScore = t.GroupFairnessScore
+					})
+					.ToListAsync();
+
+				// Build prompt and call AI
+				var prompt = AIPromptTemplates.BuildFairnessAnalysisPrompt(
+					groupId, periodStart, periodEnd, memberData, historicalTrends);
+
+				var aiResponse = await _openAIServiceClient.AnalyzeFairnessAsync(prompt);
+				
+				if (aiResponse != null)
+				{
+					_logger.LogInformation("Successfully received AI fairness analysis for group {GroupId}", groupId);
+					
+					// Store trend for current period
+					try
+					{
+						var existing = await _context.FairnessTrends.FirstOrDefaultAsync(t => t.GroupId == groupId && t.PeriodStart == periodStart && t.PeriodEnd == periodEnd);
+						if (existing == null)
+						{
+							_context.FairnessTrends.Add(new FairnessTrend
+							{
+								GroupId = groupId,
+								PeriodStart = periodStart,
+								PeriodEnd = periodEnd,
+								GroupFairnessScore = aiResponse.GroupFairnessScore
+							});
+							await _context.SaveChangesAsync();
+						}
+						else if (existing.GroupFairnessScore != aiResponse.GroupFairnessScore)
+						{
+							existing.GroupFairnessScore = aiResponse.GroupFairnessScore;
+							await _context.SaveChangesAsync();
+						}
+					}
+					catch (Exception ex)
+					{
+						_logger.LogWarning(ex, "Failed to upsert fairness trend for group {GroupId}", groupId);
+					}
+
+					return aiResponse;
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "AI API call failed for fairness analysis, falling back to hardcoded logic");
+		}
+
+		// Fallback to hardcoded logic
+		_logger.LogInformation("Using fallback hardcoded logic for fairness analysis");
+		return await CalculateFairnessFallbackAsync(groupId, periodStart, periodEnd, userAnalytics);
+	}
+
+	private async Task<FairnessAnalysisResponse?> CalculateFairnessFallbackAsync(
+		Guid groupId, DateTime periodStart, DateTime periodEnd, List<Data.Entities.UserAnalytics> userAnalytics)
+	{
 
 		// Aggregate by user
 		var members = userAnalytics
@@ -283,6 +395,57 @@ public class AIService : IAIService
 		var baseDateLocal = (request.PreferredDate ?? DateTime.UtcNow).Date;
 		var duration = TimeSpan.FromMinutes(Math.Max(30, request.DurationMinutes));
 
+		// Try AI API first
+		try
+		{
+			// Compute fairness for prioritization
+			var fairness = await CalculateFairnessAsync(request.GroupId, baseDateLocal.AddMonths(-3), baseDateLocal.AddDays(1));
+			decimal userFairness = 100m;
+			decimal groupFairness = 100m;
+			if (fairness != null)
+			{
+				groupFairness = fairness.GroupFairnessScore;
+				var member = fairness.Members.FirstOrDefault(m => m.UserId == request.UserId);
+				if (member != null)
+				{
+					userFairness = member.FairnessScore;
+				}
+			}
+
+			// Get historical booking patterns (simplified - would need actual booking data)
+			var bookingPatterns = new List<HistoricalBookingPattern>
+			{
+				new() { DayOfWeek = "Monday", Hour = 8, Frequency = 5 },
+				new() { DayOfWeek = "Friday", Hour = 18, Frequency = 4 }
+			};
+
+			// Build prompt and call AI
+			var prompt = AIPromptTemplates.BuildBookingSuggestionPrompt(
+				request.UserId, request.GroupId, request.PreferredDate, request.DurationMinutes,
+				userFairness, groupFairness, bookingPatterns);
+
+			var aiResponse = await _openAIServiceClient.SuggestBookingTimesAsync(prompt);
+			
+			if (aiResponse != null)
+			{
+				_logger.LogInformation("Successfully received AI booking suggestions for user {UserId}", request.UserId);
+				return aiResponse;
+			}
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "AI API call failed for booking suggestions, falling back to hardcoded logic");
+		}
+
+		// Fallback to hardcoded logic
+		_logger.LogInformation("Using fallback hardcoded logic for booking suggestions");
+		return await SuggestBookingTimesFallbackAsync(request, baseDateLocal, duration);
+	}
+
+	private async Task<SuggestBookingResponse?> SuggestBookingTimesFallbackAsync(
+		SuggestBookingRequest request, DateTime baseDateLocal, TimeSpan duration)
+	{
+
 		// Compute fairness for prioritization
 		var fairness = await CalculateFairnessAsync(request.GroupId, baseDateLocal.AddMonths(-3), baseDateLocal.AddDays(1));
 		decimal userFairness = 100m;
@@ -433,19 +596,102 @@ public class AIService : IAIService
 		var historyEnd = userHistory.Any() ? userHistory.Max(x => x.PeriodEnd) : snapHistory.Max(x => x.SnapshotDate);
 		var historySpan = (historyEnd - historyStart).TotalDays;
 
+		if (historySpan < 30)
+		{
+			return new UsagePredictionResponse
+			{
+				GroupId = groupId,
+				GeneratedAt = DateTime.UtcNow,
+				HistoryStart = historyStart,
+				HistoryEnd = historyEnd,
+				InsufficientHistory = true
+			};
+		}
+
+		// Try AI API first
+		try
+		{
+			// Aggregate daily usage
+			var dayUsage = new Dictionary<DateTime, double>();
+			foreach (var ua in userHistory)
+			{
+				var spanDays = Math.Max(1, (ua.PeriodEnd.Date - ua.PeriodStart.Date).Days + 1);
+				var perDay = ua.TotalUsageHours / (double)spanDays;
+				for (var d = ua.PeriodStart.Date; d <= ua.PeriodEnd.Date; d = d.AddDays(1))
+				{
+					if (!dayUsage.ContainsKey(d)) dayUsage[d] = 0;
+					dayUsage[d] += perDay;
+				}
+			}
+
+			// Calculate trend
+			var last30Start = historyEnd.Date.AddDays(-29);
+			var prev30Start = last30Start.AddDays(-30);
+			double sumLast = dayUsage.Where(kv => kv.Key >= last30Start && kv.Key <= historyEnd.Date).Sum(kv => kv.Value);
+			double sumPrev = dayUsage.Where(kv => kv.Key >= prev30Start && kv.Key < last30Start).Sum(kv => kv.Value);
+			double trendPct = (sumPrev <= 0) ? 0 : ((sumLast - sumPrev) / sumPrev) * 100.0;
+
+			// Day-of-week averages
+			var dowAvg = Enumerable.Range(0, 7).ToDictionary(i => i, i => 0.0);
+			var dowCounts = Enumerable.Range(0, 7).ToDictionary(i => i, i => 0);
+			foreach (var kv in dayUsage)
+			{
+				var dow = (int)kv.Key.DayOfWeek;
+				dowAvg[dow] += kv.Value;
+				dowCounts[dow] += 1;
+			}
+			foreach (var k in dowAvg.Keys.ToList())
+			{
+				dowAvg[k] = dowCounts[k] == 0 ? 0 : dowAvg[k] / dowCounts[k];
+			}
+
+			// Member patterns
+			var memberPatterns = userHistory
+				.GroupBy(x => x.UserId)
+				.Select(g => new MemberUsagePattern
+				{
+					UserId = g.Key,
+					UsageShare = (decimal)g.Average(x => (double)x.UsageShare),
+					PreferredDayOfWeek = "Monday", // Simplified
+					PreferredHour = 8 // Simplified
+				})
+				.Take(10)
+				.ToList();
+
+			// Build prompt and call AI
+			var prompt = AIPromptTemplates.BuildUsagePredictionPrompt(
+				groupId, historyStart, historyEnd, dayUsage, dowAvg, trendPct, memberPatterns);
+
+			var aiResponse = await _openAIServiceClient.PredictUsageAsync(prompt);
+			
+			if (aiResponse != null)
+			{
+				_logger.LogInformation("Successfully received AI usage predictions for group {GroupId}", groupId);
+				return aiResponse;
+			}
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "AI API call failed for usage predictions, falling back to hardcoded logic");
+		}
+
+		// Fallback to hardcoded logic
+		_logger.LogInformation("Using fallback hardcoded logic for usage predictions");
+		return await GetUsagePredictionsFallbackAsync(groupId, userHistory, snapHistory, historyStart, historyEnd);
+	}
+
+	private async Task<UsagePredictionResponse?> GetUsagePredictionsFallbackAsync(
+		Guid groupId, List<Data.Entities.UserAnalytics> userHistory, List<Data.Entities.AnalyticsSnapshot> snapHistory,
+		DateTime historyStart, DateTime historyEnd)
+	{
 		var response = new UsagePredictionResponse
 		{
 			GroupId = groupId,
 			GeneratedAt = DateTime.UtcNow,
 			HistoryStart = historyStart,
 			HistoryEnd = historyEnd,
-			InsufficientHistory = historySpan < 30
+			InsufficientHistory = false
 		};
-
-		if (response.InsufficientHistory)
-		{
-			return response; // return empty payload per acceptance criteria
-		}
 
 		// Aggregate approximate daily usage using UserAnalytics TotalUsageHours equally over covered days
 		var dayUsage = new Dictionary<DateTime, double>();
@@ -629,7 +875,6 @@ public class AIService : IAIService
 		var periodStart = periodEnd.AddMonths(-12); // Last 12 months
 
 		// Check if group exists
-		// Get group from Group service via HTTP
 		var group = await _groupServiceClient.GetGroupDetailsAsync(groupId);
 		if (group == null)
 		{
@@ -643,7 +888,7 @@ public class AIService : IAIService
 		var allBookings = await _bookingServiceClient.GetBookingsAsync(periodStart, periodEnd, groupId);
 		var bookings = allBookings.Where(b => b.Status == BookingStatus.Completed).ToList();
 
-		if (!expenses.Any())
+		if (!expenses.Any() || !bookings.Any())
 		{
 			return new CostOptimizationResponse
 			{
@@ -656,18 +901,72 @@ public class AIService : IAIService
 			};
 		}
 
-		if (!bookings.Any())
+		// Try AI API first
+		try
 		{
-			return new CostOptimizationResponse
+			// Calculate metrics for prompt
+			var totalDistance = await CalculateTotalDistanceAsync(bookings);
+			var totalTrips = bookings.Count;
+			var totalMembers = group.Members?.Count ?? 0;
+			var totalHours = bookings.Sum(b => (int)(b.EndAt - b.StartAt).TotalHours);
+			var totalExpenses = expenses.Sum(e => e.Amount);
+
+			var summary = new CostAnalysisSummary
 			{
-				GroupId = groupId,
-				GroupName = group.Name,
-				PeriodStart = periodStart,
-				PeriodEnd = periodEnd,
-				GeneratedAt = DateTime.UtcNow,
-				InsufficientData = true
+				TotalExpenses = totalExpenses,
+				AverageMonthlyExpenses = expenses.GroupBy(e => new { e.DateIncurred.Year, e.DateIncurred.Month })
+					.Select(g => g.Sum(e => e.Amount))
+					.DefaultIfEmpty(0)
+					.Average(),
+				TotalExpenseCount = expenses.Count,
+				ExpensesByType = expenses.GroupBy(e => e.ExpenseType)
+					.ToDictionary(g => g.Key.ToString(), g => g.Sum(e => e.Amount)),
+				ExpensesByMonth = expenses.GroupBy(e => new { e.DateIncurred.Year, e.DateIncurred.Month })
+					.ToDictionary(g => $"{g.Key.Year}-{g.Key.Month:D2}", g => g.Sum(e => e.Amount))
 			};
+
+			var efficiencyMetrics = new CostEfficiencyMetrics
+			{
+				CostPerKilometer = totalDistance > 0 ? totalExpenses / totalDistance : 0,
+				CostPerTrip = totalTrips > 0 ? totalExpenses / totalTrips : 0,
+				CostPerMember = totalMembers > 0 ? totalExpenses / totalMembers : 0,
+				CostPerHour = totalHours > 0 ? totalExpenses / totalHours : 0,
+				TotalKilometers = (int)totalDistance,
+				TotalTrips = totalTrips,
+				TotalMembers = totalMembers,
+				TotalHours = totalHours
+			};
+
+			var highCostAreas = AnalyzeHighCostAreas(expenses, totalExpenses);
+
+			// Build prompt and call AI
+			var prompt = AIPromptTemplates.BuildCostOptimizationPrompt(
+				groupId, group.Name ?? "Unknown", periodStart, periodEnd,
+				summary, highCostAreas, efficiencyMetrics,
+				summary.ExpensesByType, summary.ExpensesByMonth);
+
+			var aiResponse = await _openAIServiceClient.OptimizeCostsAsync(prompt);
+			
+			if (aiResponse != null)
+			{
+				_logger.LogInformation("Successfully received AI cost optimization for group {GroupId}", groupId);
+				return aiResponse;
+			}
 		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "AI API call failed for cost optimization, falling back to hardcoded logic");
+		}
+
+		// Fallback to hardcoded logic
+		_logger.LogInformation("Using fallback hardcoded logic for cost optimization");
+		return await GetCostOptimizationFallbackAsync(groupId, group, expenses, bookings, periodStart, periodEnd);
+	}
+
+	private async Task<CostOptimizationResponse?> GetCostOptimizationFallbackAsync(
+		Guid groupId, GroupDetailsDto group, List<ExpenseDto> expenses, List<BookingDto> bookings,
+		DateTime periodStart, DateTime periodEnd)
+	{
 
 		var response = new CostOptimizationResponse
 		{

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.IO;
 using CoOwnershipVehicle.User.Api.Data;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.User.Api.Services;
@@ -146,6 +147,14 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Ensure KYC files directory exists
+var kycFilesPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "files", "kyc");
+if (!Directory.Exists(kycFilesPath))
+{
+    Directory.CreateDirectory(kycFilesPath);
+    Console.WriteLine($"[INFO] Created KYC files directory: {kycFilesPath}");
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
