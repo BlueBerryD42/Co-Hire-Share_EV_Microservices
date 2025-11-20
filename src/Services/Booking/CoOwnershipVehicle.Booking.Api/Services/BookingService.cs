@@ -373,6 +373,34 @@ public class BookingService : IBookingService
         return MapBookingToDto(booking);
     }
 
+    public async Task<BookingDto> CompleteBookingAsync(Guid bookingId, Guid callerUserId, bool callerIsAdmin = false)
+    {
+        var booking = await _bookingRepository.GetBookingWithDetailsAsync(bookingId)
+                      ?? throw new ArgumentException("Booking not found");
+
+        if (booking.UserId != callerUserId && !callerIsAdmin)
+            throw new UnauthorizedAccessException("Caller is not authorized to complete this booking");
+
+        if (booking.Status == Domain.Entities.BookingStatus.Completed)
+        {
+            // Idempotent: return current booking
+            return await GetBookingByIdAsync(booking.Id);
+        }
+
+        if (booking.Status == Domain.Entities.BookingStatus.Cancelled)
+            throw new InvalidOperationException("Cannot complete a cancelled booking.");
+
+        booking.Status = Domain.Entities.BookingStatus.Completed;
+        booking.CompletedAt = DateTime.UtcNow;
+        booking.UpdatedAt = DateTime.UtcNow;
+
+        await _bookingRepository.SaveChangesAsync();
+
+        _logger.LogInformation("Booking {BookingId} marked as Completed by {UserId}", bookingId, callerUserId);
+
+        return await GetBookingByIdAsync(booking.Id);
+    }
+
     private decimal CalculateTripFee(decimal distanceKm)
     {
         var baseCost = distanceKm * _tripPricingOptions.CostPerKm;
@@ -491,6 +519,7 @@ public class BookingService : IBookingService
             RequiresDamageReview = booking.RequiresDamageReview,
             RecurringBookingId = booking.RecurringBookingId,
             CreatedAt = booking.CreatedAt,
+            CompletedAt = booking.CompletedAt,
             VehicleStatus = booking.VehicleStatus,
             DistanceKm = booking.DistanceKm,
             TripFeeAmount = booking.TripFeeAmount

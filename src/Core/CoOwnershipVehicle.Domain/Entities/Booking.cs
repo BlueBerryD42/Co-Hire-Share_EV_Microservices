@@ -49,6 +49,8 @@ public class Booking : BaseEntity
 
     public DateTime? MissedCheckoutReminderSentAt { get; set; }
 
+    public DateTime? CompletedAt { get; set; }
+
     public Guid? RecurringBookingId { get; set; }
     public Guid? BookingTemplateId { get; set; } // Added BookingTemplateId
 

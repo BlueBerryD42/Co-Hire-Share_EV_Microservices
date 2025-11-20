@@ -291,6 +291,41 @@ public class BookingController : ControllerBase
     }
 
     /// <summary>
+    /// Mark a booking as completed (owner or admin/staff)
+    /// </summary>
+    [HttpPost("{id:guid}/complete")]
+    public async Task<IActionResult> CompleteBooking(Guid id)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var callerIsAdmin = User.IsInRole("SystemAdmin") || User.IsInRole("Staff");
+            var booking = await _bookingService.CompleteBookingAsync(id, userId, callerIsAdmin);
+
+            _logger.LogInformation("Booking {BookingId} completed by {UserId}", id, userId);
+
+            return Ok(booking);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing booking {BookingId}", id);
+            return StatusCode(500, new { message = "An error occurred while completing booking" });
+        }
+    }
+
+    /// <summary>
     /// Cancel a booking
     /// </summary>
     [HttpPost("{id:guid}/cancel")]
