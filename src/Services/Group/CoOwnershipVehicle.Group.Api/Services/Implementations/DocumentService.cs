@@ -1193,6 +1193,9 @@ public class DocumentService : IDocumentService
         var signedCount = allDocSignatures.Count(s => s.SignedAt != null);
         var totalSigners = allDocSignatures.Count;
 
+        // Get access token for User service calls
+        var accessToken = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString().Replace("Bearer ", "") ?? string.Empty;
+
         string? nextSignerName = null;
 
         if (allSigned)
@@ -1223,7 +1226,12 @@ public class DocumentService : IDocumentService
 
             if (nextSignature != null)
             {
-                nextSignerName = $"{nextSignature.Signer.FirstName} {nextSignature.Signer.LastName}";
+                // Fetch next signer info from User service
+                var nextSignerInfo = await _userServiceClient.GetUserAsync(nextSignature.SignerId, accessToken);
+                nextSignerName = nextSignerInfo != null
+                    ? $"{nextSignerInfo.FirstName} {nextSignerInfo.LastName}"
+                    : "Unknown User";
+
                 _logger.LogInformation(
                     "Next signer for document {DocumentId} is {SignerName}",
                     documentId, nextSignerName);
@@ -1247,6 +1255,10 @@ public class DocumentService : IDocumentService
 
         var progressPercentage = (double)signedCount / totalSigners * 100;
 
+        // Fetch current user info from User service
+        var signerInfo = await _userServiceClient.GetUserAsync(userId, accessToken);
+        var signerName = signerInfo != null ? $"{signerInfo.FirstName} {signerInfo.LastName}" : "Unknown User";
+
         return new SignDocumentResponse
         {
             DocumentId = documentId,
@@ -1254,7 +1266,7 @@ public class DocumentService : IDocumentService
             FileName = document.FileName,
             DocumentStatus = document.SignatureStatus,
             SignedAt = signature.SignedAt.Value,
-            SignerName = $"{signature.Signer.FirstName} {signature.Signer.LastName}",
+            SignerName = signerName,
             TotalSigners = totalSigners,
             SignedCount = signedCount,
             ProgressPercentage = Math.Round(progressPercentage, 2),
@@ -1397,6 +1409,7 @@ public class DocumentService : IDocumentService
                     SignaturePreviewUrl = s.SignatureReference != null
                         ? $"/api/document/{documentId}/signature/{s.Id}/preview"
                         : null,
+                    SigningToken = s.SigningToken,
                     IsPending = s.SignedAt == null,
                     IsCurrentSigner = s.SignerId == nextSignerId
                 };

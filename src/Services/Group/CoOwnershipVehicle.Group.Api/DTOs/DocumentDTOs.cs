@@ -264,6 +264,7 @@ public class SignatureDetailInfo
     public SignatureStatus Status { get; set; }
     public DateTime? SignedAt { get; set; }
     public string? SignaturePreviewUrl { get; set; }
+    public string? SigningToken { get; set; }
     public bool IsPending { get; set; }
     public bool IsCurrentSigner { get; set; }
 }
