@@ -21,13 +21,22 @@ public class Vehicle : BaseEntity
     [StringLength(50)]
     public string? Color { get; set; }
     
-    public VehicleStatus Status { get; set; } = VehicleStatus.Available;
+    public VehicleStatus Status { get; set; } = VehicleStatus.PendingApproval;
     
     public DateTime? LastServiceDate { get; set; }
     
     public int Odometer { get; set; }
     
     public Guid? GroupId { get; set; }
+    
+    [StringLength(1000)]
+    public string? RejectionReason { get; set; }
+    
+    public DateTime? SubmittedAt { get; set; }
+    
+    public Guid? ReviewedBy { get; set; }
+    
+    public DateTime? ReviewedAt { get; set; }
     
     // Navigation properties
     public virtual OwnershipGroup? Group { get; set; }
@@ -40,8 +49,10 @@ public class Vehicle : BaseEntity
 
 public enum VehicleStatus
 {
-    Available = 0,
-    InUse = 1,
-    Maintenance = 2,
-    Unavailable = 3
+    PendingApproval = 0,
+    Available = 1,
+    InUse = 2,
+    Maintenance = 3,
+    Unavailable = 4,
+    Rejected = 5
 }

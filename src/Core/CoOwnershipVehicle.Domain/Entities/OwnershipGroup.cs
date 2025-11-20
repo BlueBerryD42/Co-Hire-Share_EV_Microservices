@@ -11,9 +11,18 @@ public class OwnershipGroup : BaseEntity
     [StringLength(1000)]
     public string? Description { get; set; }
     
-    public GroupStatus Status { get; set; } = GroupStatus.Active;
+    public GroupStatus Status { get; set; } = GroupStatus.PendingApproval;
     
     public Guid CreatedBy { get; set; }
+    
+    [StringLength(1000)]
+    public string? RejectionReason { get; set; }
+    
+    public DateTime? SubmittedAt { get; set; }
+    
+    public Guid? ReviewedBy { get; set; }
+    
+    public DateTime? ReviewedAt { get; set; }
     
     // Navigation properties
     public virtual User Creator { get; set; } = null!;
@@ -31,7 +40,9 @@ public class OwnershipGroup : BaseEntity
 
 public enum GroupStatus
 {
-    Active = 0,
-    Inactive = 1,
-    Dissolved = 2
+    PendingApproval = 0,
+    Active = 1,
+    Inactive = 2,
+    Dissolved = 3,
+    Rejected = 4
 }

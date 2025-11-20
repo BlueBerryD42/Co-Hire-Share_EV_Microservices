@@ -212,12 +212,9 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtConfig.Audience,
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero,
-        // Use ClaimTypes.Role to match Admin service and JWT token format
-        // This ensures role claims from JWT tokens work correctly
-        RoleClaimType = ClaimTypes.Role
+        // Use default ClaimTypes.Role - Ocelot forwards roles as standard role claims
+        RoleClaimType = System.Security.Claims.ClaimTypes.Role
     };
-
-    Console.WriteLine($"[DIAGNOSTIC_LOG] RoleClaimType is set to: {options.TokenValidationParameters.RoleClaimType}");
 });
 
 // Add MassTransit
@@ -230,7 +227,29 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Add policy for Staff/Admin
+    options.AddPolicy("StaffOrAdmin", policy =>
+    {
+        policy.RequireRole("SystemAdmin", "Staff");
+    });
+    
+    // Log authorization events
+    options.AddPolicy("LogAuthorization", policy =>
+    {
+        policy.RequireAssertion(context =>
+        {
+            var logger = context.Resource as ILogger;
+            var user = context.User;
+            var roles = user.Claims.Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role)
+                .Select(c => c.Value).ToList();
+            Console.WriteLine($"[AUTHORIZATION] User: {user.Identity?.Name}, Roles: {string.Join(", ", roles)}");
+            Console.WriteLine($"[AUTHORIZATION] IsInRole('Staff'): {user.IsInRole("Staff")}, IsInRole('SystemAdmin'): {user.IsInRole("SystemAdmin")}");
+            return true; // Always allow, just for logging
+        });
+    });
+});
 
 // Add HttpContextAccessor for accessing HTTP context in services
 builder.Services.AddHttpContextAccessor();
@@ -263,6 +282,22 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseAuthentication(); // Ensure this is before UseAuthorization
+
+// Add middleware to log authorization details
+app.Use(async (context, next) =>
+{
+    if (context.User?.Identity?.IsAuthenticated == true)
+    {
+        var roleClaims = context.User.Claims.Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role).ToList();
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogInformation("[AUTH MIDDLEWARE] User authenticated. Role claims: {Roles}", 
+            string.Join(", ", roleClaims.Select(c => $"{c.Type}={c.Value}")));
+        logger.LogInformation("[AUTH MIDDLEWARE] IsInRole('Staff'): {IsStaff}, IsInRole('SystemAdmin'): {IsAdmin}", 
+            context.User.IsInRole("Staff"), context.User.IsInRole("SystemAdmin"));
+    }
+    await next();
+});
+
 app.UseAuthorization();
 
 app.MapControllers();

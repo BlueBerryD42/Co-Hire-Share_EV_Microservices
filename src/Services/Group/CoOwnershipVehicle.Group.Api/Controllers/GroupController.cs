@@ -55,9 +55,13 @@ public class GroupController : ControllerBase
             
             // Note: Vehicles are not included because Vehicle entity is in Vehicle service
             // Vehicles will be fetched separately via HTTP if needed
+            // Users see only Active groups, except their own pending/rejected groups
             var groups = await _context.OwnershipGroups
                 .Include(g => g.Members)
-                .Where(g => g.Members.Any(m => m.UserId == userId))
+                .Where(g => g.Members.Any(m => m.UserId == userId) &&
+                    (g.Status == Domain.Entities.GroupStatus.Active ||
+                     g.Status == Domain.Entities.GroupStatus.PendingApproval ||
+                     g.Status == Domain.Entities.GroupStatus.Rejected))
                 .ToListAsync();
 
             // Fetch user data via HTTP
@@ -73,6 +77,10 @@ public class GroupController : ControllerBase
                 Status = (GroupStatus)g.Status,
                 CreatedBy = g.CreatedBy,
                 CreatedAt = g.CreatedAt,
+                RejectionReason = g.RejectionReason,
+                SubmittedAt = g.SubmittedAt,
+                ReviewedBy = g.ReviewedBy,
+                ReviewedAt = g.ReviewedAt,
                 Members = g.Members.Select(m =>
                 {
                     var user = users.GetValueOrDefault(m.UserId);
@@ -142,6 +150,10 @@ public class GroupController : ControllerBase
                 Status = (GroupStatus)group.Status,
                 CreatedBy = group.CreatedBy,
                 CreatedAt = group.CreatedAt,
+                RejectionReason = group.RejectionReason,
+                SubmittedAt = group.SubmittedAt,
+                ReviewedBy = group.ReviewedBy,
+                ReviewedAt = group.ReviewedAt,
                 Members = group.Members.Select(m =>
                 {
                     var user = users.GetValueOrDefault(m.UserId);
@@ -298,6 +310,10 @@ public class GroupController : ControllerBase
                 Status = (GroupStatus)g.Status,
                 CreatedBy = g.CreatedBy,
                 CreatedAt = g.CreatedAt,
+                RejectionReason = g.RejectionReason,
+                SubmittedAt = g.SubmittedAt,
+                ReviewedBy = g.ReviewedBy,
+                ReviewedAt = g.ReviewedAt,
                 Members = g.Members.Select(m =>
                 {
                     var user = users.GetValueOrDefault(m.UserId);
@@ -378,16 +394,17 @@ public class GroupController : ControllerBase
                 return BadRequest(new { message = "Total share percentages must equal 100%" });
             }
 
-            // Create the group
+            // Create the group with PendingApproval status
             var group = new Domain.Entities.OwnershipGroup
             {
                 Id = Guid.NewGuid(),
                 Name = createDto.Name,
                 Description = createDto.Description,
-                Status = Domain.Entities.GroupStatus.Active,
+                Status = Domain.Entities.GroupStatus.PendingApproval,
                 CreatedBy = userId,
                 CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                UpdatedAt = DateTime.UtcNow,
+                SubmittedAt = DateTime.UtcNow
             };
 
             _context.OwnershipGroups.Add(group);
@@ -437,6 +454,207 @@ public class GroupController : ControllerBase
         {
             _logger.LogError(ex, "Error creating group");
             return StatusCode(500, new { message = "An error occurred while creating group" });
+        }
+    }
+
+    /// <summary>
+    /// Get pending groups (Staff/Admin only)
+    /// </summary>
+    [HttpGet("pending")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> GetPendingGroups()
+    {
+        try
+        {
+            // Debug logging for authorization
+            var userId = GetCurrentUserId();
+            var userRoles = User.Claims.Where(c => c.Type == "role" || c.Type == System.Security.Claims.ClaimTypes.Role)
+                .Select(c => c.Value).ToList();
+            _logger.LogInformation("GetPendingGroups called by user {UserId}. User roles: {Roles}", userId, string.Join(", ", userRoles));
+            _logger.LogInformation("User.IsInRole('Staff'): {IsStaff}, User.IsInRole('SystemAdmin'): {IsAdmin}", 
+                User.IsInRole("Staff"), User.IsInRole("SystemAdmin"));
+            
+            var groups = await _context.OwnershipGroups
+                .Include(g => g.Members)
+                .Where(g => g.Status == Domain.Entities.GroupStatus.PendingApproval)
+                .OrderBy(g => g.SubmittedAt ?? g.CreatedAt)
+                .ToListAsync();
+
+            var accessToken = GetAccessToken();
+            var allMemberUserIds = groups.SelectMany(g => g.Members.Select(m => m.UserId)).Distinct().ToList();
+            var users = await _userServiceClient.GetUsersAsync(allMemberUserIds, accessToken);
+
+            var groupDtos = groups.Select(g => new GroupDto
+            {
+                Id = g.Id,
+                Name = g.Name,
+                Description = g.Description,
+                Status = (GroupStatus)g.Status,
+                CreatedBy = g.CreatedBy,
+                CreatedAt = g.CreatedAt,
+                RejectionReason = g.RejectionReason,
+                SubmittedAt = g.SubmittedAt,
+                ReviewedBy = g.ReviewedBy,
+                ReviewedAt = g.ReviewedAt,
+                Members = g.Members.Select(m =>
+                {
+                    var user = users.GetValueOrDefault(m.UserId);
+                    return new GroupMemberDto
+                    {
+                        Id = m.Id,
+                        UserId = m.UserId,
+                        UserFirstName = user?.FirstName ?? "Unknown",
+                        UserLastName = user?.LastName ?? "",
+                        UserEmail = user?.Email ?? "",
+                        SharePercentage = m.SharePercentage,
+                        RoleInGroup = (GroupRole)m.RoleInGroup,
+                        JoinedAt = m.JoinedAt
+                    };
+                }).ToList(),
+                Vehicles = new List<VehicleDto>()
+            }).ToList();
+
+            return Ok(groupDtos);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pending groups");
+            return StatusCode(500, new { message = "An error occurred while retrieving pending groups" });
+        }
+    }
+
+    /// <summary>
+    /// Approve a group (Staff/Admin only)
+    /// </summary>
+    [HttpPost("{id:guid}/approve")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> ApproveGroup(Guid id, [FromBody] ApproveGroupDto? request = null)
+    {
+        try
+        {
+            var reviewerId = GetCurrentUserId();
+            var group = await _context.OwnershipGroups
+                .Include(g => g.Members)
+                .FirstOrDefaultAsync(g => g.Id == id);
+
+            if (group == null)
+                return NotFound(new { message = "Group not found" });
+
+            if (group.Status != Domain.Entities.GroupStatus.PendingApproval)
+                return BadRequest(new { message = "Group is not pending approval" });
+
+            // Validate group can be approved
+            var totalShares = group.Members.Sum(m => m.SharePercentage);
+            if (Math.Abs(totalShares - 1.0m) > 0.0001m)
+            {
+                return BadRequest(new { message = "Cannot approve group: ownership percentages do not total 100%" });
+            }
+
+            var hasGroupAdmin = group.Members.Any(m => m.RoleInGroup == Domain.Entities.GroupRole.Admin);
+            if (!hasGroupAdmin)
+            {
+                return BadRequest(new { message = "Cannot approve group: must have at least one GroupAdmin member" });
+            }
+
+            // Approve the group
+            group.Status = Domain.Entities.GroupStatus.Active;
+            group.ReviewedBy = reviewerId;
+            group.ReviewedAt = DateTime.UtcNow;
+            group.UpdatedAt = DateTime.UtcNow;
+            group.RejectionReason = null; // Clear any previous rejection reason
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Group {GroupId} approved by user {ReviewerId}", id, reviewerId);
+
+            return Ok(new { message = "Group approved successfully", groupId = id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error approving group {GroupId}", id);
+            return StatusCode(500, new { message = "An error occurred while approving group" });
+        }
+    }
+
+    /// <summary>
+    /// Reject a group (Staff/Admin only)
+    /// </summary>
+    [HttpPost("{id:guid}/reject")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> RejectGroup(Guid id, [FromBody] RejectGroupDto request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var reviewerId = GetCurrentUserId();
+            var group = await _context.OwnershipGroups.FindAsync(id);
+
+            if (group == null)
+                return NotFound(new { message = "Group not found" });
+
+            if (group.Status != Domain.Entities.GroupStatus.PendingApproval)
+                return BadRequest(new { message = "Group is not pending approval" });
+
+            // Reject the group
+            group.Status = Domain.Entities.GroupStatus.Rejected;
+            group.ReviewedBy = reviewerId;
+            group.ReviewedAt = DateTime.UtcNow;
+            group.UpdatedAt = DateTime.UtcNow;
+            group.RejectionReason = request.Reason;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Group {GroupId} rejected by user {ReviewerId}", id, reviewerId);
+
+            return Ok(new { message = "Group rejected successfully", groupId = id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rejecting group {GroupId}", id);
+            return StatusCode(500, new { message = "An error occurred while rejecting group" });
+        }
+    }
+
+    /// <summary>
+    /// Resubmit a rejected group
+    /// </summary>
+    [HttpPut("{id:guid}/resubmit")]
+    public async Task<IActionResult> ResubmitGroup(Guid id)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var group = await _context.OwnershipGroups.FindAsync(id);
+
+            if (group == null)
+                return NotFound(new { message = "Group not found" });
+
+            if (group.CreatedBy != userId)
+                return Forbid("Only the group creator can resubmit");
+
+            if (group.Status != Domain.Entities.GroupStatus.Rejected)
+                return BadRequest(new { message = "Group is not rejected" });
+
+            // Resubmit the group
+            group.Status = Domain.Entities.GroupStatus.PendingApproval;
+            group.SubmittedAt = DateTime.UtcNow;
+            group.ReviewedBy = null;
+            group.ReviewedAt = null;
+            group.RejectionReason = null;
+            group.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Group {GroupId} resubmitted by user {UserId}", id, userId);
+
+            return Ok(new { message = "Group resubmitted successfully", groupId = id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resubmitting group {GroupId}", id);
+            return StatusCode(500, new { message = "An error occurred while resubmitting group" });
         }
     }
 

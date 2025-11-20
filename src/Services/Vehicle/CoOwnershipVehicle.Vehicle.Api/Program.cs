@@ -202,12 +202,9 @@ namespace CoOwnershipVehicle.Vehicle.Api
                     ValidAudience = jwtConfig.Audience,
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero,
-                    // Use ClaimTypes.Role to match Admin service and JWT token format
-                    // This ensures role claims from JWT tokens work correctly
-                    RoleClaimType = ClaimTypes.Role
+                    // Use default ClaimTypes.Role - Ocelot forwards roles as standard role claims
+                    RoleClaimType = System.Security.Claims.ClaimTypes.Role
                 };
-
-                Console.WriteLine($"[DIAGNOSTIC_LOG] RoleClaimType is set to: {options.TokenValidationParameters.RoleClaimType}");
             });
 
             builder.Services.AddAuthorization();

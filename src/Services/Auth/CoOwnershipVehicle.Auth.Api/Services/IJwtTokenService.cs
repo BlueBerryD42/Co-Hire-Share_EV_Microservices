@@ -162,6 +162,9 @@ public class JwtTokenService : IJwtTokenService
         // First, try to get role from Auth DB (UserRoles table) - this is the source of truth for authentication
         Domain.Entities.UserRole userRole = Domain.Entities.UserRole.CoOwner;
         var identityRoles = await _userManager.GetRolesAsync(user);
+        _logger.LogWarning("GetRolesAsync returned {Count} roles for user {UserId} ({Email}): {Roles}", 
+            identityRoles?.Count ?? 0, user.Id, user.Email, identityRoles != null ? string.Join(", ", identityRoles) : "null");
+        
         if (identityRoles != null && identityRoles.Count > 0)
         {
             // Get the first role (users typically have one primary role)
@@ -181,7 +184,8 @@ public class JwtTokenService : IJwtTokenService
             _logger.LogWarning("No roles found in Auth DB for {UserId}, will try UserService", user.Id);
         }
 
-        // Fetch user profile data from User service for JWT claims (for KYC status and name)
+        // Fetch user profile data from User service for JWT claims (for KYC status and name ONLY)
+        // NOTE: Role should come from Auth DB UserRoles table, NOT from User service
         UserRoleInfo? roleInfo = null;
         if (_userServiceClient != null)
         {
@@ -190,33 +194,26 @@ public class JwtTokenService : IJwtTokenService
                 roleInfo = await _userServiceClient.GetUserRoleInfoAsync(user.Id);
                 if (roleInfo != null)
                 {
-                    _logger.LogDebug("Successfully fetched user role info for {UserId}: Role={Role}, KycStatus={KycStatus}", 
-                        user.Id, roleInfo.Role, roleInfo.KycStatus);
-                    
-                    // Override role from Auth DB if UserService has a different role (Auth DB takes precedence)
-                    // But if Auth DB had no role, use UserService role
-                    if (identityRoles == null || identityRoles.Count == 0)
-                    {
-                        userRole = roleInfo.Role;
-                        _logger.LogDebug("Using role from UserService for {UserId}: Role={Role} (no role in Auth DB)", user.Id, userRole);
-                    }
+                    _logger.LogDebug("Successfully fetched user profile info for {UserId}: KycStatus={KycStatus}, Name={FirstName} {LastName}", 
+                        user.Id, roleInfo.KycStatus, roleInfo.FirstName, roleInfo.LastName);
+                    // NOTE: We ignore roleInfo.Role - role comes from Auth DB only
                 }
                 else
                 {
-                    _logger.LogWarning("User role info not found for {UserId} in UserService", user.Id);
+                    _logger.LogWarning("User profile info not found for {UserId} in UserService", user.Id);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch user role info for {UserId} from User service", user.Id);
+                _logger.LogWarning(ex, "Failed to fetch user profile info for {UserId} from User service (non-critical - will use defaults)", user.Id);
             }
         }
         else
         {
-            _logger.LogWarning("UserServiceClient not available for {UserId}", user.Id);
+            _logger.LogWarning("UserServiceClient not available for {UserId} - will use default values for KYC status and name", user.Id);
         }
 
-        // Use fetched role info or defaults
+        // Use fetched profile info or defaults (role is NOT fetched from User service)
         var kycStatus = roleInfo?.KycStatus ?? Domain.Entities.KycStatus.Pending;
         var firstName = roleInfo?.FirstName ?? string.Empty;
         var lastName = roleInfo?.LastName ?? string.Empty;
@@ -227,7 +224,6 @@ public class JwtTokenService : IJwtTokenService
             new(System.Security.Claims.ClaimTypes.Email, user.Email ?? string.Empty),
             new(System.Security.Claims.ClaimTypes.GivenName, firstName),
             new(System.Security.Claims.ClaimTypes.Surname, lastName),
-            new("role", userRole.ToString()), // Role from Auth DB (UserRoles table) - source of truth
             new("kyc_status", kycStatus.ToString()), // KYC status from UserService
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat,
@@ -236,11 +232,38 @@ public class JwtTokenService : IJwtTokenService
         };
 
         // Add ASP.NET Identity roles (for [Authorize(Roles = "...")] attributes)
-        // Use the roles already fetched above
-        foreach (var role in identityRoles)
+        // IMPORTANT: Add roles to BOTH claim types:
+        // 1. Standard ClaimTypes.Role (for compatibility)
+        // 2. Custom "role" claim type (for Group service which uses RoleClaimType = "role")
+        // The Group service expects role names (e.g., "Staff", "SystemAdmin") in the "role" claim type
+        if (identityRoles != null && identityRoles.Count > 0)
         {
-            claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, role));
+            _logger.LogWarning("Adding {Count} Identity roles to JWT token for user {UserId}: {Roles}", 
+                identityRoles.Count, user.Id, string.Join(", ", identityRoles));
+            
+            foreach (var role in identityRoles)
+            {
+                // Add to standard claim type
+                claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, role));
+                // Add to custom "role" claim type (required by Group service)
+                claims.Add(new System.Security.Claims.Claim("role", role));
+                _logger.LogDebug("Added role '{Role}' to both ClaimTypes.Role and 'role' claim types", role);
+            }
         }
+        else
+        {
+            _logger.LogWarning("No Identity roles found for user {UserId}. User will not have role-based authorization.", user.Id);
+            
+            // Fallback: If no Identity roles but we have userRole enum, add it as a role claim
+            // This ensures the role is available for authorization even if not in UserRoles table
+            var roleName = userRole.ToString();
+            _logger.LogWarning("Adding fallback role '{RoleName}' from enum for user {UserId}", roleName, user.Id);
+            claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, roleName));
+            claims.Add(new System.Security.Claims.Claim("role", roleName));
+        }
+        
+        // Also add the enum value as a separate claim for frontend (non-authorization purposes)
+        claims.Add(new System.Security.Claims.Claim("user_role_enum", userRole.ToString()));
 
         return claims;
     }

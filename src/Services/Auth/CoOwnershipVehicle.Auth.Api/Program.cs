@@ -199,11 +199,16 @@ else
 // Add HTTP Client for User Service (for fetching user profile data during JWT generation)
 builder.Services.AddHttpClient<IUserServiceClient, UserServiceClient>(client =>
 {
-    var userServiceUrl = builder.Configuration["ServiceUrls:UserApi"] 
-        ?? builder.Configuration["UserServiceUrl"] 
-        ?? "http://localhost:61602";
+    // Always use Docker service name when running in containers (like Group service does)
+    // This ensures inter-service communication works correctly
+    var userServiceUrl = "http://user-api:8080";
+    
     client.BaseAddress = new Uri(userServiceUrl);
     client.Timeout = TimeSpan.FromSeconds(5); // Short timeout for internal calls
+    
+    // Log using logger (Console.WriteLine may not appear in Docker logs)
+    var logger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+    logger.LogWarning("[DIAGNOSTIC] User Service BaseAddress configured: {UserServiceUrl}", userServiceUrl);
 });
 
 // Add application services

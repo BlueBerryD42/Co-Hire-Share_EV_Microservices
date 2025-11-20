@@ -18,6 +18,10 @@ public class VehicleDto
     public string? GroupName { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public string? RejectionReason { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public Guid? ReviewedBy { get; set; }
+    public DateTime? ReviewedAt { get; set; }
 }
 
 public class CreateVehicleDto
@@ -61,5 +65,25 @@ public class VehicleAvailabilityDto
     public DateTime To { get; set; }
     public bool IsAvailable { get; set; }
     public List<BookingDto> ConflictingBookings { get; set; } = new();
+}
+
+public class ApproveVehicleDto
+{
+    public string? Notes { get; set; }
+}
+
+public class RejectVehicleDto
+{
+    [Required]
+    [StringLength(1000)]
+    public string Reason { get; set; } = string.Empty;
+}
+
+public class PendingVehicleDto : VehicleDto
+{
+    public string? GroupStatus { get; set; }
+    public bool HasDocuments { get; set; }
+    public bool IsVinValid { get; set; }
+    public bool IsPlateUnique { get; set; }
 }
 

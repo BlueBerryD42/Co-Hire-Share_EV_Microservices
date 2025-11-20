@@ -11,6 +11,10 @@ public class GroupDto
     public GroupStatus Status { get; set; }
     public Guid CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? RejectionReason { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public Guid? ReviewedBy { get; set; }
+    public DateTime? ReviewedAt { get; set; }
     public List<GroupMemberDto> Members { get; set; } = new();
     public List<VehicleDto> Vehicles { get; set; } = new();
 }
@@ -59,5 +63,25 @@ public class UpdateGroupMemberShareDto
     
     [Range(0.0001, 1.0000)]
     public decimal SharePercentage { get; set; }
+}
+
+public class ApproveGroupDto
+{
+    public string? Notes { get; set; }
+}
+
+public class RejectGroupDto
+{
+    [Required]
+    [StringLength(1000)]
+    public string Reason { get; set; } = string.Empty;
+}
+
+public class PendingGroupDto : GroupDto
+{
+    public int MemberCount { get; set; }
+    public int PendingKycCount { get; set; }
+    public decimal TotalOwnershipPercentage { get; set; }
+    public bool HasGroupAdmin { get; set; }
 }
 

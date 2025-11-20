@@ -58,8 +58,14 @@ public class VehicleController : ControllerBase
             return Ok(new List<VehicleListItemDto>());
         }
 
+        // Users see only Available/InUse/Maintenance vehicles, except their own pending/rejected vehicles
         var vehicles = await _context.Vehicles
-                                     .Where(v => userGroupIds.Contains((Guid)v.GroupId))
+                                     .Where(v => userGroupIds.Contains((Guid)v.GroupId) &&
+                                        (v.Status == Domain.Entities.VehicleStatus.Available ||
+                                         v.Status == Domain.Entities.VehicleStatus.InUse ||
+                                         v.Status == Domain.Entities.VehicleStatus.Maintenance ||
+                                         v.Status == Domain.Entities.VehicleStatus.PendingApproval ||
+                                         v.Status == Domain.Entities.VehicleStatus.Rejected))
                                      .ToListAsync();
 
         // Map to DTOs and include health scores
@@ -115,7 +121,11 @@ public class VehicleController : ControllerBase
                 Odometer = v.Odometer,
                 GroupId = v.GroupId,
                 CreatedAt = v.CreatedAt,
-                UpdatedAt = v.UpdatedAt
+                UpdatedAt = v.UpdatedAt,
+                RejectionReason = v.RejectionReason,
+                SubmittedAt = v.SubmittedAt,
+                ReviewedBy = v.ReviewedBy,
+                ReviewedAt = v.ReviewedAt
             }).ToList();
 
             return Ok(vehicleDtos);
@@ -232,11 +242,12 @@ public class VehicleController : ControllerBase
                 Model = createDto.Model,
                 Year = createDto.Year,
                 Color = createDto.Color,
-                Status = Domain.Entities.VehicleStatus.Available,
+                Status = Domain.Entities.VehicleStatus.PendingApproval,
                 Odometer = createDto.Odometer,
                 GroupId = createDto.GroupId,
                 CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                UpdatedAt = DateTime.UtcNow,
+                SubmittedAt = DateTime.UtcNow
             };
 
             _context.Vehicles.Add(vehicle);
@@ -740,6 +751,228 @@ public async Task<IActionResult> UpdateVehicleStatus(Guid id, [FromBody] CoOwner
     private IActionResult Forbidden(object value)
     {
         return StatusCode(403, value);
+    }
+
+    /// <summary>
+    /// Get pending vehicles (Staff/Admin only)
+    /// </summary>
+    [HttpGet("pending")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> GetPendingVehicles()
+    {
+        try
+        {
+            var vehicles = await _context.Vehicles
+                .Where(v => v.Status == Domain.Entities.VehicleStatus.PendingApproval)
+                .OrderBy(v => v.SubmittedAt ?? v.CreatedAt)
+                .ToListAsync();
+
+            var accessToken = GetAccessToken();
+            var vehicleDtos = new List<VehicleDto>();
+
+            foreach (var v in vehicles)
+            {
+                string? groupName = null;
+                
+                // Fetch group name if GroupId exists
+                if (v.GroupId.HasValue)
+                {
+                    try
+                    {
+                        var groupDetails = await _groupServiceClient.GetGroupDetailsAsync(v.GroupId.Value, accessToken);
+                        groupName = groupDetails?.Name;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to fetch group name for group {GroupId}", v.GroupId.Value);
+                        // Continue without group name - will show ID as fallback
+                    }
+                }
+
+                vehicleDtos.Add(new VehicleDto
+                {
+                    Id = v.Id,
+                    Vin = v.Vin,
+                    PlateNumber = v.PlateNumber,
+                    Model = v.Model,
+                    Year = v.Year,
+                    Color = v.Color,
+                    Status = (VehicleStatus)v.Status,
+                    LastServiceDate = v.LastServiceDate,
+                    Odometer = v.Odometer,
+                    GroupId = v.GroupId,
+                    GroupName = groupName,
+                    CreatedAt = v.CreatedAt,
+                    UpdatedAt = v.UpdatedAt,
+                    RejectionReason = v.RejectionReason,
+                    SubmittedAt = v.SubmittedAt,
+                    ReviewedBy = v.ReviewedBy,
+                    ReviewedAt = v.ReviewedAt
+                });
+            }
+
+            return Ok(vehicleDtos);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pending vehicles");
+            return StatusCode(500, new { message = "An error occurred while retrieving pending vehicles" });
+        }
+    }
+
+    /// <summary>
+    /// Approve a vehicle (Staff/Admin only)
+    /// </summary>
+    [HttpPost("{id:guid}/approve")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> ApproveVehicle(Guid id, [FromBody] ApproveVehicleDto? request = null)
+    {
+        try
+        {
+            var reviewerId = GetCurrentUserId();
+            var vehicle = await _context.Vehicles.FindAsync(id);
+
+            if (vehicle == null)
+                return NotFound(new { message = "Vehicle not found" });
+
+            if (vehicle.Status != Domain.Entities.VehicleStatus.PendingApproval)
+                return BadRequest(new { message = "Vehicle is not pending approval" });
+
+            // Validate vehicle can be approved
+            // Check if group is Active (if group exists)
+            if (vehicle.GroupId.HasValue)
+            {
+                var accessToken = GetAccessToken();
+                try
+                {
+                    var groupDetails = await _groupServiceClient.GetGroupDetailsAsync(vehicle.GroupId.Value, accessToken);
+                    if (groupDetails == null)
+                    {
+                        return BadRequest(new { message = "Cannot approve vehicle: associated group not found" });
+                    }
+                    // Note: Group status check would require group service to return status
+                    // For now, we'll approve if group exists
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error validating group for vehicle approval");
+                    return BadRequest(new { message = "Cannot approve vehicle: error validating associated group" });
+                }
+            }
+
+            // Validate VIN format (17 characters)
+            if (vehicle.Vin.Length != 17)
+            {
+                return BadRequest(new { message = "Cannot approve vehicle: VIN must be exactly 17 characters" });
+            }
+
+            // Approve the vehicle
+            vehicle.Status = Domain.Entities.VehicleStatus.Available;
+            vehicle.ReviewedBy = reviewerId;
+            vehicle.ReviewedAt = DateTime.UtcNow;
+            vehicle.UpdatedAt = DateTime.UtcNow;
+            vehicle.RejectionReason = null; // Clear any previous rejection reason
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Vehicle {VehicleId} approved by user {ReviewerId}", id, reviewerId);
+
+            return Ok(new { message = "Vehicle approved successfully", vehicleId = id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error approving vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while approving vehicle" });
+        }
+    }
+
+    /// <summary>
+    /// Reject a vehicle (Staff/Admin only)
+    /// </summary>
+    [HttpPost("{id:guid}/reject")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> RejectVehicle(Guid id, [FromBody] RejectVehicleDto request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var reviewerId = GetCurrentUserId();
+            var vehicle = await _context.Vehicles.FindAsync(id);
+
+            if (vehicle == null)
+                return NotFound(new { message = "Vehicle not found" });
+
+            if (vehicle.Status != Domain.Entities.VehicleStatus.PendingApproval)
+                return BadRequest(new { message = "Vehicle is not pending approval" });
+
+            // Reject the vehicle
+            vehicle.Status = Domain.Entities.VehicleStatus.Rejected;
+            vehicle.ReviewedBy = reviewerId;
+            vehicle.ReviewedAt = DateTime.UtcNow;
+            vehicle.UpdatedAt = DateTime.UtcNow;
+            vehicle.RejectionReason = request.Reason;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Vehicle {VehicleId} rejected by user {ReviewerId}", id, reviewerId);
+
+            return Ok(new { message = "Vehicle rejected successfully", vehicleId = id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rejecting vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while rejecting vehicle" });
+        }
+    }
+
+    /// <summary>
+    /// Resubmit a rejected vehicle
+    /// </summary>
+    [HttpPut("{id:guid}/resubmit")]
+    public async Task<IActionResult> ResubmitVehicle(Guid id)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var vehicle = await _context.Vehicles.FindAsync(id);
+
+            if (vehicle == null)
+                return NotFound(new { message = "Vehicle not found" });
+
+            // Check if user is member of the vehicle's group
+            if (vehicle.GroupId.HasValue)
+            {
+                var userGroupIds = await GetUserGroupIds();
+                if (!userGroupIds.Contains(vehicle.GroupId.Value))
+                {
+                    return Forbidden(new { message = "Only group members can resubmit vehicles" });
+                }
+            }
+
+            if (vehicle.Status != Domain.Entities.VehicleStatus.Rejected)
+                return BadRequest(new { message = "Vehicle is not rejected" });
+
+            // Resubmit the vehicle
+            vehicle.Status = Domain.Entities.VehicleStatus.PendingApproval;
+            vehicle.SubmittedAt = DateTime.UtcNow;
+            vehicle.ReviewedBy = null;
+            vehicle.ReviewedAt = null;
+            vehicle.RejectionReason = null;
+            vehicle.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Vehicle {VehicleId} resubmitted by user {UserId}", id, userId);
+
+            return Ok(new { message = "Vehicle resubmitted successfully", vehicleId = id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resubmitting vehicle {VehicleId}", id);
+            return StatusCode(500, new { message = "An error occurred while resubmitting vehicle" });
+        }
     }
 
     #endregion

@@ -77,9 +77,18 @@ public class GroupDbContext : DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.RejectionReason).HasMaxLength(1000);
+            entity.Property(e => e.SubmittedAt).IsRequired(false);
+            entity.Property(e => e.ReviewedBy).IsRequired(false);
+            entity.Property(e => e.ReviewedAt).IsRequired(false);
 
             // CreatedBy is stored but no FK constraint (User is in another service)
             entity.Ignore(e => e.Creator);
+            
+            // ReviewedBy is stored but no FK constraint (User is in another service)
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.SubmittedAt);
+            entity.HasIndex(e => e.ReviewedBy);
             
             // Ignore cross-service navigation properties
             // Vehicles belong to Vehicle service - fetch via HTTP if needed

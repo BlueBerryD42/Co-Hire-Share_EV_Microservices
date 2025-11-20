@@ -76,6 +76,10 @@ public class VehicleDbContext : DbContext
             entity.Property(e => e.Model).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Color).HasMaxLength(50);
             entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.RejectionReason).HasMaxLength(1000);
+            entity.Property(e => e.SubmittedAt).IsRequired(false);
+            entity.Property(e => e.ReviewedBy).IsRequired(false);
+            entity.Property(e => e.ReviewedAt).IsRequired(false);
 
             // IMPORTANT: Do not create a database-level foreign key constraint to the Group table in another service.
             // The relationship exists at the application level. We just store the ID.
@@ -83,6 +87,9 @@ public class VehicleDbContext : DbContext
             // Removed: entity.HasOne<OwnershipGroup>().WithMany().HasForeignKey(e => e.GroupId);
 
             entity.HasIndex(e => e.GroupId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.SubmittedAt);
+            entity.HasIndex(e => e.ReviewedBy);
             entity.HasIndex(e => e.Vin).IsUnique();
             entity.HasIndex(e => e.PlateNumber).IsUnique();
         });
