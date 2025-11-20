@@ -144,6 +144,34 @@ public class BookingController : ControllerBase
     }
 
     /// <summary>
+    /// Get available booking slots for a vehicle
+    /// </summary>
+    [HttpGet("availability")]
+    public async Task<IActionResult> GetAvailability(
+        [FromQuery] Guid vehicleId,
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] int durationMinutes = 60,
+        [FromQuery] int bufferMinutes = 0)
+    {
+        try
+        {
+            var slots = await _bookingService.GetAvailabilityAsync(vehicleId, from, to, durationMinutes, bufferMinutes);
+            return Ok(new
+            {
+                VehicleId = vehicleId,
+                Slots = slots
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting availability for vehicle {VehicleId}", vehicleId);
+            return StatusCode(500, new { message = "An error occurred while retrieving availability" });
+        }
+    }
+
+
+    /// <summary>
     /// Get a specific booking
     /// </summary>
     [HttpGet("{id:guid}")]
@@ -259,6 +287,41 @@ public class BookingController : ControllerBase
         {
             _logger.LogError(ex, "Error approving booking {BookingId}", id);
             return StatusCode(500, new { message = "An error occurred while approving booking" });
+        }
+    }
+
+    /// <summary>
+    /// Mark a booking as completed (owner or admin/staff)
+    /// </summary>
+    [HttpPost("{id:guid}/complete")]
+    public async Task<IActionResult> CompleteBooking(Guid id)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var callerIsAdmin = User.IsInRole("SystemAdmin") || User.IsInRole("Staff");
+            var booking = await _bookingService.CompleteBookingAsync(id, userId, callerIsAdmin);
+
+            _logger.LogInformation("Booking {BookingId} completed by {UserId}", id, userId);
+
+            return Ok(booking);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbidden(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing booking {BookingId}", id);
+            return StatusCode(500, new { message = "An error occurred while completing booking" });
         }
     }
 

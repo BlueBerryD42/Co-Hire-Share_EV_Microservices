@@ -27,6 +27,7 @@ public class BookingDto
     public bool RequiresDamageReview { get; set; }
     public Guid? RecurringBookingId { get; set; }
     public DateTime CreatedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
     public VehicleStatus VehicleStatus { get; set; }
     public decimal? DistanceKm { get; set; }
     public decimal TripFeeAmount { get; set; }
@@ -36,29 +37,29 @@ public class CreateBookingDto
 {
     [Required]
     public Guid VehicleId { get; set; }
-    
+
     [Required]
     public DateTime StartAt { get; set; }
-    
+
     [Required]
     public DateTime EndAt { get; set; }
-    
+
     public string? Notes { get; set; }
-    
+
     public string? Purpose { get; set; }
-    
+
     public bool IsEmergency { get; set; } = false;
 
     [StringLength(1000)] // Added validation for EmergencyReason
     public string? EmergencyReason { get; set; } // Added EmergencyReason
-    
+
     /// <summary>
     /// For emergency bookings, determines whether conflicting bookings should be auto-cancelled.
     /// </summary>
     public bool EmergencyAutoCancelConflicts { get; set; }
-    
+
     public BookingPriority Priority { get; set; } = BookingPriority.Normal;
-    
+
     // These will be set by the system
     public Guid UserId { get; set; }
     public Guid GroupId { get; set; }
