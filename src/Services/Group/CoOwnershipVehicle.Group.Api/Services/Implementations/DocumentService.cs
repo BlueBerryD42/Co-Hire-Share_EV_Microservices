@@ -735,8 +735,29 @@ public class DocumentService : IDocumentService
             throw new InvalidOperationException($"Preview not supported for content type: {document.ContentType}");
         }
 
+        // Check if file exists before attempting download
+        var fileExists = await _fileStorage.FileExistsAsync(document.StorageKey);
+        if (!fileExists)
+        {
+            _logger.LogWarning("Document file not found. DocumentId: {DocumentId}, FileName: {FileName}, StorageKey: {StorageKey}",
+                documentId, document.FileName, document.StorageKey);
+            throw new FileNotFoundException($"Document file not found in storage. File: {document.FileName}, Key: {document.StorageKey}");
+        }
+
         // Get file stream (no download tracking for preview)
-        var fileStream = await _fileStorage.DownloadFileAsync(document.StorageKey);
+        Stream fileStream;
+        try
+        {
+            fileStream = await _fileStorage.DownloadFileAsync(document.StorageKey);
+            _logger.LogInformation("Successfully loaded document for preview. DocumentId: {DocumentId}, FileName: {FileName}",
+                documentId, document.FileName);
+        }
+        catch (FileNotFoundException ex)
+        {
+            _logger.LogError(ex, "Failed to download document file. DocumentId: {DocumentId}, StorageKey: {StorageKey}",
+                documentId, document.StorageKey);
+            throw new FileNotFoundException($"Document file not found in storage. File: {document.FileName}, Key: {document.StorageKey}", ex);
+        }
 
         return new DocumentDownloadResponse
         {
@@ -1063,7 +1084,6 @@ public class DocumentService : IDocumentService
         // Get document with signatures
         var document = await _context.Documents
             .Include(d => d.Signatures)
-            .ThenInclude(s => s.Signer)
             .FirstOrDefaultAsync(d => d.Id == documentId);
 
         if (document == null)
@@ -1073,7 +1093,6 @@ public class DocumentService : IDocumentService
 
         // Find the signature record for this user
         var signature = await _context.DocumentSignatures
-            .Include(s => s.Signer)
             .FirstOrDefaultAsync(s => s.DocumentId == documentId &&
                                      s.SignerId == userId &&
                                      s.SigningToken == request.SigningToken);
@@ -1167,7 +1186,6 @@ public class DocumentService : IDocumentService
 
         // Check if all signatures are collected
         var allDocSignatures = await _context.DocumentSignatures
-            .Include(s => s.Signer)
             .Where(s => s.DocumentId == documentId)
             .ToListAsync();
 
@@ -1270,14 +1288,51 @@ public class DocumentService : IDocumentService
 
         // Get all signatures
         var signatures = await _context.DocumentSignatures
-            .Include(s => s.Signer)
             .Where(s => s.DocumentId == documentId)
             .OrderBy(s => s.SignatureOrder)
             .ToListAsync();
 
+        // If no signatures exist, return a response indicating the document hasn't been sent for signing
         if (!signatures.Any())
         {
-            throw new InvalidOperationException("No signatures configured for this document");
+            return new DocumentSignatureStatusResponse
+            {
+                DocumentId = documentId,
+                FileName = document.FileName,
+                Status = SignatureStatus.Draft,
+                SigningMode = SigningMode.Sequential, // Default mode
+                TotalSigners = 0,
+                SignedCount = 0,
+                ProgressPercentage = 0,
+                DueDate = null,
+                TimeRemaining = null,
+                NextSignerName = null,
+                NextSignerId = null,
+                Signatures = new List<SignatureDetailInfo>(),
+                CreatedAt = document.CreatedAt
+            };
+        }
+
+        // Fetch signer information from User service
+        var signerIds = signatures.Select(s => s.SignerId).Distinct().ToList();
+        var accessToken = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString()?.Replace("Bearer ", "") ?? string.Empty;
+        Dictionary<Guid, UserInfoDto> signerInfoMap;
+
+        try
+        {
+            signerInfoMap = await _userServiceClient.GetUsersAsync(signerIds, accessToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch signer information from User service");
+            // If user service fails, use placeholder data
+            signerInfoMap = signerIds.ToDictionary(id => id, id => new UserInfoDto
+            {
+                Id = id,
+                Email = "unknown@example.com",
+                FirstName = "Unknown",
+                LastName = "User"
+            });
         }
 
         var signedCount = signatures.Count(s => s.SignedAt != null);
@@ -1298,8 +1353,11 @@ public class DocumentService : IDocumentService
 
             if (nextSignature != null)
             {
-                nextSignerName = $"{nextSignature.Signer.FirstName} {nextSignature.Signer.LastName}";
                 nextSignerId = nextSignature.SignerId;
+                if (signerInfoMap.TryGetValue(nextSignature.SignerId, out var nextSignerInfo))
+                {
+                    nextSignerName = $"{nextSignerInfo.FirstName} {nextSignerInfo.LastName}";
+                }
             }
         }
 
@@ -1324,23 +1382,99 @@ public class DocumentService : IDocumentService
             TimeRemaining = timeRemaining,
             NextSignerName = nextSignerName,
             NextSignerId = nextSignerId,
-            Signatures = signatures.Select(s => new SignatureDetailInfo
+            Signatures = signatures.Select(s =>
             {
-                Id = s.Id,
-                SignerId = s.SignerId,
-                SignerName = $"{s.Signer.FirstName} {s.Signer.LastName}",
-                SignerEmail = s.Signer.Email,
-                SignatureOrder = s.SignatureOrder,
-                Status = s.SignedAt != null ? SignatureStatus.FullySigned : SignatureStatus.SentForSigning,
-                SignedAt = s.SignedAt,
-                SignaturePreviewUrl = s.SignatureReference != null
-                    ? $"/api/document/{documentId}/signature/{s.Id}/preview"
-                    : null,
-                IsPending = s.SignedAt == null,
-                IsCurrentSigner = s.SignerId == nextSignerId
+                var signerInfo = signerInfoMap.GetValueOrDefault(s.SignerId);
+                return new SignatureDetailInfo
+                {
+                    Id = s.Id,
+                    SignerId = s.SignerId,
+                    SignerName = signerInfo != null ? $"{signerInfo.FirstName} {signerInfo.LastName}" : "Unknown User",
+                    SignerEmail = signerInfo?.Email ?? "unknown@example.com",
+                    SignatureOrder = s.SignatureOrder,
+                    Status = s.SignedAt != null ? SignatureStatus.FullySigned : SignatureStatus.SentForSigning,
+                    SignedAt = s.SignedAt,
+                    SignaturePreviewUrl = s.SignatureReference != null
+                        ? $"/api/document/{documentId}/signature/{s.Id}/preview"
+                        : null,
+                    IsPending = s.SignedAt == null,
+                    IsCurrentSigner = s.SignerId == nextSignerId
+                };
             }).ToList(),
             CreatedAt = document.CreatedAt
         };
+    }
+
+    public async Task<List<PendingSignatureResponse>> GetMyPendingSignaturesAsync(Guid userId)
+    {
+        _logger.LogInformation("Getting pending signatures for user {UserId}", userId);
+
+        // Get all pending signatures for this user
+        var pendingSignatures = await _context.DocumentSignatures
+            .Where(s => s.SignerId == userId && s.SignedAt == null)
+            .Include(s => s.Document)
+                .ThenInclude(d => d.Group)
+            .OrderByDescending(s => s.CreatedAt)
+            .ToListAsync();
+
+        if (!pendingSignatures.Any())
+        {
+            _logger.LogInformation("No pending signatures found for user {UserId}", userId);
+            return new List<PendingSignatureResponse>();
+        }
+
+        _logger.LogInformation("Found {Count} pending signatures for user {UserId}", pendingSignatures.Count, userId);
+
+        var responses = new List<PendingSignatureResponse>();
+
+        foreach (var signature in pendingSignatures)
+        {
+            var document = signature.Document;
+
+            // Check if document is still in signing state
+            if (document.SignatureStatus != SignatureStatus.SentForSigning &&
+                document.SignatureStatus != SignatureStatus.PartiallySigned)
+            {
+                continue; // Skip documents not in signing state
+            }
+
+            // Determine if it's the user's turn to sign (for sequential mode)
+            bool isMyTurn = true;
+            if (signature.SigningMode == SigningMode.Sequential)
+            {
+                // Get all signatures for this document ordered by signature order
+                var allSignatures = await _context.DocumentSignatures
+                    .Where(s => s.DocumentId == document.Id)
+                    .OrderBy(s => s.SignatureOrder)
+                    .ToListAsync();
+
+                // Find first unsigned signature
+                var nextToSign = allSignatures.FirstOrDefault(s => s.SignedAt == null);
+                isMyTurn = nextToSign?.SignerId == userId;
+            }
+
+            responses.Add(new PendingSignatureResponse
+            {
+                DocumentId = document.Id,
+                GroupId = document.GroupId,
+                GroupName = document.Group?.Name ?? "Unknown Group",
+                FileName = document.FileName,
+                Description = document.Description ?? string.Empty,
+                DocumentType = document.Type,
+                SigningToken = signature.SigningToken ?? string.Empty,
+                DueDate = signature.DueDate,
+                SentAt = signature.CreatedAt,
+                SignatureOrder = signature.SignatureOrder,
+                SigningMode = signature.SigningMode,
+                IsMyTurn = isMyTurn
+            });
+        }
+
+        _logger.LogInformation("Returning {Count} pending signature responses for user {UserId}", responses.Count, userId);
+
+        return responses.OrderByDescending(r => r.IsMyTurn)
+                       .ThenByDescending(r => r.SentAt)
+                       .ToList();
     }
 
     public async Task<SigningCertificateResponse> GetSigningCertificateAsync(Guid documentId, Guid userId, string? baseUrl = null)
@@ -1372,7 +1506,6 @@ public class DocumentService : IDocumentService
 
         // Get all signatures with signer info
         var signatures = await _context.DocumentSignatures
-            .Include(s => s.Signer)
             .Where(s => s.DocumentId == documentId && s.SignedAt != null)
             .OrderBy(s => s.SignatureOrder)
             .ToListAsync();
@@ -1836,7 +1969,6 @@ public class DocumentService : IDocumentService
         // Get document with signatures
         var document = await _context.Documents
             .Include(d => d.Signatures)
-                .ThenInclude(s => s.Signer)
             .FirstOrDefaultAsync(d => d.Id == documentId);
 
         if (document == null)
@@ -1973,21 +2105,46 @@ public class DocumentService : IDocumentService
         // Get all reminders for this document
         var reminders = await _context.SignatureReminders
             .Include(r => r.DocumentSignature)
-                .ThenInclude(s => s.Signer)
             .Where(r => r.DocumentSignature.DocumentId == documentId)
             .OrderByDescending(r => r.SentAt)
             .ToListAsync();
 
-        var reminderItems = reminders.Select(r => new ReminderHistoryItem
+        // Fetch signer information from User service
+        var signerIds = reminders.Select(r => r.DocumentSignature.SignerId).Distinct().ToList();
+        var accessToken = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString()?.Replace("Bearer ", "") ?? string.Empty;
+        Dictionary<Guid, UserInfoDto> signerInfoMap;
+
+        try
         {
-            Id = r.Id,
-            SignerId = r.DocumentSignature.SignerId,
-            SignerName = $"{r.DocumentSignature.Signer.FirstName} {r.DocumentSignature.Signer.LastName}",
-            ReminderType = r.ReminderType,
-            SentAt = r.SentAt,
-            IsManual = r.IsManual,
-            Status = r.Status,
-            Message = r.Message
+            signerInfoMap = await _userServiceClient.GetUsersAsync(signerIds, accessToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch signer information from User service for reminder history");
+            // If user service fails, use placeholder data
+            signerInfoMap = signerIds.ToDictionary(id => id, id => new UserInfoDto
+            {
+                Id = id,
+                Email = "unknown@example.com",
+                FirstName = "Unknown",
+                LastName = "User"
+            });
+        }
+
+        var reminderItems = reminders.Select(r =>
+        {
+            var signerInfo = signerInfoMap.GetValueOrDefault(r.DocumentSignature.SignerId);
+            return new ReminderHistoryItem
+            {
+                Id = r.Id,
+                SignerId = r.DocumentSignature.SignerId,
+                SignerName = signerInfo != null ? $"{signerInfo.FirstName} {signerInfo.LastName}" : "Unknown User",
+                ReminderType = r.ReminderType,
+                SentAt = r.SentAt,
+                IsManual = r.IsManual,
+                Status = r.Status,
+                Message = r.Message
+            };
         }).ToList();
 
         return new ReminderHistoryResponse
@@ -2065,6 +2222,89 @@ public class DocumentService : IDocumentService
             _logger.LogError(ex, "Failed to send test email to {Email}", email);
             return false;
         }
+    }
+
+    #endregion
+
+    #region Diagnostics
+
+    public async Task<DocumentStorageHealthResponse> CheckDocumentStorageHealthAsync(Guid groupId, Guid userId)
+    {
+        _logger.LogInformation("Checking document storage health for group {GroupId}", groupId);
+
+        // Verify user has access to the group
+        var isGroupMember = await _context.GroupMembers
+            .AnyAsync(gm => gm.GroupId == groupId && gm.UserId == userId);
+
+        if (!isGroupMember)
+        {
+            throw new UnauthorizedAccessException("You must be a group member to check storage health");
+        }
+
+        // Get all documents for this group
+        var documents = await _context.Documents
+            .Where(d => d.GroupId == groupId)
+            .ToListAsync();
+
+        var missingFiles = new List<MissingFileInfo>();
+        int filesFound = 0;
+
+        foreach (var document in documents)
+        {
+            try
+            {
+                var fileExists = await _fileStorage.FileExistsAsync(document.StorageKey);
+                if (!fileExists)
+                {
+                    _logger.LogWarning("Missing file for document {DocumentId}: {FileName}",
+                        document.Id, document.FileName);
+
+                    missingFiles.Add(new MissingFileInfo
+                    {
+                        DocumentId = document.Id,
+                        FileName = document.FileName,
+                        StorageKey = document.StorageKey,
+                        UploadedAt = document.CreatedAt,
+                        UploadedBy = document.UploadedBy.ToString(),
+                        FileSize = document.FileSize
+                    });
+                }
+                else
+                {
+                    filesFound++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking file existence for document {DocumentId}", document.Id);
+                missingFiles.Add(new MissingFileInfo
+                {
+                    DocumentId = document.Id,
+                    FileName = document.FileName,
+                    StorageKey = document.StorageKey,
+                    UploadedAt = document.CreatedAt,
+                    UploadedBy = document.UploadedBy.ToString(),
+                    FileSize = document.FileSize
+                });
+            }
+        }
+
+        // Get the configured storage path
+        var storagePath = _fileStorage.GetType().GetProperty("LocalStoragePath")?.GetValue(_fileStorage)?.ToString()
+            ?? "Configuration not available";
+
+        _logger.LogInformation("Storage health check complete. Total: {Total}, Found: {Found}, Missing: {Missing}",
+            documents.Count, filesFound, missingFiles.Count);
+
+        return new DocumentStorageHealthResponse
+        {
+            GroupId = groupId,
+            StoragePath = storagePath,
+            TotalDocuments = documents.Count,
+            DocumentsWithFiles = filesFound,
+            DocumentsWithMissingFiles = missingFiles.Count,
+            MissingFiles = missingFiles
+        };
     }
 
     #endregion

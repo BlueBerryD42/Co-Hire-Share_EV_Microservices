@@ -77,6 +77,9 @@ services:
     environment:
       <<: *common-env
       SIGNATURE_REMINDER_BASE_URL: "https://localhost:61600" # Use API Gateway for external access
+      FileStorage__LocalStoragePath: "/app/storage/documents"
+    volumes:
+      - group-documents:/app/storage/documents
     networks:
       - coownership
 
@@ -175,3 +178,7 @@ services:
 networks:
   coownership:
     driver: bridge
+
+volumes:
+  group-documents:
+    driver: local
