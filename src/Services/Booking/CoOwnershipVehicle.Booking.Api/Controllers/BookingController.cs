@@ -144,6 +144,34 @@ public class BookingController : ControllerBase
     }
 
     /// <summary>
+    /// Get available booking slots for a vehicle
+    /// </summary>
+    [HttpGet("availability")]
+    public async Task<IActionResult> GetAvailability(
+        [FromQuery] Guid vehicleId,
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] int durationMinutes = 60,
+        [FromQuery] int bufferMinutes = 0)
+    {
+        try
+        {
+            var slots = await _bookingService.GetAvailabilityAsync(vehicleId, from, to, durationMinutes, bufferMinutes);
+            return Ok(new
+            {
+                VehicleId = vehicleId,
+                Slots = slots
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting availability for vehicle {VehicleId}", vehicleId);
+            return StatusCode(500, new { message = "An error occurred while retrieving availability" });
+        }
+    }
+
+
+    /// <summary>
     /// Get a specific booking
     /// </summary>
     [HttpGet("{id:guid}")]

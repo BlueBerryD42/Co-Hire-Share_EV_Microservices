@@ -17,6 +17,7 @@ public class BookingService : IBookingService
     private const int MaxEmergencyBookingsPerMonth = 2; // Define the limit for emergency bookings
     private const int DefaultHistoryLimit = 20;
     private const int MaxHistoryLimit = 100;
+    private const int MaxAvailabilityRangeDays = 31;
 
     private readonly IBookingRepository _bookingRepository;
     private readonly ILogger<BookingService> _logger;
@@ -56,14 +57,14 @@ public class BookingService : IBookingService
             createDto.EmergencyReason = emergencyReason; // Ensure DTO has the reason
 
             // Enforce emergency booking limits
-            var currentMonth = DateTime.UtcNow.Date; // Use current UTC date for month calculation
+            var currentMonth = DateTime.UtcNow; // Use current UTC time for month calculation
             var emergencyBookingCount = await _bookingRepository.GetEmergencyBookingCountForUserInMonthAsync(userId, currentMonth);
             if (emergencyBookingCount >= MaxEmergencyBookingsPerMonth)
             {
                 _logger.LogWarning("User {UserId} exceeded emergency booking limit for month {Month}. Count: {Count}", userId, currentMonth.ToString("yyyy-MM"), emergencyBookingCount);
                 throw new InvalidOperationException($"Emergency booking limit of {MaxEmergencyBookingsPerMonth} per month exceeded.");
             }
-            
+
             conflictingBookings = await _bookingRepository.GetBookingsInPeriodAsync(createDto.VehicleId, createDto.StartAt, createDto.EndAt);
             emergencyConflictResult = await HandleEmergencyConflictsAsync(
                 conflictingBookings,
@@ -144,11 +145,93 @@ public class BookingService : IBookingService
         return bookings.Select(MapBookingToDto).ToList();
     }
 
+    public async Task<List<AvailabilitySlotDto>> GetAvailabilityAsync(Guid vehicleId, DateTime from, DateTime to, int durationMinutes = 60, int bufferMinutes = 0)
+    {
+        if (vehicleId == Guid.Empty)
+        {
+            throw new ArgumentException("VehicleId is required", nameof(vehicleId));
+        }
+
+        if (from >= to)
+        {
+            throw new InvalidOperationException("The availability start time must be before the end time.");
+        }
+
+        if ((to - from).TotalDays > MaxAvailabilityRangeDays)
+        {
+            throw new InvalidOperationException($"Requested range is too large. Please limit to {MaxAvailabilityRangeDays} days.");
+        }
+
+        if (durationMinutes <= 0)
+        {
+            throw new InvalidOperationException("Duration must be greater than zero minutes.");
+        }
+
+        var minDuration = TimeSpan.FromMinutes(durationMinutes);
+        var buffer = Math.Max(0, bufferMinutes);
+
+        var bookings = await _bookingRepository.GetVehicleBookingsAsync(vehicleId, from, to);
+        var ordered = bookings
+            .Select(b => new
+            {
+                Start = b.StartAt.AddMinutes(-buffer),
+                End = b.EndAt.AddMinutes(buffer)
+            })
+            .OrderBy(b => b.Start)
+            .ToList();
+
+        var slots = new List<AvailabilitySlotDto>();
+        var cursor = from;
+
+        foreach (var booking in ordered)
+        {
+            var start = booking.Start < from ? from : booking.Start;
+            var end = booking.End > to ? to : booking.End;
+
+            if (end <= cursor)
+            {
+                continue;
+            }
+
+            if (start > cursor)
+            {
+                var gap = start - cursor;
+                if (gap >= minDuration)
+                {
+                    slots.Add(new AvailabilitySlotDto
+                    {
+                        StartAt = cursor,
+                        EndAt = start
+                    });
+                }
+            }
+
+            cursor = end;
+
+            if (cursor >= to)
+            {
+                break;
+            }
+        }
+
+        if (cursor < to && to - cursor >= minDuration)
+        {
+            slots.Add(new AvailabilitySlotDto
+            {
+                StartAt = cursor,
+                EndAt = to
+            });
+        }
+
+        return slots;
+    }
+
     public async Task<List<BookingDto>> GetAllBookingsAsync(DateTime? from = null, DateTime? to = null, Guid? userId = null, Guid? groupId = null)
     {
         var bookings = await _bookingRepository.GetAllBookingsAsync(from, to, userId, groupId);
         return bookings.Select(MapBookingToDto).ToList();
     }
+
 
     public async Task<IReadOnlyList<BookingHistoryEntryDto>> GetUserBookingHistoryAsync(Guid userId, int limit = DefaultHistoryLimit)
     {
@@ -167,6 +250,7 @@ public class BookingService : IBookingService
             .ToList();
     }
 
+
     public async Task<BookingConflictSummaryDto> CheckBookingConflictsAsync(Guid vehicleId, DateTime startAt, DateTime endAt, Guid? excludeBookingId = null)
     {
         var conflicts = await _bookingRepository.GetConflictingBookingsAsync(vehicleId, startAt, endAt, excludeBookingId);
@@ -181,6 +265,7 @@ public class BookingService : IBookingService
             ConflictingBookings = conflictDtos
         };
     }
+
 
     public async Task<List<BookingPriorityDto>> GetBookingPriorityQueueAsync(Guid vehicleId, DateTime startAt, DateTime endAt)
     {
@@ -248,7 +333,7 @@ public class BookingService : IBookingService
         return pending.Select(MapBookingToDto).ToList();
     }
 
-    public async Task<BookingDto> UpdateVehicleStatusAsync(Guid bookingId, CoOwnershipVehicle.Booking.Api.DTOs.UpdateVehicleStatusDto request)
+    public async Task<BookingDto> UpdateVehicleStatusAsync(Guid bookingId, DTOs.UpdateVehicleStatusDto request)
     {
         if (request == null)
         {
@@ -532,7 +617,7 @@ public class BookingService : IBookingService
         return result;
     }
 
-    private async Task<RescheduledBookingInfo?> TryRescheduleBookingAsync(Domain.Entities.Booking booking, DateTime emergencyStart, DateTime emergencyEnd)
+    private async Task<RescheduledBookingInfo?> TryRescheduleBookingAsync(Domain.Entities.Booking booking, DateTimeOffset emergencyStart, DateTimeOffset emergencyEnd)
     {
         var duration = booking.EndAt - booking.StartAt;
         if (duration <= TimeSpan.Zero)
@@ -543,7 +628,7 @@ public class BookingService : IBookingService
         var originalStart = booking.StartAt;
         var originalEnd = booking.EndAt;
 
-        var candidateStart = emergencyEnd > DateTime.UtcNow ? emergencyEnd : DateTime.UtcNow;
+        var candidateStart = emergencyEnd > DateTimeOffset.UtcNow ? emergencyEnd : DateTimeOffset.UtcNow;
         const int maxAttempts = 12;
 
         for (var attempt = 0; attempt < maxAttempts; attempt++)
@@ -551,15 +636,15 @@ public class BookingService : IBookingService
             var candidateEnd = candidateStart.Add(duration);
             var conflicts = await _bookingRepository.GetConflictingBookingsAsync(
                 booking.VehicleId,
-                candidateStart,
-                candidateEnd,
+                candidateStart.UtcDateTime,
+                candidateEnd.UtcDateTime,
                 booking.Id,
                 booking.RecurringBookingId);
 
             if (!conflicts.Any())
             {
-                booking.StartAt = candidateStart;
-                booking.EndAt = candidateEnd;
+                booking.StartAt = candidateStart.UtcDateTime;
+                booking.EndAt = candidateEnd.UtcDateTime;
                 booking.UpdatedAt = DateTime.UtcNow;
                 booking.Notes = AppendNote(booking.Notes, $"[RESCHEDULED due to emergency {emergencyStart:u} - {emergencyEnd:u}]");
 
@@ -603,8 +688,8 @@ public class BookingService : IBookingService
     private sealed record RescheduledBookingInfo(
         Guid BookingId,
         Guid UserId,
-        DateTime OriginalStartAt,
-        DateTime OriginalEndAt,
-        DateTime NewStartAt,
-        DateTime NewEndAt);
+        DateTimeOffset OriginalStartAt,
+        DateTimeOffset OriginalEndAt,
+        DateTimeOffset NewStartAt,
+        DateTimeOffset NewEndAt);
 }
