@@ -65,7 +65,7 @@ public class CheckInPhoto : BaseEntity
     public Guid CheckInId { get; set; }
     
     [Required]
-    [StringLength(4000)]
+    [Column(TypeName = "nvarchar(max)")]
     public string PhotoUrl { get; set; } = string.Empty;
 
     [StringLength(500)]

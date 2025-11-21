@@ -367,7 +367,9 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
         // CheckInPhoto entity configuration
         builder.Entity<CheckInPhoto>(entity =>
         {
-            entity.Property(e => e.PhotoUrl).IsRequired().HasMaxLength(4000);
+            entity.Property(e => e.PhotoUrl)
+                  .IsRequired()
+                  .HasColumnType("nvarchar(max)");
             entity.Property(e => e.Description).HasMaxLength(200);
             entity.Property(e => e.Type).HasConversion<int>();
 
