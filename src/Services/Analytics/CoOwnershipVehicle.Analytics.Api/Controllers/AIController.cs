@@ -11,10 +11,12 @@ namespace CoOwnershipVehicle.Analytics.Api.Controllers;
 public class AIController : ControllerBase
 {
 	private readonly IAIService _aiService;
+	private readonly ILogger<AIController> _logger;
 
-	public AIController(IAIService aiService)
+	public AIController(IAIService aiService, ILogger<AIController> logger)
 	{
 		_aiService = aiService;
+		_logger = logger;
 	}
 
 	/// <summary>
@@ -60,12 +62,22 @@ public class AIController : ControllerBase
 	[ProducesResponseType(StatusCodes.Status403Forbidden)]
 	public async Task<ActionResult<SuggestBookingResponse>> SuggestBookingTime([FromBody] SuggestBookingRequest request)
 	{
-		var result = await _aiService.SuggestBookingTimesAsync(request);
-		if (result == null)
+		try
 		{
-			return NotFound(new { message = "User or group not found or insufficient data" });
+			var result = await _aiService.SuggestBookingTimesAsync(request);
+			if (result == null)
+			{
+				return NotFound(new { message = "User or group not found or insufficient data" });
+			}
+			return Ok(result);
 		}
-		return Ok(result);
+		catch (Exception ex)
+		{
+			// Log exception for debugging
+			_logger.LogError(ex, "Error in SuggestBookingTime endpoint for UserId: {UserId}, GroupId: {GroupId}", 
+				request.UserId, request.GroupId);
+			return StatusCode(500, new { message = "An error occurred while generating booking suggestions", error = ex.Message });
+		}
 	}
 
 	/// <summary>

@@ -36,7 +36,18 @@ public class PaymentServiceClient : IPaymentServiceClient
     {
         try
         {
-            SetAuthorizationHeader();
+            // Check if we have HttpContext (user request) or not (background service)
+            var hasHttpContext = _httpContextAccessor.HttpContext != null;
+            
+            // Use internal endpoint if no HttpContext (background service call)
+            var endpoint = hasHttpContext ? "api/Payment/payments" : "api/Payment/internal/payments";
+            
+            // Only set authorization header if we have HttpContext
+            if (hasHttpContext)
+            {
+                SetAuthorizationHeader();
+            }
+            
             var queryParams = new List<string>();
             
             if (from.HasValue)
@@ -45,7 +56,7 @@ public class PaymentServiceClient : IPaymentServiceClient
                 queryParams.Add($"to={to.Value:yyyy-MM-ddTHH:mm:ssZ}");
 
             var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-            var response = await _httpClient.GetAsync($"api/Payment/payments{queryString}");
+            var response = await _httpClient.GetAsync($"{endpoint}{queryString}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -70,14 +81,29 @@ public class PaymentServiceClient : IPaymentServiceClient
     {
         try
         {
-            SetAuthorizationHeader();
+            // Check if we have HttpContext (user request) or not (background service)
+            var hasHttpContext = _httpContextAccessor.HttpContext != null;
+            
+            // Use internal endpoint if no HttpContext (background service call)
+            var endpoint = hasHttpContext ? "api/Payment/expenses" : "api/Payment/internal/expenses";
+            
+            // Only set authorization header if we have HttpContext
+            if (hasHttpContext)
+            {
+                SetAuthorizationHeader();
+            }
+            
             var queryParams = new List<string>();
             
             if (groupId.HasValue)
                 queryParams.Add($"groupId={groupId.Value}");
+            if (from.HasValue)
+                queryParams.Add($"from={from.Value:yyyy-MM-ddTHH:mm:ssZ}");
+            if (to.HasValue)
+                queryParams.Add($"to={to.Value:yyyy-MM-ddTHH:mm:ssZ}");
 
             var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-            var response = await _httpClient.GetAsync($"api/Payment/expenses{queryString}");
+            var response = await _httpClient.GetAsync($"{endpoint}{queryString}");
 
             if (response.IsSuccessStatusCode)
             {

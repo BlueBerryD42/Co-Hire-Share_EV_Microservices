@@ -320,19 +320,70 @@ public class AnalyticsService : IAnalyticsService
         {
             var date = startDate ?? DateTime.UtcNow;
             
-            var snapshot = new AnalyticsSnapshot
+            // Get unique GroupIds from existing snapshots that have GroupId set
+            // This ensures we create snapshots for groups that have had bookings/events
+            var existingGroupIds = await _context.AnalyticsSnapshots
+                .Where(s => s.GroupId != null)
+                .Select(s => s.GroupId!.Value)
+                .Distinct()
+                .ToListAsync();
+
+            if (existingGroupIds.Any())
             {
-                SnapshotDate = date,
-                Period = period
-            };
+                // Create snapshot for each existing group
+                int successCount = 0;
+                foreach (var groupId in existingGroupIds)
+                {
+                    try
+                    {
+                        // Check if snapshot already exists for this group, period, and date to avoid duplicates
+                        var existingSnapshot = await _context.AnalyticsSnapshots
+                            .FirstOrDefaultAsync(s => 
+                                s.GroupId == groupId && 
+                                s.Period == period && 
+                                s.SnapshotDate.Date == date.Date);
+                        
+                        if (existingSnapshot != null)
+                        {
+                            _logger.LogDebug("Snapshot already exists for GroupId: {GroupId}, Period: {Period}, Date: {Date}. Skipping.", 
+                                groupId, period, date);
+                            continue;
+                        }
 
-            await PopulateSnapshotData(snapshot);
+                        var snapshot = new AnalyticsSnapshot
+                        {
+                            GroupId = groupId,
+                            SnapshotDate = date,
+                            Period = period
+                        };
 
-            _context.AnalyticsSnapshots.Add(snapshot);
+                        await PopulateSnapshotData(snapshot);
+                        _context.AnalyticsSnapshots.Add(snapshot);
+                        successCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error creating snapshot for group {GroupId}", groupId);
+                        // Continue with other groups
+                    }
+                }
+                
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("Generated periodic analytics for period: {Period}, date: {Date}, groups: {GroupCount}, created: {CreatedCount}", 
+                    period, date, existingGroupIds.Count, successCount);
+            }
+            else
+            {
+                _logger.LogInformation("No groups found with existing analytics data. Skipping periodic analytics generation for period: {Period}, date: {Date}. " +
+                    "Analytics will be created when bookings are made (via BookingCreatedEvent).", period, date);
+                // Don't create a general snapshot without GroupId as it won't be useful for AI suggestions
+            }
+
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Generated periodic analytics for period: {Period}, date: {Date}", 
-                period, date);
+            _logger.LogInformation("Generated periodic analytics for period: {Period}, date: {Date}, groups: {GroupCount}", 
+                period, date, existingGroupIds.Count);
 
             return true;
         }
