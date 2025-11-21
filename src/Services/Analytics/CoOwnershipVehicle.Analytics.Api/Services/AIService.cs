@@ -423,8 +423,11 @@ public class AIService : IAIService
 				request.GroupId, request.UserId);
 		}
 
-		// Determine a target date window
-		var baseDateLocal = (request.PreferredDate ?? DateTime.UtcNow).Date;
+		// Determine a target date window - preserve time component if provided
+		var baseDateLocal = request.PreferredDate ?? DateTime.UtcNow;
+		var preferredHour = baseDateLocal.Hour;
+		var preferredMinute = baseDateLocal.Minute;
+		var baseDateOnly = baseDateLocal.Date;
 		var duration = TimeSpan.FromMinutes(Math.Max(30, request.DurationMinutes));
 
 		// Try AI API first
@@ -471,15 +474,15 @@ public class AIService : IAIService
 
 		// Fallback to hardcoded logic
 		_logger.LogInformation("Using fallback hardcoded logic for booking suggestions");
-		return await SuggestBookingTimesFallbackAsync(request, baseDateLocal, duration);
+		return await SuggestBookingTimesFallbackAsync(request, baseDateOnly, duration, preferredHour, preferredMinute);
 	}
 
 	private async Task<SuggestBookingResponse?> SuggestBookingTimesFallbackAsync(
-		SuggestBookingRequest request, DateTime baseDateLocal, TimeSpan duration)
+		SuggestBookingRequest request, DateTime baseDateOnly, TimeSpan duration, int? preferredHour = null, int? preferredMinute = null)
 	{
 
 		// Compute fairness for prioritization
-		var fairness = await CalculateFairnessAsync(request.GroupId, baseDateLocal.AddMonths(-3), baseDateLocal.AddDays(1));
+		var fairness = await CalculateFairnessAsync(request.GroupId, baseDateOnly.AddMonths(-3), baseDateOnly.AddDays(1));
 		decimal userFairness = 100m;
 		if (fairness != null)
 		{
@@ -512,12 +515,44 @@ public class AIService : IAIService
 		var candidates = new List<(DateTime start, DateTime end, List<string> reasons, double score)>();
 		for (int dayOffset = 0; dayOffset < 7; dayOffset++)
 		{
-			var day = baseDateLocal.AddDays(dayOffset);
-			// propose 6 fixed windows per day
-			var starts = new[] { 8, 10, 12, 14, 18, 20 };
-			foreach (var h in starts)
+			var day = baseDateOnly.AddDays(dayOffset);
+			
+			// Generate candidate hours - prioritize preferred time if provided
+			var candidateHours = new List<int>();
+			if (request.PreferredDate.HasValue && preferredHour.HasValue)
 			{
-				var start = new DateTime(day.Year, day.Month, day.Day, h, 0, 0, DateTimeKind.Utc);
+				// Include preferred hour and nearby hours (±2 hours)
+				for (int offset = -2; offset <= 2; offset++)
+				{
+					var hour = preferredHour.Value + offset;
+					if (hour >= 0 && hour < 24)
+					{
+						candidateHours.Add(hour);
+					}
+				}
+				// Also include some standard hours for variety
+				var standardHours = new[] { 8, 10, 12, 14, 18, 20 };
+				foreach (var h in standardHours)
+				{
+					if (!candidateHours.Contains(h))
+					{
+						candidateHours.Add(h);
+					}
+				}
+			}
+			else
+			{
+				// No preferred time - use standard hours
+				candidateHours = new List<int> { 8, 10, 12, 14, 18, 20 };
+			}
+			
+			foreach (var h in candidateHours)
+			{
+				// Use preferred minute if provided, otherwise use 0
+				var minute = (request.PreferredDate.HasValue && preferredHour.HasValue && h == preferredHour.Value && preferredMinute.HasValue) 
+					? preferredMinute.Value 
+					: 0;
+				var start = new DateTime(day.Year, day.Month, day.Day, h, minute, 0, DateTimeKind.Utc);
 				var end = start.Add(duration);
 				var reasons = new List<string>();
 				double score = 0.5; // base
@@ -545,14 +580,41 @@ public class AIService : IAIService
 					}
 				}
 
-				// Preference alignment: around preferred date time-of-day if provided
-				if (request.PreferredDate.HasValue)
+				// Preference alignment: prioritize preferred time if provided
+				if (request.PreferredDate.HasValue && preferredHour.HasValue)
 				{
-					var prefHour = request.PreferredDate.Value.Hour;
+					var prefHour = preferredHour.Value;
+					var prefMinute = preferredMinute ?? 0;
 					var hourDelta = Math.Abs(prefHour - h);
-					var align = Math.Max(0, 1.0 - hourDelta / 6.0);
-					if (align > 0.5) reasons.Add("This time has historically worked well for you");
-					score += align * 0.2; // up to +0.2
+					var minuteDelta = h == prefHour ? Math.Abs(prefMinute - minute) : 60; // Only check minutes if same hour
+					
+					// Strong preference for exact or very close time
+					if (hourDelta == 0 && minuteDelta <= 30)
+					{
+						reasons.Add("Matches your preferred time");
+						score += 0.5; // Strong boost for exact match
+					}
+					else if (hourDelta == 0)
+					{
+						reasons.Add("Same hour as your preference");
+						score += 0.4;
+					}
+					else if (hourDelta == 1)
+					{
+						reasons.Add("Close to your preferred time");
+						score += 0.3;
+					}
+					else if (hourDelta == 2)
+					{
+						reasons.Add("Near your preferred time");
+						score += 0.15;
+					}
+					else
+					{
+						// Still give some preference for same day
+						var align = Math.Max(0, 1.0 - hourDelta / 6.0);
+						score += align * 0.1;
+					}
 				}
 
 				// Conflict prediction heuristic: avoid overlapping with common peaks
