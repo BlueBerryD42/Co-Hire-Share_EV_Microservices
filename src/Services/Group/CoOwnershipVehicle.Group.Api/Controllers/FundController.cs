@@ -259,6 +259,175 @@ public class FundController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Approve a pending withdrawal request
+    /// </summary>
+    [HttpPost("{groupId:guid}/withdrawals/{transactionId:guid}/approve")]
+    [ProducesResponseType(typeof(FundTransactionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<FundTransactionDto>> ApproveWithdrawal(Guid groupId, Guid transactionId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var transaction = await _fundService.ApproveWithdrawalAsync(groupId, transactionId, userId);
+            return Ok(transaction);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt to approve withdrawal {TransactionId} for group {GroupId}", transactionId, groupId);
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid approval request for withdrawal {TransactionId} in group {GroupId}", transactionId, groupId);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error approving withdrawal {TransactionId} for group {GroupId}", transactionId, groupId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while approving withdrawal" });
+        }
+    }
+
+    /// <summary>
+    /// Reject a pending withdrawal request
+    /// </summary>
+    [HttpPost("{groupId:guid}/withdrawals/{transactionId:guid}/reject")]
+    [ProducesResponseType(typeof(FundTransactionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<FundTransactionDto>> RejectWithdrawal(Guid groupId, Guid transactionId, [FromBody] RejectWithdrawalDto? rejectDto = null)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var transaction = await _fundService.RejectWithdrawalAsync(groupId, transactionId, userId, rejectDto?.Reason);
+            return Ok(transaction);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt to reject withdrawal {TransactionId} for group {GroupId}", transactionId, groupId);
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid rejection request for withdrawal {TransactionId} in group {GroupId}", transactionId, groupId);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rejecting withdrawal {TransactionId} for group {GroupId}", transactionId, groupId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while rejecting withdrawal" });
+        }
+    }
+
+    /// <summary>
+    /// Complete fund deposit after VNPay payment
+    /// Called by Payment service after successful VNPay payment callback
+    /// Note: This endpoint allows service-to-service calls without user authentication
+    /// Payment reference validation ensures security
+    /// </summary>
+    [HttpPost("{groupId:guid}/complete-deposit")]
+    [AllowAnonymous] // Allow Payment service to call without user token
+    [ProducesResponseType(typeof(FundTransactionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<FundTransactionDto>> CompleteDepositFromPayment(Guid groupId, [FromBody] CompleteFundDepositDto completeDto)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            // Validate groupId matches
+            if (completeDto.GroupId != groupId)
+            {
+                return BadRequest(new { message = "Group ID mismatch" });
+            }
+
+            var transaction = await _fundService.CompleteDepositFromPaymentAsync(
+                groupId,
+                completeDto.Amount,
+                completeDto.Description,
+                completeDto.PaymentReference,
+                completeDto.InitiatedBy,
+                completeDto.Reference);
+            
+            return Ok(transaction);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt to complete fund deposit for group {GroupId}", groupId);
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid fund deposit completion request for group {GroupId}", groupId);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Invalid fund deposit completion request for group {GroupId}", groupId);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing fund deposit for group {GroupId}", groupId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while completing fund deposit" });
+        }
+    }
+
+    /// <summary>
+    /// Pay an expense from group fund
+    /// Called by Payment service when an expense is paid using group fund
+    /// </summary>
+    [HttpPost("{groupId:guid}/pay-expense")]
+    [ProducesResponseType(typeof(FundTransactionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<FundTransactionDto>> PayExpenseFromFund(Guid groupId, [FromBody] PayExpenseFromFundDto payDto)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = GetCurrentUserId();
+            var transaction = await _fundService.PayExpenseFromFundAsync(
+                groupId, 
+                payDto.ExpenseId, 
+                payDto.Amount, 
+                payDto.Description, 
+                userId);
+            return Ok(transaction);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt to pay expense from fund for group {GroupId}", groupId);
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Invalid expense payment request for group {GroupId}", groupId);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Invalid expense payment request for group {GroupId}", groupId);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error paying expense from fund for group {GroupId}", groupId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while paying expense from fund" });
+        }
+    }
+
     private Guid GetCurrentUserId()
     {
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;

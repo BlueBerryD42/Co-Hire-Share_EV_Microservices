@@ -12,5 +12,9 @@ public interface IFundService
     Task<FundTransactionDto> ReleaseReserveAsync(Guid groupId, ReleaseReserveDto releaseDto, Guid userId);
     Task<FundTransactionHistoryDto> GetTransactionHistoryAsync(Guid groupId, Guid userId, int page = 1, int pageSize = 20, FundTransactionType? type = null, DateTime? fromDate = null, DateTime? toDate = null);
     Task<FundSummaryDto> GetFundSummaryAsync(Guid groupId, Guid userId, string period);
+    Task<FundTransactionDto> PayExpenseFromFundAsync(Guid groupId, Guid expenseId, decimal amount, string description, Guid initiatedBy);
+    Task<FundTransactionDto> CompleteDepositFromPaymentAsync(Guid groupId, decimal amount, string description, string paymentReference, Guid initiatedBy, string? reference);
+    Task<FundTransactionDto> ApproveWithdrawalAsync(Guid groupId, Guid transactionId, Guid userId);
+    Task<FundTransactionDto> RejectWithdrawalAsync(Guid groupId, Guid transactionId, Guid userId, string? reason = null);
 }
 

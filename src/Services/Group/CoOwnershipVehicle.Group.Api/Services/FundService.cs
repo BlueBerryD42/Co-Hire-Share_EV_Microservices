@@ -647,6 +647,178 @@ public class FundService : IFundService
         };
     }
 
+    public async Task<FundTransactionDto> PayExpenseFromFundAsync(Guid groupId, Guid expenseId, decimal amount, string description, Guid initiatedBy)
+    {
+        // Validate user is member
+        var membership = await _context.GroupMembers
+            .FirstOrDefaultAsync(m => m.GroupId == groupId && m.UserId == initiatedBy);
+
+        if (membership == null)
+        {
+            throw new UnauthorizedAccessException("User is not a member of this group");
+        }
+
+        if (amount <= 0)
+        {
+            throw new ArgumentException("Amount must be greater than 0");
+        }
+
+        var fund = await _context.GroupFunds
+            .FirstOrDefaultAsync(f => f.GroupId == groupId);
+
+        if (fund == null)
+        {
+            throw new InvalidOperationException("Fund not found for this group");
+        }
+
+        if (fund.AvailableBalance < amount)
+        {
+            throw new InvalidOperationException($"Insufficient fund balance. Available: {fund.AvailableBalance}, Required: {amount}");
+        }
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var balanceBefore = fund.TotalBalance;
+            fund.TotalBalance -= amount;
+            fund.LastUpdated = DateTime.UtcNow;
+
+            var fundTransaction = new FundTransaction
+            {
+                Id = Guid.NewGuid(),
+                GroupId = groupId,
+                InitiatedBy = initiatedBy,
+                Type = FundTransactionType.ExpensePayment,
+                Amount = amount,
+                BalanceBefore = balanceBefore,
+                BalanceAfter = balanceBefore - amount,
+                Description = description,
+                Status = FundTransactionStatus.Completed,
+                TransactionDate = DateTime.UtcNow,
+                Reference = expenseId.ToString(), // Store expense ID as reference
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.FundTransactions.Add(fundTransaction);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            // Fetch user data for the transaction
+            var accessToken = GetAccessToken();
+            var initiator = await _userServiceClient.GetUserAsync(initiatedBy, accessToken);
+
+            _logger.LogInformation("Expense {ExpenseId} paid from fund for group {GroupId}. Amount: {Amount}", 
+                expenseId, groupId, amount);
+
+            return MapToDto(fundTransaction, initiator, null);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    public async Task<FundTransactionDto> CompleteDepositFromPaymentAsync(
+        Guid groupId, 
+        decimal amount, 
+        string description, 
+        string paymentReference, 
+        Guid initiatedBy, 
+        string? reference)
+    {
+        // Validate user is member (payment already succeeded, but we still check membership)
+        var membership = await _context.GroupMembers
+            .FirstOrDefaultAsync(m => m.GroupId == groupId && m.UserId == initiatedBy);
+
+        if (membership == null)
+        {
+            throw new UnauthorizedAccessException("User is not a member of this group");
+        }
+
+        if (amount <= 0)
+        {
+            throw new ArgumentException("Amount must be greater than 0");
+        }
+
+        // Check if this payment reference was already processed (prevent duplicate deposits)
+        var existingTransaction = await _context.FundTransactions
+            .FirstOrDefaultAsync(t => t.GroupId == groupId && t.Reference == paymentReference);
+
+        if (existingTransaction != null)
+        {
+            _logger.LogWarning("Fund deposit with payment reference {PaymentReference} already processed for group {GroupId}", 
+                paymentReference, groupId);
+            // Return existing transaction instead of throwing error
+            var accessToken = GetAccessToken();
+            var initiator = await _userServiceClient.GetUserAsync(initiatedBy, accessToken);
+            return MapToDto(existingTransaction, initiator, null);
+        }
+
+        // Get or create fund
+        var fund = await _context.GroupFunds
+            .FirstOrDefaultAsync(f => f.GroupId == groupId);
+
+        if (fund == null)
+        {
+            fund = new GroupFund
+            {
+                Id = Guid.NewGuid(),
+                GroupId = groupId,
+                TotalBalance = 0m,
+                ReserveBalance = 0m,
+                LastUpdated = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _context.GroupFunds.Add(fund);
+        }
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var balanceBefore = fund.TotalBalance;
+            fund.TotalBalance += amount;
+            fund.LastUpdated = DateTime.UtcNow;
+
+            var fundTransaction = new FundTransaction
+            {
+                Id = Guid.NewGuid(),
+                GroupId = groupId,
+                InitiatedBy = initiatedBy,
+                Type = FundTransactionType.Deposit,
+                Amount = amount,
+                BalanceBefore = balanceBefore,
+                BalanceAfter = balanceBefore + amount,
+                Description = description,
+                Status = FundTransactionStatus.Completed,
+                TransactionDate = DateTime.UtcNow,
+                Reference = paymentReference, // Store VNPay transaction ID as reference
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.FundTransactions.Add(fundTransaction);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            // Fetch user data for the transaction
+            var accessToken = GetAccessToken();
+            var initiator = await _userServiceClient.GetUserAsync(initiatedBy, accessToken);
+
+            _logger.LogInformation("Fund deposit completed from payment {PaymentReference} for group {GroupId}. Amount: {Amount}", 
+                paymentReference, groupId, amount);
+
+            return MapToDto(fundTransaction, initiator, null);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
     private static FundTransactionDto MapToDto(FundTransaction transaction, UserInfoDto? initiator, UserInfoDto? approver)
     {
         return new FundTransactionDto
@@ -667,6 +839,165 @@ public class FundService : IFundService
             Reference = transaction.Reference,
             CreatedAt = transaction.CreatedAt
         };
+    }
+
+    public async Task<FundTransactionDto> ApproveWithdrawalAsync(Guid groupId, Guid transactionId, Guid userId)
+    {
+        // Validate user is admin
+        var membership = await _context.GroupMembers
+            .FirstOrDefaultAsync(m => m.GroupId == groupId && m.UserId == userId);
+
+        if (membership == null)
+        {
+            throw new UnauthorizedAccessException("User is not a member of this group");
+        }
+
+        if (membership.RoleInGroup != GroupRole.Admin)
+        {
+            throw new UnauthorizedAccessException("Only group admins can approve withdrawals");
+        }
+
+        var transaction = await _context.FundTransactions
+            .FirstOrDefaultAsync(t => t.Id == transactionId && t.GroupId == groupId);
+
+        if (transaction == null)
+        {
+            throw new InvalidOperationException("Transaction not found");
+        }
+
+        if (transaction.Type != FundTransactionType.Withdrawal)
+        {
+            throw new InvalidOperationException("Only withdrawal transactions can be approved");
+        }
+
+        if (transaction.Status != FundTransactionStatus.Pending)
+        {
+            throw new InvalidOperationException($"Transaction is not pending. Current status: {transaction.Status}");
+        }
+
+        var fund = await _context.GroupFunds
+            .FirstOrDefaultAsync(f => f.GroupId == groupId);
+
+        if (fund == null)
+        {
+            throw new InvalidOperationException("Fund not found for this group");
+        }
+
+        if (fund.AvailableBalance < transaction.Amount)
+        {
+            throw new InvalidOperationException("Insufficient available balance");
+        }
+
+        using var dbTransaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // Update transaction status
+            transaction.Status = FundTransactionStatus.Completed;
+            transaction.ApprovedBy = userId;
+            transaction.UpdatedAt = DateTime.UtcNow;
+
+            // Update fund balance
+            fund.TotalBalance -= transaction.Amount;
+            fund.LastUpdated = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            await dbTransaction.CommitAsync();
+
+            _logger.LogInformation("Withdrawal {TransactionId} approved for group {GroupId} by user {UserId}",
+                transactionId, groupId, userId);
+
+            // Publish event
+            await _publishEndpoint.Publish(new FundWithdrawalEvent
+            {
+                TransactionId = transaction.Id,
+                GroupId = groupId,
+                WithdrawnBy = transaction.InitiatedBy,
+                Amount = transaction.Amount,
+                BalanceAfter = fund.TotalBalance,
+                Reason = transaction.Description,
+                Status = FundTransactionStatus.Completed,
+                WithdrawnAt = transaction.TransactionDate
+            });
+
+            var accessToken = GetAccessToken();
+            var initiator = await _userServiceClient.GetUserAsync(transaction.InitiatedBy, accessToken);
+            var approver = await _userServiceClient.GetUserAsync(userId, accessToken);
+            return MapToDto(transaction, initiator, approver);
+        }
+        catch
+        {
+            await dbTransaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    public async Task<FundTransactionDto> RejectWithdrawalAsync(Guid groupId, Guid transactionId, Guid userId, string? reason = null)
+    {
+        // Validate user is admin
+        var membership = await _context.GroupMembers
+            .FirstOrDefaultAsync(m => m.GroupId == groupId && m.UserId == userId);
+
+        if (membership == null)
+        {
+            throw new UnauthorizedAccessException("User is not a member of this group");
+        }
+
+        if (membership.RoleInGroup != GroupRole.Admin)
+        {
+            throw new UnauthorizedAccessException("Only group admins can reject withdrawals");
+        }
+
+        var transaction = await _context.FundTransactions
+            .FirstOrDefaultAsync(t => t.Id == transactionId && t.GroupId == groupId);
+
+        if (transaction == null)
+        {
+            throw new InvalidOperationException("Transaction not found");
+        }
+
+        if (transaction.Type != FundTransactionType.Withdrawal)
+        {
+            throw new InvalidOperationException("Only withdrawal transactions can be rejected");
+        }
+
+        if (transaction.Status != FundTransactionStatus.Pending)
+        {
+            throw new InvalidOperationException($"Transaction is not pending. Current status: {transaction.Status}");
+        }
+
+        // Update transaction status
+        transaction.Status = FundTransactionStatus.Rejected;
+        transaction.ApprovedBy = userId;
+        transaction.UpdatedAt = DateTime.UtcNow;
+        
+        // Store rejection reason in description if provided
+        if (!string.IsNullOrEmpty(reason))
+        {
+            transaction.Description = $"{transaction.Description} [Rejected: {reason}]";
+        }
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Withdrawal {TransactionId} rejected for group {GroupId} by user {UserId}. Reason: {Reason}",
+            transactionId, groupId, userId, reason ?? "No reason provided");
+
+        // Publish event
+        await _publishEndpoint.Publish(new FundWithdrawalEvent
+        {
+            TransactionId = transaction.Id,
+            GroupId = groupId,
+            WithdrawnBy = transaction.InitiatedBy,
+            Amount = transaction.Amount,
+            BalanceAfter = transaction.BalanceBefore, // Balance unchanged on rejection
+            Reason = transaction.Description,
+            Status = FundTransactionStatus.Rejected,
+            WithdrawnAt = transaction.TransactionDate
+        });
+
+        var accessToken = GetAccessToken();
+        var initiator = await _userServiceClient.GetUserAsync(transaction.InitiatedBy, accessToken);
+        var rejector = await _userServiceClient.GetUserAsync(userId, accessToken);
+        return MapToDto(transaction, initiator, rejector);
     }
 }
 

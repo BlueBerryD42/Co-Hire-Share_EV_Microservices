@@ -111,6 +111,8 @@ services:
       - "61605:8080"
     environment:
       <<: *common-env
+      GROUP_SERVICE_URL: "http://group-api:8080"
+      USER_SERVICE_URL: "http://user-api:8080"
     networks:
       - coownership
 

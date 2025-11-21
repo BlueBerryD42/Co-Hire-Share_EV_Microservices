@@ -105,7 +105,7 @@
       "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
-      "DownstreamPathTemplate": "/api/payment/{everything}",
+      "DownstreamPathTemplate": "/api/Payment/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
