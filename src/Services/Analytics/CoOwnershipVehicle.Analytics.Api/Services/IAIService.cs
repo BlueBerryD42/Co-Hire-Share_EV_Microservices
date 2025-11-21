@@ -8,6 +8,7 @@ public interface IAIService
 	Task<SuggestBookingResponse?> SuggestBookingTimesAsync(SuggestBookingRequest request);
 	Task<UsagePredictionResponse?> GetUsagePredictionsAsync(Guid groupId);
 	Task<CostOptimizationResponse?> GetCostOptimizationAsync(Guid groupId);
+	Task<PredictiveMaintenanceResponse?> GetPredictiveMaintenanceAsync(Guid vehicleId);
 }
 
 

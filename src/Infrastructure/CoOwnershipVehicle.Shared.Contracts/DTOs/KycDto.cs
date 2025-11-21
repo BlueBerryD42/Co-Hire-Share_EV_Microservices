@@ -53,6 +53,13 @@ public class UserProfileDto
     public string? Country { get; set; }
     public string? PostalCode { get; set; }
     public DateTime? DateOfBirth { get; set; }
+    public string? ProfilePhotoUrl { get; set; }
+    public string? Bio { get; set; }
+    public string? EmergencyContactName { get; set; }
+    public string? EmergencyContactPhone { get; set; }
+    public string? PreferredPaymentMethod { get; set; }
+    public string? NotificationPreferences { get; set; } // JSON string
+    public string? LanguagePreference { get; set; }
     public KycStatus KycStatus { get; set; }
     public UserRole Role { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -70,6 +77,22 @@ public class UpdateUserProfileDto
     public string? Country { get; set; }
     public string? PostalCode { get; set; }
     public DateTime? DateOfBirth { get; set; }
+    public string? ProfilePhotoUrl { get; set; }
+    public string? Bio { get; set; }
+    public string? EmergencyContactName { get; set; }
+    public string? EmergencyContactPhone { get; set; }
+    public string? PreferredPaymentMethod { get; set; }
+    public string? NotificationPreferences { get; set; } // JSON string
+    public string? LanguagePreference { get; set; }
+}
+
+public class UploadProfilePhotoDto
+{
+    [Required]
+    public string FileName { get; set; } = string.Empty;
+    
+    [Required]
+    public string Base64Content { get; set; } = string.Empty;
 }
 
 public class ChangePasswordDto

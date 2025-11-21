@@ -110,6 +110,20 @@ public class OpenAIServiceClient : IOpenAIServiceClient
 			cancellationToken);
 	}
 
+	public async Task<PredictiveMaintenanceResponse?> GetPredictiveMaintenanceAsync(string prompt, CancellationToken cancellationToken = default)
+	{
+		if (string.IsNullOrEmpty(_apiKey))
+		{
+			_logger.LogWarning("OpenAI API key not configured. Returning null for predictive maintenance.");
+			return null;
+		}
+
+		return await CallOpenAIAsync<PredictiveMaintenanceResponse>(
+			prompt,
+			"predictive-maintenance",
+			cancellationToken);
+	}
+
 	private async Task<T?> CallOpenAIAsync<T>(
 		string prompt,
 		string operationName,

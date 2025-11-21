@@ -17,10 +17,12 @@ public interface IUserService
     Task<UserProfileDto> UpdateUserProfileAsync(Guid userId, UpdateUserProfileDto updateDto);
     // ChangePasswordAsync removed - password changes should be handled by Auth service only
     Task<KycDocumentDto> UploadKycDocumentAsync(Guid userId, UploadKycDocumentDto uploadDto);
+    Task<string> UploadProfilePhotoAsync(Guid userId, UploadProfilePhotoDto uploadDto);
     Task<List<KycDocumentDto>> GetUserKycDocumentsAsync(Guid userId);
     Task<KycDocumentDto?> GetKycDocumentByIdAsync(Guid documentId);
     Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto reviewDto, Guid reviewerId);
     Task<List<KycDocumentDto>> GetPendingKycDocumentsAsync();
+    Task<List<KycDocumentDto>> GetAllKycDocumentsAsync();
     Task<bool> UpdateKycStatusAsync(Guid userId, KycStatus status, string? reason = null);
     Task<UserListResponseDto> GetUsersAsync(UserListRequestDto request);
 }
@@ -75,6 +77,13 @@ public class UserService : IUserService
             Country = user.Country,
             PostalCode = user.PostalCode,
             DateOfBirth = user.DateOfBirth,
+            ProfilePhotoUrl = user.ProfilePhotoUrl,
+            Bio = user.Bio,
+            EmergencyContactName = user.EmergencyContactName,
+            EmergencyContactPhone = user.EmergencyContactPhone,
+            PreferredPaymentMethod = user.PreferredPaymentMethod,
+            NotificationPreferences = user.NotificationPreferences,
+            LanguagePreference = user.LanguagePreference,
             KycStatus = (KycStatus)user.KycStatus,
             Role = (UserRole)user.Role,
             CreatedAt = user.CreatedAt,
@@ -136,6 +145,28 @@ public class UserService : IUserService
         
         if (updateDto.DateOfBirth.HasValue)
             user.DateOfBirth = updateDto.DateOfBirth.Value;
+        
+        // Update extended profile fields (allow null to clear values)
+        if (updateDto.ProfilePhotoUrl != null)
+            user.ProfilePhotoUrl = string.IsNullOrWhiteSpace(updateDto.ProfilePhotoUrl) ? null : updateDto.ProfilePhotoUrl;
+        
+        if (updateDto.Bio != null)
+            user.Bio = string.IsNullOrWhiteSpace(updateDto.Bio) ? null : updateDto.Bio;
+        
+        if (updateDto.EmergencyContactName != null)
+            user.EmergencyContactName = string.IsNullOrWhiteSpace(updateDto.EmergencyContactName) ? null : updateDto.EmergencyContactName;
+        
+        if (updateDto.EmergencyContactPhone != null)
+            user.EmergencyContactPhone = string.IsNullOrWhiteSpace(updateDto.EmergencyContactPhone) ? null : updateDto.EmergencyContactPhone;
+        
+        if (updateDto.PreferredPaymentMethod != null)
+            user.PreferredPaymentMethod = string.IsNullOrWhiteSpace(updateDto.PreferredPaymentMethod) ? null : updateDto.PreferredPaymentMethod;
+        
+        if (updateDto.NotificationPreferences != null)
+            user.NotificationPreferences = string.IsNullOrWhiteSpace(updateDto.NotificationPreferences) ? null : updateDto.NotificationPreferences;
+        
+        if (updateDto.LanguagePreference != null)
+            user.LanguagePreference = string.IsNullOrWhiteSpace(updateDto.LanguagePreference) ? null : updateDto.LanguagePreference;
 
         user.UpdatedAt = DateTime.UtcNow;
 
@@ -202,6 +233,13 @@ public class UserService : IUserService
             Country = user.Country,
             PostalCode = user.PostalCode,
             DateOfBirth = user.DateOfBirth,
+            ProfilePhotoUrl = user.ProfilePhotoUrl,
+            Bio = user.Bio,
+            EmergencyContactName = user.EmergencyContactName,
+            EmergencyContactPhone = user.EmergencyContactPhone,
+            PreferredPaymentMethod = user.PreferredPaymentMethod,
+            NotificationPreferences = user.NotificationPreferences,
+            LanguagePreference = user.LanguagePreference,
             KycStatus = (KycStatus)user.KycStatus,
             Role = (UserRole)user.Role,
             CreatedAt = user.CreatedAt,
@@ -255,6 +293,20 @@ public class UserService : IUserService
             Status = (KycDocumentStatus)kycDocument.Status,
             UploadedAt = kycDocument.CreatedAt
         };
+    }
+
+    public async Task<string> UploadProfilePhotoAsync(Guid userId, UploadProfilePhotoDto uploadDto)
+    {
+        var user = await _context.UserProfiles.FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null)
+            throw new NotFoundException("User not found");
+
+        // Save photo to storage (similar to KYC documents)
+        var storageUrl = await SaveProfilePhotoToStorageAsync(uploadDto.Base64Content, uploadDto.FileName);
+
+        _logger.LogInformation("Profile photo uploaded for user {UserId}. StorageUrl: {StorageUrl}", userId, storageUrl);
+
+        return storageUrl;
     }
 
     public async Task<List<KycDocumentDto>> GetUserKycDocumentsAsync(Guid userId)
@@ -390,6 +442,37 @@ public class UserService : IUserService
         }).ToList();
     }
 
+    public async Task<List<KycDocumentDto>> GetAllKycDocumentsAsync()
+    {
+        var documents = await _context.KycDocuments
+            .OrderBy(d => d.CreatedAt)
+            .ToListAsync();
+
+        var userIds = documents.Select(d => d.UserId).Distinct().ToList();
+        var users = await _context.UserProfiles
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id);
+
+        return documents.Select(d => 
+        {
+            var user = users.GetValueOrDefault(d.UserId);
+            return new KycDocumentDto
+            {
+                Id = d.Id,
+                UserId = d.UserId,
+                UserName = user != null ? $"{user.FirstName} {user.LastName}" : "Unknown",
+                DocumentType = (KycDocumentType)d.DocumentType,
+                FileName = d.FileName,
+                StorageUrl = d.StorageUrl,
+                Status = (KycDocumentStatus)d.Status,
+                ReviewNotes = d.ReviewNotes,
+                ReviewedBy = d.ReviewedBy,
+                ReviewedAt = d.ReviewedAt,
+                UploadedAt = d.CreatedAt
+            };
+        }).ToList();
+    }
+
     public async Task<bool> UpdateKycStatusAsync(Guid userId, KycStatus status, string? reason = null)
     {
         var user = await _context.UserProfiles.FirstOrDefaultAsync(u => u.Id == userId);
@@ -458,6 +541,48 @@ public class UserService : IUserService
             // Fallback to mock URL if file save fails
             var fileId = Guid.NewGuid().ToString();
             return $"https://storage.coownership.com/kyc/{fileId}/{fileName}";
+        }
+    }
+
+    private async Task<string> SaveProfilePhotoToStorageAsync(string base64Content, string fileName)
+    {
+        try
+        {
+            // Decode base64 content
+            var fileBytes = Convert.FromBase64String(base64Content);
+            
+            // Use ContentRootPath for consistent path in both local and Docker environments
+            var contentRootPath = _environment.ContentRootPath;
+            var profilePhotosPath = Path.Combine(contentRootPath, "wwwroot", "files", "profile-photos");
+            
+            // Create directory if it doesn't exist
+            if (!Directory.Exists(profilePhotosPath))
+            {
+                Directory.CreateDirectory(profilePhotosPath);
+                _logger.LogInformation("Created profile photos directory: {ProfilePhotosPath}", profilePhotosPath);
+            }
+            
+            // Generate unique file name
+            var fileId = Guid.NewGuid();
+            var fileExtension = Path.GetExtension(fileName);
+            var uniqueFileName = $"{fileId}{fileExtension}";
+            var filePath = Path.Combine(profilePhotosPath, uniqueFileName);
+            
+            // Save file to disk
+            await System.IO.File.WriteAllBytesAsync(filePath, fileBytes);
+            
+            // Return relative URL path for serving via API
+            var storageUrl = $"/api/User/profile/photos/{fileId}{fileExtension}";
+            
+            _logger.LogInformation("Profile photo saved successfully. FilePath: {FilePath}, StorageUrl: {StorageUrl}, FileSize: {FileSize} bytes", 
+                filePath, storageUrl, fileBytes.Length);
+            
+            return storageUrl;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving profile photo to storage");
+            throw;
         }
     }
 

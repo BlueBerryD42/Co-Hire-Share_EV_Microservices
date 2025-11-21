@@ -16,6 +16,7 @@ public class AIService : IAIService
 	private readonly IGroupServiceClient _groupServiceClient;
 	private readonly IBookingServiceClient _bookingServiceClient;
 	private readonly IPaymentServiceClient _paymentServiceClient;
+	private readonly IVehicleServiceClient _vehicleServiceClient;
 	private readonly IOpenAIServiceClient _openAIServiceClient;
 	private readonly ILogger<AIService> _logger;
 
@@ -24,6 +25,7 @@ public class AIService : IAIService
 		IGroupServiceClient groupServiceClient,
 		IBookingServiceClient bookingServiceClient,
 		IPaymentServiceClient paymentServiceClient,
+		IVehicleServiceClient vehicleServiceClient,
 		IOpenAIServiceClient openAIServiceClient,
 		ILogger<AIService> logger)
 	{
@@ -31,6 +33,7 @@ public class AIService : IAIService
 		_groupServiceClient = groupServiceClient;
 		_bookingServiceClient = bookingServiceClient;
 		_paymentServiceClient = paymentServiceClient;
+		_vehicleServiceClient = vehicleServiceClient;
 		_openAIServiceClient = openAIServiceClient;
 		_logger = logger;
 	}
@@ -1635,5 +1638,206 @@ public class AIService : IAIService
 		}
 
 		return roiCalculations.OrderByDescending(r => r.ExpectedSavings).ToList();
+	}
+
+	public async Task<PredictiveMaintenanceResponse?> GetPredictiveMaintenanceAsync(Guid vehicleId)
+	{
+		// Get vehicle information
+		var vehicle = await _vehicleServiceClient.GetVehicleAsync(vehicleId);
+		if (vehicle == null)
+		{
+			return null;
+		}
+
+		// Try AI API first
+		try
+		{
+		// Get vehicle age
+		var vehicleAge = DateTime.UtcNow.Year - vehicle.Year;
+		var odometer = vehicle.Odometer;
+
+		// Build prompt for AI
+		var prompt = AIPromptTemplates.BuildPredictiveMaintenancePrompt(
+			vehicleId, vehicle.Model ?? "Unknown", vehicle.Model ?? "Unknown", 
+			vehicle.Year, vehicleAge, odometer);
+
+			var aiResponse = await _openAIServiceClient.GetPredictiveMaintenanceAsync(prompt);
+			
+			if (aiResponse != null)
+			{
+				_logger.LogInformation("Successfully received AI predictive maintenance for vehicle {VehicleId}", vehicleId);
+				return aiResponse;
+			}
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "AI API call failed for predictive maintenance, falling back to hardcoded logic");
+		}
+
+		// Fallback to hardcoded logic
+		_logger.LogInformation("Using fallback hardcoded logic for predictive maintenance");
+		return await GetPredictiveMaintenanceFallbackAsync(vehicleId, vehicle);
+	}
+
+	private async Task<PredictiveMaintenanceResponse?> GetPredictiveMaintenanceFallbackAsync(
+		Guid vehicleId, VehicleDto vehicle)
+	{
+		var vehicleAge = DateTime.UtcNow.Year - vehicle.Year;
+		var odometer = vehicle.Odometer;
+		var mileagePerYear = vehicleAge > 0 ? odometer / vehicleAge : odometer;
+
+		// Calculate health score (0-100)
+		var healthScore = 100m;
+		
+		// Reduce score based on age
+		if (vehicleAge > 0)
+		{
+			healthScore -= Math.Min(30, vehicleAge * 2); // -2 points per year, max -30
+		}
+
+		// Reduce score based on mileage
+		if (mileagePerYear > 0)
+		{
+			if (mileagePerYear > 20000) // High mileage
+			{
+				healthScore -= Math.Min(20, (mileagePerYear - 20000) / 1000); // -1 per 1000km over 20k
+			}
+		}
+
+		// Ensure score is between 0 and 100
+		healthScore = Math.Max(0, Math.Min(100, healthScore));
+
+		var response = new PredictiveMaintenanceResponse
+		{
+			VehicleId = vehicleId,
+			VehicleName = $"{vehicle.Year} {vehicle.Model}",
+			HealthScore = Math.Round(healthScore, 0),
+			GeneratedAt = DateTime.UtcNow
+		};
+
+		// Generate predicted issues based on vehicle age and mileage
+		var predictedIssues = new List<PredictedIssue>();
+
+		// Battery issues (common for EVs)
+		if (vehicleAge >= 3 || odometer > 50000)
+		{
+			var batteryLikelihood = Math.Min(0.8m, 0.3m + (vehicleAge * 0.1m) + (odometer > 50000 ? 0.2m : 0m));
+			predictedIssues.Add(new PredictedIssue
+			{
+				Type = "Battery",
+				Name = "Battery Capacity Degradation",
+				Severity = batteryLikelihood > 0.6m ? "High" : "Medium",
+				Likelihood = batteryLikelihood,
+				Timeline = vehicleAge >= 5 ? "1-3 months" : "6-12 months",
+				CostRange = new CostRange { Min = 5000, Max = 15000 },
+				Recommendation = "Schedule battery health check. Consider battery replacement if capacity drops below 70%."
+			});
+		}
+
+		// Tire wear
+		if (odometer > 40000 || mileagePerYear > 15000)
+		{
+			var tireLikelihood = Math.Min(0.7m, 0.2m + ((odometer - 40000) / 100000m));
+			predictedIssues.Add(new PredictedIssue
+			{
+				Type = "Tires",
+				Name = "Tire Wear",
+				Severity = tireLikelihood > 0.5m ? "Medium" : "Low",
+				Likelihood = tireLikelihood,
+				Timeline = odometer > 60000 ? "2-4 months" : "6-12 months",
+				CostRange = new CostRange { Min = 400, Max = 1200 },
+				Recommendation = "Inspect tire tread depth. Replace if below 3mm. Consider rotating tires."
+			});
+		}
+
+		// Brake system
+		if (odometer > 50000)
+		{
+			var brakeLikelihood = Math.Min(0.6m, 0.2m + ((odometer - 50000) / 100000m));
+			predictedIssues.Add(new PredictedIssue
+			{
+				Type = "Brakes",
+				Name = "Brake Pad Wear",
+				Severity = brakeLikelihood > 0.4m ? "Medium" : "Low",
+				Likelihood = brakeLikelihood,
+				Timeline = odometer > 70000 ? "3-6 months" : "9-15 months",
+				CostRange = new CostRange { Min = 300, Max = 800 },
+				Recommendation = "Check brake pad thickness. EV regenerative braking reduces wear but inspection is recommended."
+			});
+		}
+
+		// Charging port issues (EV specific)
+		if (vehicleAge >= 2)
+		{
+			var chargingLikelihood = Math.Min(0.5m, 0.1m + (vehicleAge * 0.05m));
+			predictedIssues.Add(new PredictedIssue
+			{
+				Type = "Charging",
+				Name = "Charging Port Wear",
+				Severity = "Low",
+				Likelihood = chargingLikelihood,
+				Timeline = "12-24 months",
+				CostRange = new CostRange { Min = 200, Max = 600 },
+				Recommendation = "Inspect charging port for wear or damage. Clean regularly to prevent issues."
+			});
+		}
+
+		// Suspension (for older/high mileage vehicles)
+		if (vehicleAge >= 5 || odometer > 80000)
+		{
+			var suspensionLikelihood = Math.Min(0.5m, 0.1m + ((vehicleAge - 5) * 0.05m) + (odometer > 80000 ? 0.2m : 0m));
+			predictedIssues.Add(new PredictedIssue
+			{
+				Type = "Suspension",
+				Name = "Suspension Component Wear",
+				Severity = suspensionLikelihood > 0.4m ? "Medium" : "Low",
+				Likelihood = suspensionLikelihood,
+				Timeline = "6-18 months",
+				CostRange = new CostRange { Min = 500, Max = 2000 },
+				Recommendation = "Inspect suspension components for wear. Check for unusual noises or handling issues."
+			});
+		}
+
+		response.PredictedIssues = predictedIssues;
+
+		// Generate suggested maintenance bundles
+		var bundles = new List<MaintenanceBundle>();
+
+		// Bundle 1: Basic maintenance
+		if (predictedIssues.Any(i => i.Type == "Tires" || i.Type == "Brakes"))
+		{
+			bundles.Add(new MaintenanceBundle
+			{
+				Title = "Tire & Brake Service Bundle",
+				Services = new List<string> { "Tire Rotation", "Brake Inspection", "Tire Pressure Check" },
+				PotentialSavings = 150
+			});
+		}
+
+		// Bundle 2: Comprehensive check
+		if (predictedIssues.Count >= 2)
+		{
+			bundles.Add(new MaintenanceBundle
+			{
+				Title = "Comprehensive Vehicle Inspection",
+				Services = new List<string> { "Full Vehicle Inspection", "Battery Health Check", "Charging System Check", "Tire Inspection" },
+				PotentialSavings = 200
+			});
+		}
+
+		// Bundle 3: Preventive maintenance
+		if (vehicleAge >= 3)
+		{
+			bundles.Add(new MaintenanceBundle
+			{
+				Title = "Preventive Maintenance Package",
+				Services = new List<string> { "Battery Health Check", "Tire Rotation", "Brake Inspection", "Charging Port Inspection" },
+				PotentialSavings = 180
+			});
+		}
+
+		response.SuggestedBundles = bundles;
+
+		return response;
 	}
 }

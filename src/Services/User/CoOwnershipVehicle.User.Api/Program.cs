@@ -156,6 +156,14 @@ if (!Directory.Exists(kycFilesPath))
     Console.WriteLine($"[INFO] Created KYC files directory: {kycFilesPath}");
 }
 
+// Ensure profile photos directory exists
+var profilePhotosPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "files", "profile-photos");
+if (!Directory.Exists(profilePhotosPath))
+{
+    Directory.CreateDirectory(profilePhotosPath);
+    Console.WriteLine($"[INFO] Created profile photos directory: {profilePhotosPath}");
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

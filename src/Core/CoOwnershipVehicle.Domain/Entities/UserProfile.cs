@@ -48,6 +48,28 @@ public class UserProfile : BaseEntity
     
     public DateTime? DateOfBirth { get; set; }
     
+    // Extended profile fields
+    [StringLength(500)]
+    public string? ProfilePhotoUrl { get; set; }
+    
+    [StringLength(200)]
+    public string? Bio { get; set; }
+    
+    [StringLength(100)]
+    public string? EmergencyContactName { get; set; }
+    
+    [StringLength(20)]
+    public string? EmergencyContactPhone { get; set; }
+    
+    [StringLength(50)]
+    public string? PreferredPaymentMethod { get; set; }
+    
+    [StringLength(2000)] // JSON string
+    public string? NotificationPreferences { get; set; }
+    
+    [StringLength(10)]
+    public string? LanguagePreference { get; set; }
+    
     public KycStatus KycStatus { get; set; } = KycStatus.Pending;
     
     public UserRole Role { get; set; } = UserRole.CoOwner;

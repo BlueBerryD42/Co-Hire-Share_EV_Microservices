@@ -109,6 +109,20 @@ public class GeminiServiceClient : IOpenAIServiceClient
 			cancellationToken);
 	}
 
+	public async Task<PredictiveMaintenanceResponse?> GetPredictiveMaintenanceAsync(string prompt, CancellationToken cancellationToken = default)
+	{
+		if (string.IsNullOrEmpty(_apiKey))
+		{
+			_logger.LogWarning("Gemini API key not configured. Returning null for predictive maintenance.");
+			return null;
+		}
+
+		return await CallGeminiAsync<PredictiveMaintenanceResponse>(
+			prompt,
+			"predictive-maintenance",
+			cancellationToken);
+	}
+
 	private async Task<T?> CallGeminiAsync<T>(
 		string prompt,
 		string operationName,
