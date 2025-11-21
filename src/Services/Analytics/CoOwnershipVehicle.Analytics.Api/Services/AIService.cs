@@ -4,6 +4,7 @@ using CoOwnershipVehicle.Analytics.Api.Models;
 using CoOwnershipVehicle.Analytics.Api.Services.HttpClients;
 using CoOwnershipVehicle.Analytics.Api.Services.Prompts;
 using CoOwnershipVehicle.Domain.Entities;
+using CoOwnershipVehicle.Domain.Enums;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using Microsoft.EntityFrameworkCore;
 
@@ -71,7 +72,7 @@ public class AIService : IAIService
 				})
 				.ToList();
 
-			if (members.Count > 0)
+			if (members.Any())
 			{
 				// Normalize usage if needed
 				var anyUsageShareMissing = members.Any(m => double.IsNaN(m.Usage) || double.IsInfinity(m.Usage));
@@ -161,7 +162,7 @@ public class AIService : IAIService
 	}
 
 	private async Task<FairnessAnalysisResponse?> CalculateFairnessFallbackAsync(
-		Guid groupId, DateTime periodStart, DateTime periodEnd, List<Data.Entities.UserAnalytics> userAnalytics)
+		Guid groupId, DateTime periodStart, DateTime periodEnd, List<UserAnalytics> userAnalytics)
 	{
 
 		// Aggregate by user
@@ -176,7 +177,7 @@ public class AIService : IAIService
 			})
 			.ToList();
 
-		if (members.Count == 0)
+		if (!members.Any())
 		{
 			return new FairnessAnalysisResponse
 			{
@@ -332,7 +333,7 @@ public class AIService : IAIService
 					TotalUsageHours = g.Sum(x => x.TotalUsageHours)
 				})
 				.ToList();
-			if (monthData.Count == 0)
+			if (!monthData.Any())
 			{
 				trendPoints.Add(new FairnessTrendPoint { PeriodStart = monthStart, PeriodEnd = monthEnd, GroupFairnessScore = 0 });
 				continue;
@@ -677,12 +678,12 @@ public class AIService : IAIService
 
 		// Fallback to hardcoded logic
 		_logger.LogInformation("Using fallback hardcoded logic for usage predictions");
-		return await GetUsagePredictionsFallbackAsync(groupId, userHistory, snapHistory, historyStart, historyEnd);
+		return await GetUsagePredictionsFallbackAsync(groupId, userHistory, snapHistory, historyStart, historyEnd, historySpan);
 	}
 
 	private async Task<UsagePredictionResponse?> GetUsagePredictionsFallbackAsync(
-		Guid groupId, List<Data.Entities.UserAnalytics> userHistory, List<Data.Entities.AnalyticsSnapshot> snapHistory,
-		DateTime historyStart, DateTime historyEnd)
+		Guid groupId, List<UserAnalytics> userHistory, List<AnalyticsSnapshot> snapHistory,
+		DateTime historyStart, DateTime historyEnd, double historySpan)
 	{
 		var response = new UsagePredictionResponse
 		{
@@ -795,7 +796,7 @@ public class AIService : IAIService
 			.Select(g => new { g.Key.Year, g.Key.Month, Avg = g.Average(x => x.Value) })
 			.OrderBy(x => new DateTime(x.Year, x.Month, 1))
 			.ToList();
-		if (monthAvg.Count >= 3)
+		if (monthAvg.Count() >= 3)
 		{
 			var first = monthAvg.First();
 			var last = monthAvg.Last();
@@ -807,7 +808,7 @@ public class AIService : IAIService
 
 		// Anomaly detection: sudden spikes or drops day-to-day > 2.5x change
 		var orderedDays = dayUsage.OrderBy(kv => kv.Key).ToList();
-		for (int i = 1; i < orderedDays.Count; i++)
+		for (int i = 1; i < orderedDays.Count(); i++)
 		{
 			var prev = orderedDays[i - 1];
 			var cur = orderedDays[i];
@@ -846,7 +847,7 @@ public class AIService : IAIService
 
 	private static double StdDev(List<double> values)
 	{
-		if (values.Count == 0) return 0.0;
+		if (!values.Any()) return 0.0;
 		var avg = values.Average();
 		var variance = values.Average(v => Math.Pow(v - avg, 2));
 		return Math.Sqrt(variance);
@@ -856,16 +857,16 @@ public class AIService : IAIService
 	{
 		// values01 expected between 0 and 1
 		var values = values01.Where(v => v >= 0).ToList();
-		if (values.Count == 0) return 0.0;
+		if (!values.Any()) return 0.0;
 		var mean = values.Average();
 		if (mean == 0) return 0.0;
 		values.Sort();
 		double cumulative = 0;
-		for (int i = 0; i < values.Count; i++)
+		for (int i = 0; i < values.Count(); i++)
 		{
-			cumulative += (2 * (i + 1) - values.Count - 1) * values[i];
+			cumulative += (2 * (i + 1) - values.Count() - 1) * values[i];
 		}
-		var gini = cumulative / (values.Count * values.Sum());
+		var gini = cumulative / (values.Count() * values.Sum());
 		return Math.Abs(gini);
 	}
 
@@ -906,8 +907,8 @@ public class AIService : IAIService
 		{
 			// Calculate metrics for prompt
 			var totalDistance = await CalculateTotalDistanceAsync(bookings);
-			var totalTrips = bookings.Count;
-			var totalMembers = group.Members?.Count ?? 0;
+			var totalTrips = bookings.Count();
+			var totalMembers = group.Members?.Count() ?? 0;
 			var totalHours = bookings.Sum(b => (int)(b.EndAt - b.StartAt).TotalHours);
 			var totalExpenses = expenses.Sum(e => e.Amount);
 
@@ -918,7 +919,7 @@ public class AIService : IAIService
 					.Select(g => g.Sum(e => e.Amount))
 					.DefaultIfEmpty(0)
 					.Average(),
-				TotalExpenseCount = expenses.Count,
+				TotalExpenseCount = expenses.Count(),
 				ExpensesByType = expenses.GroupBy(e => e.ExpenseType)
 					.ToDictionary(g => g.Key.ToString(), g => g.Sum(e => e.Amount)),
 				ExpensesByMonth = expenses.GroupBy(e => new { e.DateIncurred.Year, e.DateIncurred.Month })
@@ -980,8 +981,8 @@ public class AIService : IAIService
 
 		// Calculate total distance from check-ins
 		var totalDistance = await CalculateTotalDistanceAsync(bookings);
-		var totalTrips = bookings.Count;
-		var totalMembers = group.Members?.Count ?? 0;
+		var totalTrips = bookings.Count();
+		var totalMembers = group.Members?.Count() ?? 0;
 		var totalHours = bookings.Sum(b => (int)(b.EndAt - b.StartAt).TotalHours);
 
 		// 1. Cost Analysis Summary
@@ -998,7 +999,7 @@ public class AIService : IAIService
 		{
 			TotalExpenses = totalExpenses,
 			AverageMonthlyExpenses = expensesByMonth.Any() ? expensesByMonth.Values.Average() : 0,
-			TotalExpenseCount = expenses.Count,
+			TotalExpenseCount = expenses.Count(),
 			ExpensesByType = expensesByType,
 			ExpensesByMonth = expensesByMonth
 		};
@@ -1104,31 +1105,34 @@ public class AIService : IAIService
 		foreach (var provider in providerGroups.OrderByDescending(p => p.Value.Sum(e => e.Amount)).Take(5))
 		{
 			var providerTotal = provider.Value.Sum(e => e.Amount);
-			highCostAreas.Add(new HighCostArea
+			if (provider.Value.Any())
 			{
-				Category = "Maintenance Provider",
-				TotalAmount = providerTotal,
-				Count = provider.Value.Count,
-				AverageAmount = providerTotal / provider.Value.Count,
-				ProviderName = provider.Key,
-				PercentageOfTotal = totalExpenses > 0 ? (providerTotal / totalExpenses) * 100 : 0,
-				Description = $"Multiple expenses with {provider.Key}"
-			});
+				highCostAreas.Add(new HighCostArea
+				{
+					Category = "Maintenance Provider",
+					TotalAmount = providerTotal,
+					Count = provider.Value.Count(),
+					AverageAmount = providerTotal / provider.Value.Count(),
+					ProviderName = provider.Key,
+					PercentageOfTotal = totalExpenses > 0 ? (providerTotal / totalExpenses) * 100 : 0,
+					Description = $"Multiple expenses with {provider.Key}"
+				});
+			}
 		}
 
 		// Identify frequent repairs (may indicate bigger issues)
 		var repairExpenses = expenses.Where(e => e.ExpenseType == ExpenseType.Repair).ToList();
-		if (repairExpenses.Count >= 3)
+		if (repairExpenses.Count() >= 3)
 		{
 			var repairTotal = repairExpenses.Sum(e => e.Amount);
 			highCostAreas.Add(new HighCostArea
 			{
 				Category = "Frequent Repairs",
 				TotalAmount = repairTotal,
-				Count = repairExpenses.Count,
+				Count = repairExpenses.Count(),
 				AverageAmount = repairExpenses.Average(e => e.Amount),
 				PercentageOfTotal = totalExpenses > 0 ? (repairTotal / totalExpenses) * 100 : 0,
-				Description = $"High frequency of repairs ({repairExpenses.Count} repairs) may indicate underlying issues"
+				Description = $"High frequency of repairs ({repairExpenses.Count()} repairs) may indicate underlying issues"
 			});
 		}
 
@@ -1282,7 +1286,6 @@ public class AIService : IAIService
 		if (insuranceExpenses.Any())
 		{
 			var annualInsurance = insuranceExpenses.Sum(e => e.Amount);
-			var avgInsurance = insuranceExpenses.Any() ? insuranceExpenses.Average(e => e.Amount) : 0m;
 			
 			recommendations.Add(new CostRecommendation
 			{
@@ -1301,7 +1304,7 @@ public class AIService : IAIService
 		if (cleaningExpenses.Any())
 		{
 			var cleaningTotal = cleaningExpenses.Sum(e => e.Amount);
-			var avgCleaningCost = cleaningExpenses.Any() ? cleaningExpenses.Average(e => e.Amount) : 0m;
+			var avgCleaningCost = cleaningExpenses.Average(e => e.Amount);
 			
 			if (avgCleaningCost > 50)
 			{
@@ -1361,7 +1364,7 @@ public class AIService : IAIService
 	{
 		var prediction = new CostPrediction
 		{
-			ConfidenceScore = expenses.Count >= 6 ? 0.75m : expenses.Count >= 3 ? 0.5m : 0.3m
+			ConfidenceScore = expenses.Count() >= 6 ? 0.75m : expenses.Count() >= 3 ? 0.5m : 0.3m
 		};
 
 		// Calculate monthly average from historical data
@@ -1384,7 +1387,6 @@ public class AIService : IAIService
 		prediction.NextQuarterPrediction = prediction.NextMonthPrediction * 3;
 
 		// Upcoming expenses based on recurring patterns
-		var recurringExpenses = expenses.Where(e => e.IsRecurring).ToList();
 		var insuranceExpenses = expenses.Where(e => e.ExpenseType == ExpenseType.Insurance).ToList();
 		var registrationExpenses = expenses.Where(e => e.ExpenseType == ExpenseType.Registration).ToList();
 
@@ -1448,7 +1450,6 @@ public class AIService : IAIService
 		for (int i = 1; i <= 3; i++)
 		{
 			var forecastMonth = DateTime.UtcNow.AddMonths(i);
-			var monthKey = $"{forecastMonth.Year}-{forecastMonth.Month:D2}";
 			
 			prediction.MonthlyForecast.Add(new MonthlyPrediction
 			{
@@ -1491,7 +1492,7 @@ public class AIService : IAIService
 		}
 
 		// Unusual expense spikes
-		if (expensesByMonth.Count >= 3)
+		if (expensesByMonth.Count() >= 3)
 		{
 			var monthlyValues = expensesByMonth.Values.ToList();
 			var avgMonthly = monthlyValues.Average();
@@ -1546,7 +1547,7 @@ public class AIService : IAIService
 
 	private double CalculateStdDev(List<double> values)
 	{
-		if (values.Count == 0) return 0.0;
+		if (!values.Any()) return 0.0;
 		var avg = values.Average();
 		var variance = values.Average(v => Math.Pow(v - avg, 2));
 		return Math.Sqrt(variance);
@@ -1562,13 +1563,12 @@ public class AIService : IAIService
 		// Maintenance vs Replacement ROI
 		var repairExpenses = expenses.Where(e => e.ExpenseType == ExpenseType.Repair).ToList();
 		var maintenanceExpenses = expenses.Where(e => e.ExpenseType == ExpenseType.Maintenance).ToList();
-		var annualRepairCost = repairExpenses.Sum(e => e.Amount) * 12 / Math.Max(1m, (decimal)((DateTime.UtcNow - expenses.Min(e => e.DateIncurred)).Days / 365.0));
-		var annualMaintenanceCost = maintenanceExpenses.Sum(e => e.Amount) * 12 / Math.Max(1m, (decimal)((DateTime.UtcNow - expenses.Min(e => e.DateIncurred)).Days / 365.0));
+		var annualRepairCost = repairExpenses.Any() ? repairExpenses.Sum(e => e.Amount) * 12 / Math.Max(1m, (decimal)((DateTime.UtcNow - expenses.Min(e => e.DateIncurred)).Days / 365.0)) : 0;
+		var annualMaintenanceCost = maintenanceExpenses.Any() ? maintenanceExpenses.Sum(e => e.Amount) * 12 / Math.Max(1m, (decimal)((DateTime.UtcNow - expenses.Min(e => e.DateIncurred)).Days / 365.0)): 0;
 
 		if (annualRepairCost > 2000 && vehicles.Any())
 		{
 			var vehicle = vehicles.First();
-			// Note: VehicleDto may not have Year property, using placeholder
 			var vehicleAge = vehicle.Year > 0 ? DateTime.UtcNow.Year - vehicle.Year : 5;
 			var estimatedReplacementCost = 30000m; // Average EV cost
 			
@@ -1579,7 +1579,7 @@ public class AIService : IAIService
 			if (totalRepairCostProjected > estimatedReplacementCost * 0.3m)
 			{
 				var savings = totalRepairCostProjected - estimatedReplacementCost;
-				var paybackMonths = estimatedReplacementCost / (annualRepairCost / 12);
+				var paybackMonths = annualRepairCost > 0 ? (estimatedReplacementCost / (annualRepairCost / 12)) : 0;
 				
 				roiCalculations.Add(new ROICalculation
 				{
@@ -1596,7 +1596,7 @@ public class AIService : IAIService
 		}
 
 		// Preventive Maintenance Upgrade ROI
-		if (repairExpenses.Count >= 3)
+		if (repairExpenses.Any())
 		{
 			var preventiveInvestment = 500m; // Annual preventive maintenance budget
 			var estimatedRepairReduction = annualRepairCost * 0.3m; // 30% reduction
@@ -1609,7 +1609,7 @@ public class AIService : IAIService
 				InvestmentAmount = preventiveInvestment,
 				ExpectedSavings = netSavings,
 				ExpectedSavingsPerYear = netSavings,
-				PaybackPeriodMonths = preventiveInvestment > 0 ? (preventiveInvestment / (netSavings / 12)) : 0,
+				PaybackPeriodMonths = netSavings > 0 ? (preventiveInvestment / (netSavings / 12)) : 0,
 				ROIPercentage = preventiveInvestment > 0 ? (netSavings / preventiveInvestment) * 100 : 0,
 				Scenario = "Upgrade"
 			});
@@ -1618,8 +1618,8 @@ public class AIService : IAIService
 		// Lease vs Own ROI (simplified)
 		if (vehicles.Any())
 		{
-			var totalAnnualCost = metrics.CostPerMember * metrics.TotalMembers * 12;
-			var estimatedLeaseCost = totalAnnualCost * 1.2m; // Assume lease is 20% more
+			var totalAnnualCost = metrics.CostPerMember > 0 ? metrics.CostPerMember * metrics.TotalMembers * 12 : (metrics.CostPerHour > 0 ? metrics.CostPerHour * 24 * 365 : 0);
+			var estimatedLeaseCost = totalAnnualCost > 0 ? totalAnnualCost * 1.2m : 10000; // Assume lease is 20% more or 10k
 			
 			roiCalculations.Add(new ROICalculation
 			{
@@ -1637,5 +1637,3 @@ public class AIService : IAIService
 		return roiCalculations.OrderByDescending(r => r.ExpectedSavings).ToList();
 	}
 }
-
-
