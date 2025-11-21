@@ -26,10 +26,27 @@ public class VnPayService : IVnPayService
 
     public string CreatePaymentUrl(VnPayPaymentRequest request)
     {
-        var baseUrl = Environment.GetEnvironmentVariable("VNPAY_PAYMENT_URL");
-        var tmnCode = Environment.GetEnvironmentVariable("VNPAY_TMN_CODE");
-        var hashSecret = Environment.GetEnvironmentVariable("VNPAY_HASH_SECRET");
-        var returnUrl = Environment.GetEnvironmentVariable("VNPAY_RETURN_URL");
+        // Try environment variables first, then fall back to configuration
+        var baseUrl = Environment.GetEnvironmentVariable("VNPAY_PAYMENT_URL")
+                      ?? _configuration["VnPay:BaseUrl"];
+        var tmnCode = Environment.GetEnvironmentVariable("VNPAY_TMN_CODE")
+                      ?? _configuration["VnPay:TmnCode"];
+        var hashSecret = Environment.GetEnvironmentVariable("VNPAY_HASH_SECRET")
+                         ?? _configuration["VnPay:HashSecret"];
+        var returnUrl = Environment.GetEnvironmentVariable("VNPAY_RETURN_URL")
+                        ?? _configuration["VnPay:ReturnUrl"];
+
+        // Log để debug (chỉ log khi thiếu config)
+        if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(tmnCode) ||
+            string.IsNullOrEmpty(hashSecret) || string.IsNullOrEmpty(returnUrl))
+        {
+            _logger.LogError("VNPay configuration is missing! BaseUrl: {BaseUrl}, TmnCode: {TmnCode}, HashSecret: {HashSecret}, ReturnUrl: {ReturnUrl}",
+                string.IsNullOrEmpty(baseUrl) ? "MISSING" : "OK",
+                string.IsNullOrEmpty(tmnCode) ? "MISSING" : "OK",
+                string.IsNullOrEmpty(hashSecret) ? "MISSING" : "OK",
+                string.IsNullOrEmpty(returnUrl) ? "MISSING" : "OK");
+            throw new InvalidOperationException("VNPay configuration is not properly set. Check environment variables or appsettings.json");
+        }
 
         var vnpay = new VnPayLibrary();
         
@@ -63,8 +80,15 @@ public class VnPayService : IVnPayService
 
     public VnPayPaymentResponse ProcessPaymentCallback(IQueryCollection queryParams)
     {
-        var vnPayConfig = _configuration.GetSection("VnPay");
-        var hashSecret = vnPayConfig["HashSecret"];
+        // Try environment variables first, then fall back to configuration
+        var hashSecret = Environment.GetEnvironmentVariable("VNPAY_HASH_SECRET")
+                         ?? _configuration["VnPay:HashSecret"];
+
+        if (string.IsNullOrEmpty(hashSecret))
+        {
+            _logger.LogError("VNPay HASH_SECRET is missing for payment callback validation!");
+            throw new InvalidOperationException("VNPay HASH_SECRET is not configured");
+        }
 
         var vnpay = new VnPayLibrary();
         

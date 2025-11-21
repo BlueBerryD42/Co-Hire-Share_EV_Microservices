@@ -106,7 +106,15 @@ public class PaymentController : ControllerBase
 
             _logger.LogInformation("Expense {ExpenseId} created for group {GroupId}", expense.Id, expense.GroupId);
 
-            return Ok(await GetExpenseByIdAsync(expense.Id));
+            var expenseDto = await GetExpenseByIdAsync(expense.Id);
+            if (expenseDto == null)
+            {
+                // This case is unlikely but good to handle. It means the expense was deleted
+                // immediately after creation.
+                return NotFound(new { message = "Expense created but could not be retrieved." });
+            }
+
+            return Ok(expenseDto);
         }
         catch (Exception ex)
         {
@@ -249,6 +257,17 @@ public class PaymentController : ControllerBase
     /// Get expenses for user's groups
     /// Note: Fetches group and user data via HTTP calls since these entities are in other microservices
     /// </summary>
+    [HttpGet("expenses/{expenseId}")]
+    public async Task<IActionResult> GetExpenseById(Guid expenseId)
+    {
+        var expenseDto = await GetExpenseByIdAsync(expenseId);
+        if (expenseDto == null)
+        {
+            return NotFound(new { message = "Expense not found." });
+        }
+        return Ok(expenseDto);
+    }
+
     [HttpGet("expenses")]
     public async Task<IActionResult> GetExpenses([FromQuery] Guid? groupId = null)
     {

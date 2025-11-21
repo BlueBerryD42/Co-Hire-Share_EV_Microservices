@@ -113,6 +113,11 @@ services:
       <<: *common-env
       GROUP_SERVICE_URL: "http://group-api:8080"
       USER_SERVICE_URL: "http://user-api:8080"
+      # VNPay Configuration
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET}
+      VNPAY_PAYMENT_URL: ${VNPAY_PAYMENT_URL}
+      VNPAY_RETURN_URL: ${VNPAY_RETURN_URL}
     networks:
       - coownership
 
