@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Analytics.Api.Services;
+using CoOwnershipVehicle.Analytics.Api.Services.HttpClients;
 using System.Security.Claims;
 
 namespace CoOwnershipVehicle.Analytics.Api.Controllers;
@@ -13,11 +14,19 @@ public class AnalyticsController : ControllerBase
 {
     private readonly IAnalyticsService _analyticsService;
     private readonly IReportingService _reportingService;
+    private readonly IGroupServiceClient _groupServiceClient;
+    private readonly ILogger<AnalyticsController> _logger;
 
-    public AnalyticsController(IAnalyticsService analyticsService, IReportingService reportingService)
+    public AnalyticsController(
+        IAnalyticsService analyticsService, 
+        IReportingService reportingService,
+        IGroupServiceClient groupServiceClient,
+        ILogger<AnalyticsController> logger)
     {
         _analyticsService = analyticsService;
         _reportingService = reportingService;
+        _groupServiceClient = groupServiceClient;
+        _logger = logger;
     }
 
     [HttpGet("dashboard")]
@@ -77,16 +86,67 @@ public class AnalyticsController : ControllerBase
         return CreatedAtAction(nameof(GetSnapshots), new { id = snapshot.Id }, snapshot);
     }
 
+    /// <summary>
+    /// Process analytics for a group or vehicle
+    /// - Admin: Can process for any group/vehicle
+    /// - User: Can only process for groups they are a member of
+    /// </summary>
     [HttpPost("process")]
-    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> ProcessAnalytics([FromQuery] Guid? groupId, [FromQuery] Guid? vehicleId)
     {
-        var result = await _analyticsService.ProcessAnalyticsAsync(groupId, vehicleId);
-        if (result)
+        try
         {
-            return Ok(new { message = "Analytics processed successfully" });
+            var userId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin") || User.IsInRole("SystemAdmin") || User.IsInRole("Staff");
+
+            // If groupId is provided, verify user has access (unless admin)
+            if (groupId.HasValue && !isAdmin)
+            {
+                var group = await _groupServiceClient.GetGroupDetailsAsync(groupId.Value);
+                if (group == null)
+                {
+                    return NotFound(new { message = "Group not found" });
+                }
+
+                // Check if user is a member of the group
+                var isMember = group.Members?.Any(m => m.UserId == userId) ?? false;
+                if (!isMember)
+                {
+                    _logger.LogWarning("User {UserId} attempted to process analytics for group {GroupId} without membership", 
+                        userId, groupId.Value);
+                    return StatusCode(403, new { message = "You are not a member of this group" });
+                }
+            }
+
+            var result = await _analyticsService.ProcessAnalyticsAsync(groupId, vehicleId);
+            if (result)
+            {
+                _logger.LogInformation("Analytics processed successfully for GroupId: {GroupId}, VehicleId: {VehicleId} by User: {UserId}", 
+                    groupId, vehicleId, userId);
+                return Ok(new { message = "Analytics processed successfully" });
+            }
+            return BadRequest(new { message = "Failed to process analytics" });
         }
-        return BadRequest(new { message = "Failed to process analytics" });
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Unauthorized access attempt to process analytics");
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing analytics");
+            return StatusCode(500, new { message = "An error occurred while processing analytics", error = ex.Message });
+        }
+    }
+
+    private Guid GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            throw new UnauthorizedAccessException("Invalid user ID in token");
+        }
+        return userId;
     }
 
     [HttpGet("reports/{reportType}")]

@@ -254,6 +254,111 @@ public class PaymentController : ControllerBase
     }
 
     /// <summary>
+    /// Internal endpoint for service-to-service communication (Analytics, Admin, etc.)
+    /// Allows services to fetch payments without user context
+    /// Note: This endpoint is used by background services that don't have HttpContext
+    /// </summary>
+    [HttpGet("internal/payments")]
+    [AllowAnonymous] // Allow service-to-service calls without JWT (internal network only)
+    public async Task<IActionResult> GetPaymentsInternal([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null, [FromQuery] PaymentStatus? status = null)
+    {
+        try
+        {
+            // Query payments without including ignored navigation properties (Payer, Expense.Group, etc.)
+            // These are stored in other microservices and must be fetched via HTTP if needed
+            var query = _context.Payments
+                .Include(p => p.Invoice)
+                    .ThenInclude(i => i.Expense) // Expense is OK - it's in Payment service
+                .AsQueryable();
+
+            if (from.HasValue)
+                query = query.Where(p => p.CreatedAt >= from.Value);
+            if (to.HasValue)
+                query = query.Where(p => p.CreatedAt <= to.Value);
+            if (status.HasValue)
+                query = query.Where(p => p.Status == (Domain.Entities.PaymentStatus)status.Value);
+
+            var payments = await query
+                .OrderByDescending(p => p.CreatedAt)
+                .Select(p => new PaymentDto
+                {
+                    Id = p.Id,
+                    InvoiceId = p.InvoiceId,
+                    PayerId = p.PayerId, // Only return ID - fetch user details via User service if needed
+                    Amount = p.Amount,
+                    Method = (PaymentMethod)p.Method,
+                    Status = (PaymentStatus)p.Status,
+                    TransactionReference = p.TransactionReference,
+                    Notes = p.Notes,
+                    CreatedAt = p.CreatedAt,
+                    PaidAt = p.PaidAt
+                })
+                .ToListAsync();
+
+            return Ok(payments);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting payments (internal)");
+            return StatusCode(500, new { message = "An error occurred while retrieving payments" });
+        }
+    }
+
+    /// <summary>
+    /// Internal endpoint for service-to-service communication to get expenses
+    /// Allows services to fetch expenses without user context
+    /// Note: This endpoint is used by background services that don't have HttpContext
+    /// </summary>
+    [HttpGet("internal/expenses")]
+    [AllowAnonymous] // Allow service-to-service calls without JWT (internal network only)
+    public async Task<IActionResult> GetExpensesInternal([FromQuery] Guid? groupId = null, [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
+    {
+        try
+        {
+            // Query expenses - no user filtering for internal calls
+            var query = _context.Expenses.AsQueryable();
+
+            if (groupId.HasValue)
+                query = query.Where(e => e.GroupId == groupId.Value);
+
+            if (from.HasValue)
+                query = query.Where(e => e.DateIncurred >= from.Value);
+            if (to.HasValue)
+                query = query.Where(e => e.DateIncurred <= to.Value);
+
+            var expenses = await query
+                .OrderByDescending(e => e.DateIncurred)
+                .ToListAsync();
+
+            // Map expenses to DTOs (simplified - no user/group details for internal calls)
+            var expenseDtos = expenses.Select(e => new ExpenseDto
+            {
+                Id = e.Id,
+                GroupId = e.GroupId,
+                GroupName = null, // Not fetched for internal calls
+                VehicleId = e.VehicleId,
+                VehicleModel = null,
+                ExpenseType = (ExpenseType)e.ExpenseType,
+                Amount = e.Amount,
+                Description = e.Description,
+                DateIncurred = e.DateIncurred,
+                CreatedBy = e.CreatedBy,
+                CreatedByName = null, // Not fetched for internal calls
+                Notes = e.Notes,
+                IsRecurring = e.IsRecurring,
+                CreatedAt = e.CreatedAt
+            }).ToList();
+
+            return Ok(expenseDtos);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting expenses (internal)");
+            return StatusCode(500, new { message = "An error occurred while retrieving expenses" });
+        }
+    }
+
+    /// <summary>
     /// Get expenses for user's groups
     /// Note: Fetches group and user data via HTTP calls since these entities are in other microservices
     /// </summary>

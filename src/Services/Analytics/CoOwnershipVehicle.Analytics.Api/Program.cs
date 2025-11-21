@@ -81,12 +81,45 @@ builder.Services.AddDbContext<AnalyticsDbContext>(options =>
 builder.Services.AddHttpContextAccessor();
 
 // Configure HTTP clients for inter-service communication
+// Detect if running in Docker (DB_SERVER == "host.docker.internal")
+// Try multiple ways to get DB_SERVER: direct env var, then EnvironmentHelper, then config
+var dbServer = Environment.GetEnvironmentVariable("DB_SERVER") 
+    ?? EnvironmentHelper.GetEnvironmentVariable("DB_SERVER", builder.Configuration)
+    ?? builder.Configuration["DB_SERVER"];
+var isDocker = dbServer == "host.docker.internal";
+Console.WriteLine($"[DIAGNOSTIC] DB_SERVER value: {dbServer ?? "NULL"}");
+Console.WriteLine($"[DIAGNOSTIC] Running in Docker: {isDocker}");
+
 var serviceUrls = builder.Configuration.GetSection("ServiceUrls");
-var userServiceUrl = serviceUrls["User"] ?? EnvironmentHelper.GetEnvironmentVariable("USER_SERVICE_URL", builder.Configuration) ?? "https://localhost:61602";
-var groupServiceUrl = serviceUrls["Group"] ?? EnvironmentHelper.GetEnvironmentVariable("GROUP_SERVICE_URL", builder.Configuration) ?? "https://localhost:61603";
-var vehicleServiceUrl = serviceUrls["Vehicle"] ?? EnvironmentHelper.GetEnvironmentVariable("VEHICLE_SERVICE_URL", builder.Configuration) ?? "https://localhost:61604";
-var bookingServiceUrl = serviceUrls["Booking"] ?? EnvironmentHelper.GetEnvironmentVariable("BOOKING_SERVICE_URL", builder.Configuration) ?? "https://localhost:61606";
-var paymentServiceUrl = serviceUrls["Payment"] ?? EnvironmentHelper.GetEnvironmentVariable("PAYMENT_SERVICE_URL", builder.Configuration) ?? "https://localhost:61605";
+
+// Use Docker service names when running in containers, otherwise use config/env/localhost
+// When running in Docker, override any config values with Docker service names
+var userServiceUrl = isDocker 
+    ? "http://user-api:8080"
+    : (serviceUrls["User"] ?? EnvironmentHelper.GetEnvironmentVariable("USER_SERVICE_URL", builder.Configuration) ?? "https://localhost:61602");
+
+var groupServiceUrl = isDocker
+    ? "http://group-api:8080"
+    : (serviceUrls["Group"] ?? EnvironmentHelper.GetEnvironmentVariable("GROUP_SERVICE_URL", builder.Configuration) ?? "https://localhost:61603");
+
+var vehicleServiceUrl = isDocker
+    ? "http://vehicle-api:8080"
+    : (serviceUrls["Vehicle"] ?? EnvironmentHelper.GetEnvironmentVariable("VEHICLE_SERVICE_URL", builder.Configuration) ?? "https://localhost:61604");
+
+var bookingServiceUrl = isDocker
+    ? "http://booking-api:8080"
+    : (serviceUrls["Booking"] ?? EnvironmentHelper.GetEnvironmentVariable("BOOKING_SERVICE_URL", builder.Configuration) ?? "https://localhost:61606");
+
+var paymentServiceUrl = isDocker
+    ? "http://payment-api:8080"
+    : (serviceUrls["Payment"] ?? EnvironmentHelper.GetEnvironmentVariable("PAYMENT_SERVICE_URL", builder.Configuration) ?? "https://localhost:61605");
+
+// Log service URLs for debugging
+Console.WriteLine($"[DIAGNOSTIC] User Service URL: {userServiceUrl}");
+Console.WriteLine($"[DIAGNOSTIC] Group Service URL: {groupServiceUrl}");
+Console.WriteLine($"[DIAGNOSTIC] Vehicle Service URL: {vehicleServiceUrl}");
+Console.WriteLine($"[DIAGNOSTIC] Booking Service URL: {bookingServiceUrl}");
+Console.WriteLine($"[DIAGNOSTIC] Payment Service URL: {paymentServiceUrl}");
 
 // Register HTTP clients
 builder.Services.AddHttpClient<IUserServiceClient, UserServiceClient>(client =>
