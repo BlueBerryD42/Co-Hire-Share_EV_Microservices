@@ -219,6 +219,45 @@ public static class AIPromptTemplates
 		
 		return sb.ToString();
 	}
+
+	public static string BuildPredictiveMaintenancePrompt(
+		Guid vehicleId,
+		string make,
+		string model,
+		int year,
+		int vehicleAge,
+		decimal odometer)
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine("You are an AI assistant providing predictive maintenance analysis for electric vehicles.");
+		sb.AppendLine("Analyze the vehicle data and predict potential maintenance issues.");
+		sb.AppendLine();
+		sb.AppendLine($"Vehicle ID: {vehicleId}");
+		sb.AppendLine($"Vehicle: {year} {make} {model}");
+		sb.AppendLine($"Vehicle Age: {vehicleAge} years");
+		sb.AppendLine($"Odometer: {odometer:N0} km");
+		sb.AppendLine();
+		sb.AppendLine("Provide:");
+		sb.AppendLine("1. Health score (0-100, where 100 is excellent condition)");
+		sb.AppendLine("2. Predicted issues with severity, likelihood, timeline, and cost estimates");
+		sb.AppendLine("3. Suggested maintenance bundles that can save money");
+		sb.AppendLine();
+		sb.AppendLine("Return JSON in this exact format:");
+		sb.AppendLine("{");
+		sb.AppendLine("  \"vehicleId\": \"guid\",");
+		sb.AppendLine("  \"vehicleName\": \"string\",");
+		sb.AppendLine("  \"healthScore\": 75.0,");
+		sb.AppendLine("  \"predictedIssues\": [");
+		sb.AppendLine("    {\"type\": \"Battery\", \"name\": \"Battery Degradation\", \"severity\": \"Medium\", \"likelihood\": 0.6, \"timeline\": \"6-12 months\", \"costRange\": {\"min\": 5000, \"max\": 15000}, \"recommendation\": \"string\"}");
+		sb.AppendLine("  ],");
+		sb.AppendLine("  \"suggestedBundles\": [");
+		sb.AppendLine("    {\"title\": \"string\", \"services\": [\"string\"], \"potentialSavings\": 150}");
+		sb.AppendLine("  ],");
+		sb.AppendLine("  \"generatedAt\": \"2024-01-01T00:00:00Z\"");
+		sb.AppendLine("}");
+		
+		return sb.ToString();
+	}
 }
 
 // Helper classes for prompt building

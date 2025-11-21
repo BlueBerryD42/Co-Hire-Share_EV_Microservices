@@ -792,9 +792,9 @@ public class AdminService : IAdminService
     private async Task<(KycStatus Status, string Reason)> DetermineOverallKycStatusAsync(Guid userId, KycDocumentDto? updatedDocument = null)
     {
         // Get KYC documents from User service via HTTP
-        // Note: GetUserKycDocumentsAsync may not exist, using GetPendingKycDocumentsAsync and filtering
-        var allPendingDocs = await _userServiceClient.GetPendingKycDocumentsAsync();
-        var documents = allPendingDocs
+        // Get all KYC documents for the user
+        var allDocs = await _userServiceClient.GetAllKycDocumentsAsync();
+        var documents = allDocs
             .Where(d => d.UserId == userId && (updatedDocument == null || d.Id != updatedDocument.Id))
             .ToList();
 
@@ -975,8 +975,8 @@ public class AdminService : IAdminService
         if (user == null)
             throw new ArgumentException("User not found");
 
-        // Get KYC documents from User service
-        var kycDocuments = await _userServiceClient.GetPendingKycDocumentsAsync();
+        // Get all KYC documents from User service
+        var kycDocuments = await _userServiceClient.GetAllKycDocumentsAsync();
         var userKycDocs = kycDocuments.Where(d => d.UserId == userId).ToList();
 
         // Get group memberships - would need Group service endpoint for user's groups
@@ -1102,70 +1102,21 @@ public class AdminService : IAdminService
     {
         filter ??= new KycDocumentFilterDto();
         
-        // Get all users with pending KYC status (to match dashboard count)
+        // Get all KYC documents from User service via HTTP (frontend will handle filtering)
+        var allDocuments = await _userServiceClient.GetAllKycDocumentsAsync();
+        
+        // Group documents by userId first
+        var documentsByUserId = allDocuments.GroupBy(d => d.UserId).ToDictionary(g => g.Key, g => g.ToList());
+        
+        // Get all users that have KYC documents
         var allUsers = await _userServiceClient.GetUsersAsync();
-        var pendingKycUsers = allUsers.Where(u => 
-            u.KycStatus == KycStatus.Pending || 
-            u.KycStatus == KycStatus.InReview).ToList();
+        var usersWithDocuments = allUsers.Where(u => documentsByUserId.ContainsKey(u.Id)).ToList();
         
-        // Get pending KYC documents from User service via HTTP
-        var allPendingDocuments = await _userServiceClient.GetPendingKycDocumentsAsync();
-        
-        // Apply filters to documents
-        var filteredDocuments = allPendingDocuments.AsQueryable();
-        
-        if (filter.Status.HasValue)
-        {
-            filteredDocuments = filteredDocuments.Where(d => d.Status == filter.Status.Value);
-        }
-        
-        if (filter.DocumentType.HasValue)
-        {
-            filteredDocuments = filteredDocuments.Where(d => d.DocumentType == filter.DocumentType.Value);
-        }
-        
-        if (filter.FromDate.HasValue)
-        {
-            filteredDocuments = filteredDocuments.Where(d => d.UploadedAt >= filter.FromDate.Value);
-        }
-        
-        if (filter.ToDate.HasValue)
-        {
-            filteredDocuments = filteredDocuments.Where(d => d.UploadedAt <= filter.ToDate.Value);
-        }
-        
-        if (!string.IsNullOrEmpty(filter.Search))
-        {
-            var searchTerm = filter.Search.ToLower();
-            filteredDocuments = filteredDocuments.Where(d => 
-                d.UserName.ToLower().Contains(searchTerm) ||
-                d.FileName.ToLower().Contains(searchTerm));
-        }
-        
-        // Apply sorting
-        filteredDocuments = filter.SortBy?.ToLower() switch
-        {
-            "filename" => filter.SortDirection == "asc" 
-                ? filteredDocuments.OrderBy(d => d.FileName) 
-                : filteredDocuments.OrderByDescending(d => d.FileName),
-            "documenttype" => filter.SortDirection == "asc" 
-                ? filteredDocuments.OrderBy(d => d.DocumentType) 
-                : filteredDocuments.OrderByDescending(d => d.DocumentType),
-            "status" => filter.SortDirection == "asc" 
-                ? filteredDocuments.OrderBy(d => d.Status) 
-                : filteredDocuments.OrderByDescending(d => d.Status),
-            _ => filter.SortDirection == "asc" 
-                ? filteredDocuments.OrderBy(d => d.UploadedAt) 
-                : filteredDocuments.OrderByDescending(d => d.UploadedAt)
-        };
-        
-        var documentsList = filteredDocuments.ToList();
-        
-        // Group by user and create DTOs - include all users with pending KYC status
+        // Group by user and create DTOs - include all users with KYC documents
         var usersDict = new Dictionary<Guid, PendingKycUserDto>();
         
-        // First, add all users with pending KYC status (even if they don't have pending documents)
-        foreach (var user in pendingKycUsers)
+        // Add all users that have KYC documents
+        foreach (var user in usersWithDocuments)
         {
             if (!usersDict.ContainsKey(user.Id))
             {
@@ -1177,61 +1128,101 @@ public class AdminService : IAdminService
                     LastName = user.LastName,
                     KycStatus = user.KycStatus,
                     SubmittedAt = user.CreatedAt,
-                    Documents = new List<KycDocumentDto>()
+                    Documents = documentsByUserId[user.Id].ToList() // Add all documents for this user
                 };
-                
-                // Get all documents for this user (not just pending ones)
-                var userDocuments = await _userServiceClient.GetUserKycDocumentsAsync(user.Id);
-                if (userDocuments != null && userDocuments.Any())
-                {
-                    usersDict[user.Id].Documents.AddRange(userDocuments);
-                }
             }
         }
         
-        // Then, add filtered documents to their respective users (avoid duplicates)
-        foreach (var doc in documentsList)
+        // Apply filters to users and their documents (frontend can also filter, but we do server-side filtering for efficiency)
+        var usersList = usersDict.Values.ToList();
+        
+        // Filter by document status if provided
+        if (filter.Status.HasValue)
         {
-            if (!usersDict.ContainsKey(doc.UserId))
+            usersList = usersList.Select(u => new PendingKycUserDto
             {
-                // Get user profile to get user details
-                var user = await _userServiceClient.GetUserProfileAsync(doc.UserId);
-                if (user != null)
-                {
-                    usersDict[doc.UserId] = new PendingKycUserDto
-                    {
-                        Id = user.Id,
-                        Email = user.Email,
-                        FirstName = user.FirstName,
-                        LastName = user.LastName,
-                        KycStatus = user.KycStatus,
-                        SubmittedAt = user.CreatedAt,
-                        Documents = new List<KycDocumentDto>()
-                    };
-                }
-            }
-            
-            if (usersDict.ContainsKey(doc.UserId))
+                Id = u.Id,
+                Email = u.Email,
+                FirstName = u.FirstName,
+                LastName = u.LastName,
+                KycStatus = u.KycStatus,
+                SubmittedAt = u.SubmittedAt,
+                Documents = u.Documents.Where(d => d.Status == filter.Status.Value).ToList()
+            }).Where(u => u.Documents.Any()).ToList();
+        }
+        
+        // Filter by document type if provided
+        if (filter.DocumentType.HasValue)
+        {
+            usersList = usersList.Select(u => new PendingKycUserDto
             {
-                // Only add if document doesn't already exist (avoid duplicates)
-                if (!usersDict[doc.UserId].Documents.Any(d => d.Id == doc.Id))
-                {
-                    usersDict[doc.UserId].Documents.Add(doc);
-                }
-            }
+                Id = u.Id,
+                Email = u.Email,
+                FirstName = u.FirstName,
+                LastName = u.LastName,
+                KycStatus = u.KycStatus,
+                SubmittedAt = u.SubmittedAt,
+                Documents = u.Documents.Where(d => d.DocumentType == filter.DocumentType.Value).ToList()
+            }).Where(u => u.Documents.Any()).ToList();
+        }
+        
+        // Filter by date range if provided
+        if (filter.FromDate.HasValue || filter.ToDate.HasValue)
+        {
+            usersList = usersList.Select(u => new PendingKycUserDto
+            {
+                Id = u.Id,
+                Email = u.Email,
+                FirstName = u.FirstName,
+                LastName = u.LastName,
+                KycStatus = u.KycStatus,
+                SubmittedAt = u.SubmittedAt,
+                Documents = u.Documents.Where(d => 
+                    (!filter.FromDate.HasValue || d.UploadedAt >= filter.FromDate.Value) &&
+                    (!filter.ToDate.HasValue || d.UploadedAt <= filter.ToDate.Value)
+                ).ToList()
+            }).Where(u => u.Documents.Any()).ToList();
         }
         
         // Apply search filter to users if provided
-        var usersList = usersDict.Values.ToList();
         if (!string.IsNullOrEmpty(filter.Search))
         {
             var searchTerm = filter.Search.ToLower();
             usersList = usersList.Where(u => 
                 u.Email.ToLower().Contains(searchTerm) ||
                 u.FirstName.ToLower().Contains(searchTerm) ||
-                u.LastName.ToLower().Contains(searchTerm)).ToList();
+                u.LastName.ToLower().Contains(searchTerm) ||
+                u.Documents.Any(d => 
+                    d.UserName.ToLower().Contains(searchTerm) ||
+                    d.FileName.ToLower().Contains(searchTerm)
+                )
+            ).ToList();
         }
         
+        // Apply sorting to documents within each user
+        var sortBy = filter.SortBy?.ToLower() ?? "uploadedat";
+        var sortDirection = filter.SortDirection?.ToLower() ?? "desc";
+        
+        foreach (var user in usersList)
+        {
+            user.Documents = sortBy switch
+            {
+                "filename" => sortDirection == "asc" 
+                    ? user.Documents.OrderBy(d => d.FileName).ToList()
+                    : user.Documents.OrderByDescending(d => d.FileName).ToList(),
+                "documenttype" => sortDirection == "asc" 
+                    ? user.Documents.OrderBy(d => d.DocumentType).ToList()
+                    : user.Documents.OrderByDescending(d => d.DocumentType).ToList(),
+                "status" => sortDirection == "asc" 
+                    ? user.Documents.OrderBy(d => d.Status).ToList()
+                    : user.Documents.OrderByDescending(d => d.Status).ToList(),
+                _ => sortDirection == "asc" 
+                    ? user.Documents.OrderBy(d => d.UploadedAt).ToList()
+                    : user.Documents.OrderByDescending(d => d.UploadedAt).ToList()
+            };
+        }
+        
+        // usersList is already defined above, so we use it directly
         var totalCount = usersList.Count;
         var totalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize);
         
@@ -1277,15 +1268,9 @@ public class AdminService : IAdminService
             UserAgent = "Admin API"
         });
 
-        // Get user to determine overall KYC status
-        var user = await _userServiceClient.GetUserProfileAsync(document.UserId);
-        if (user == null)
-            throw new ArgumentException("User not found");
-
-        // Note: DetermineOverallKycStatusAsync and ApplyUserKycStatusChange would need to be updated
-        // to work with UserProfileDto instead of User entity, or call User service endpoints
-        // For now, we'll update KYC status via User service
-        await _userServiceClient.UpdateKycStatusAsync(document.UserId, document.Status == KycDocumentStatus.Approved ? KycStatus.Approved : KycStatus.Rejected, request.ReviewNotes);
+        // Note: The UserService.ReviewKycDocumentAsync already calls UpdateOverallKycStatusAsync
+        // which properly checks all documents and updates the overall KYC status.
+        // No need to manually update the status here.
 
         await _context.SaveChangesAsync();
 
@@ -1381,10 +1366,8 @@ public class AdminService : IAdminService
 
     public async Task<KycReviewStatisticsDto> GetKycStatisticsAsync()
     {
-        var allDocuments = await _userServiceClient.GetPendingKycDocumentsAsync();
-        
-        // Get all documents (not just pending) - we'll need to get from User service
-        // For now, we'll calculate based on pending documents
+        // Get all KYC documents (not just pending) for accurate statistics
+        var allDocuments = await _userServiceClient.GetAllKycDocumentsAsync();
         var now = DateTime.UtcNow;
         var today = now.Date;
         var weekStart = today.AddDays(-(int)today.DayOfWeek);

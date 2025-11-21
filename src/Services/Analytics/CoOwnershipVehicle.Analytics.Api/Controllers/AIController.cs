@@ -84,6 +84,23 @@ public class AIController : ControllerBase
 		}
 		return Ok(result);
 	}
+
+	/// <summary>
+	/// Get predictive maintenance analysis for a vehicle including health score, predicted issues, and maintenance recommendations.
+	/// </summary>
+	[HttpGet("predictive-maintenance/{vehicleId}")]
+	[ProducesResponseType(typeof(PredictiveMaintenanceResponse), StatusCodes.Status200OK)]
+	[ProducesResponseType(StatusCodes.Status404NotFound)]
+	[ProducesResponseType(StatusCodes.Status403Forbidden)]
+	public async Task<ActionResult<PredictiveMaintenanceResponse>> GetPredictiveMaintenance(Guid vehicleId)
+	{
+		var result = await _aiService.GetPredictiveMaintenanceAsync(vehicleId);
+		if (result == null)
+		{
+			return NotFound(new { message = "Vehicle not found" });
+		}
+		return Ok(result);
+	}
 }
 
 

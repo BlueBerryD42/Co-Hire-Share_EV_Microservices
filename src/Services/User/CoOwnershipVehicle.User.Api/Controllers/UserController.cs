@@ -253,6 +253,65 @@ public class UserController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Upload profile photo
+    /// </summary>
+    [HttpPost("profile/photo")]
+    public async Task<IActionResult> UploadProfilePhoto([FromBody] UploadProfilePhotoDto uploadDto)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = GetCurrentUserId();
+            var storageUrl = await _userService.UploadProfilePhotoAsync(userId, uploadDto);
+
+            return Ok(new { StorageUrl = storageUrl });
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading profile photo");
+            return StatusCode(500, new { message = "An error occurred while uploading profile photo" });
+        }
+    }
+
+    /// <summary>
+    /// Serve profile photo file directly (for img src tags)
+    /// </summary>
+    [HttpGet("profile/photos/{fileName}")]
+    [Authorize]
+    public async Task<IActionResult> GetProfilePhoto(string fileName)
+    {
+        try
+        {
+            var filePath = Path.Combine(_environment.ContentRootPath, "wwwroot", "files", "profile-photos", fileName);
+            
+            _logger.LogInformation("Attempting to serve profile photo. FileName: {FileName}, FilePath: {FilePath}", fileName, filePath);
+            
+            if (!System.IO.File.Exists(filePath))
+            {
+                _logger.LogWarning("Profile photo not found at path: {FilePath}. ContentRootPath: {ContentRootPath}", 
+                    filePath, _environment.ContentRootPath);
+                return NotFound();
+            }
+            
+            var fileBytes = await System.IO.File.ReadAllBytesAsync(filePath);
+            var contentType = GetContentType(fileName);
+            
+            return File(fileBytes, contentType);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error serving profile photo {FileName}", fileName);
+            return StatusCode(500);
+        }
+    }
+
     // NOTE: Password change endpoint removed - this should be handled by Auth service only
     // Password changes must be done through the Auth service API for security reasons
 
@@ -338,6 +397,25 @@ public class UserController : ControllerBase
         {
             _logger.LogError(ex, "Error getting pending KYC documents");
             return StatusCode(500, new { message = "An error occurred while retrieving pending documents" });
+        }
+    }
+
+    /// <summary>
+    /// Get all KYC documents (admin/staff only) - for frontend filtering
+    /// </summary>
+    [HttpGet("kyc/documents/all")]
+    [Authorize(Roles = "SystemAdmin,Staff")]
+    public async Task<IActionResult> GetAllKycDocuments()
+    {
+        try
+        {
+            var documents = await _userService.GetAllKycDocumentsAsync();
+            return Ok(documents);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all KYC documents");
+            return StatusCode(500, new { message = "An error occurred while retrieving KYC documents" });
         }
     }
 
