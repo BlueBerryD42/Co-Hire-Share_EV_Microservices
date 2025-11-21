@@ -75,6 +75,12 @@ public class ReleaseReserveDto
     public string Reason { get; set; } = string.Empty;
 }
 
+public class RejectWithdrawalDto
+{
+    [StringLength(500)]
+    public string? Reason { get; set; }
+}
+
 public class FundTransactionDto
 {
     public Guid Id { get; set; }
@@ -112,5 +118,19 @@ public class FundSummaryDto
     public decimal AverageBalance { get; set; }
     public Dictionary<string, decimal> MemberContributions { get; set; } = new();
     public decimal ReserveAllocationChanges { get; set; }
+}
+
+public class PayExpenseFromFundDto
+{
+    [Required]
+    public Guid ExpenseId { get; set; }
+
+    [Required]
+    [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
+    public decimal Amount { get; set; }
+
+    [Required]
+    [StringLength(500)]
+    public string Description { get; set; } = string.Empty;
 }
 

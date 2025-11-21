@@ -5,7 +5,7 @@ namespace CoOwnershipVehicle.Domain.Entities;
 
 public class Payment : BaseEntity
 {
-    public Guid InvoiceId { get; set; }
+    public Guid? InvoiceId { get; set; } // Nullable to support fund deposits without invoices
     
     public Guid PayerId { get; set; }
     
@@ -25,7 +25,7 @@ public class Payment : BaseEntity
     public string? Notes { get; set; }
     
     // Navigation properties
-    public virtual Invoice Invoice { get; set; } = null!;
+    public virtual Invoice? Invoice { get; set; }
     public virtual User Payer { get; set; } = null!;
 }
 

@@ -108,7 +108,8 @@ public class PaymentDbContext : DbContext
             entity.HasOne(e => e.Invoice)
                   .WithMany(i => i.Payments)
                   .HasForeignKey(e => e.InvoiceId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .IsRequired(false); // InvoiceId is nullable for fund deposits
 
             // PayerId is stored but no FK constraint (User is in another service)
             entity.Ignore(e => e.Payer);
