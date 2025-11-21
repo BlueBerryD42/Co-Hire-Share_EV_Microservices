@@ -243,7 +243,7 @@ public class FundService : IFundService
 
     public async Task<FundTransactionDto> WithdrawFundAsync(Guid groupId, WithdrawFundDto withdrawDto, Guid userId)
     {
-        // Validate user is admin
+        // Validate user is member
         var membership = await _context.GroupMembers
             .FirstOrDefaultAsync(m => m.GroupId == groupId && m.UserId == userId);
 
@@ -252,10 +252,9 @@ public class FundService : IFundService
             throw new UnauthorizedAccessException("User is not a member of this group");
         }
 
-        if (membership.RoleInGroup != GroupRole.Admin)
-        {
-            throw new UnauthorizedAccessException("Only group admins can withdraw funds");
-        }
+        // Note: Removed admin-only restriction
+        // Members can now request withdrawals, but they will need approval
+        // Only admins can auto-approve small withdrawals
 
         if (withdrawDto.Amount <= 0)
         {
@@ -276,9 +275,18 @@ public class FundService : IFundService
         }
 
         var balanceBefore = fund.TotalBalance;
-        var status = withdrawDto.Amount >= LargeWithdrawalThreshold
-            ? FundTransactionStatus.Pending
-            : FundTransactionStatus.Approved;
+
+        // Determine withdrawal status based on amount and user role
+        // Admins can auto-approve small withdrawals, members always need approval
+        FundTransactionStatus status;
+        if (membership.RoleInGroup == GroupRole.Admin && withdrawDto.Amount < LargeWithdrawalThreshold)
+        {
+            status = FundTransactionStatus.Approved;
+        }
+        else
+        {
+            status = FundTransactionStatus.Pending; // Requires approval
+        }
 
         var fundTransaction = new FundTransaction
         {
