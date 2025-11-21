@@ -45,7 +45,7 @@ public class CheckInPhotoDto
 public class CheckInPhotoInputDto
 {
     [Required]
-    [StringLength(4000)]
+    [MaxLength(10485760)] // allow up to ~10MB base64 payloads instead of the previous 4000 char cap
     public string PhotoUrl { get; set; } = string.Empty;
 
     [Required]
