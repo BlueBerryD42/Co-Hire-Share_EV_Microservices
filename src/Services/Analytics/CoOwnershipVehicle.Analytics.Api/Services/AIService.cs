@@ -447,6 +447,11 @@ public class AIService : IAIService
 				}
 			}
 
+			// Get existing bookings to check for conflicts
+			var periodStart = baseDateOnly.ToUniversalTime();
+			var periodEnd = baseDateOnly.AddDays(7).ToUniversalTime();
+			var existingBookings = await _bookingServiceClient.GetBookingsAsync(periodStart, periodEnd, request.GroupId);
+			
 			// Get historical booking patterns (simplified - would need actual booking data)
 			var bookingPatterns = new List<HistoricalBookingPattern>
 			{
@@ -457,7 +462,7 @@ public class AIService : IAIService
 			// Build prompt and call AI
 			var prompt = AIPromptTemplates.BuildBookingSuggestionPrompt(
 				request.UserId, request.GroupId, request.PreferredDate, request.DurationMinutes,
-				userFairness, groupFairness, bookingPatterns);
+				userFairness, groupFairness, bookingPatterns, existingBookings);
 
 			var aiResponse = await _openAIServiceClient.SuggestBookingTimesAsync(prompt);
 			
@@ -493,6 +498,23 @@ public class AIService : IAIService
 			}
 		}
 
+		// Fetch existing bookings for the group to check for actual conflicts
+		var periodStart = baseDateOnly.ToUniversalTime();
+		var periodEnd = baseDateOnly.AddDays(7).ToUniversalTime();
+		var existingBookings = await _bookingServiceClient.GetBookingsAsync(periodStart, periodEnd, request.GroupId);
+		
+		// Helper function to check if a time slot conflicts with existing bookings
+		bool HasConflict(DateTime start, DateTime end)
+		{
+			return existingBookings.Any(booking =>
+			{
+				var bookingStart = booking.StartAt.ToUniversalTime();
+				var bookingEnd = booking.EndAt.ToUniversalTime();
+				// Check for overlap: start < bookingEnd && end > bookingStart
+				return start < bookingEnd && end > bookingStart;
+			});
+		}
+
 		// Heuristic availability and conflict avoidance
 		// Define peak and off-peak hours
 		var peakRanges = new List<(int startHour, int endHour)> { (7, 9), (17, 21) };
@@ -511,51 +533,88 @@ public class AIService : IAIService
 			return offPeakRanges.Any(r => hour >= r.startHour && hour < r.endHour) || !weekday; // weekends mostly off-peak
 		}
 
-		// Generate candidate slots over next 7 days around preferred date
-		var candidates = new List<(DateTime start, DateTime end, List<string> reasons, double score)>();
+		// Generate candidate slots - prioritize same day with different hours
+		// Strategy: First try preferred day with various hours, then move to next day only if needed
+		var candidates = new List<(DateTime start, DateTime end, List<string> reasons, double score, int dayOffset)>();
+		
+		// Generate all possible hours for candidate slots
+		var allCandidateHours = new List<int>();
+		if (request.PreferredDate.HasValue && preferredHour.HasValue)
+		{
+			// Start with preferred hour, then expand to nearby hours
+			allCandidateHours.Add(preferredHour.Value);
+			// Add hours around preferred time (±3 hours for variety)
+			for (int offset = 1; offset <= 3; offset++)
+			{
+				if (preferredHour.Value + offset < 24) allCandidateHours.Add(preferredHour.Value + offset);
+				if (preferredHour.Value - offset >= 0) allCandidateHours.Add(preferredHour.Value - offset);
+			}
+			// Add standard hours for more options
+			var standardHours = new[] { 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
+			foreach (var h in standardHours)
+			{
+				if (!allCandidateHours.Contains(h) && h >= 6 && h <= 22)
+				{
+					allCandidateHours.Add(h);
+				}
+			}
+		}
+		else
+		{
+			// No preferred time - use standard hours throughout the day
+			allCandidateHours = new List<int> { 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
+		}
+		allCandidateHours.Sort();
+
+		// Priority: Same day (dayOffset = 0) first, then next days only if needed
 		for (int dayOffset = 0; dayOffset < 7; dayOffset++)
 		{
 			var day = baseDateOnly.AddDays(dayOffset);
 			
-			// Generate candidate hours - prioritize preferred time if provided
-			var candidateHours = new List<int>();
-			if (request.PreferredDate.HasValue && preferredHour.HasValue)
+			foreach (var h in allCandidateHours)
 			{
-				// Include preferred hour and nearby hours (±2 hours)
-				for (int offset = -2; offset <= 2; offset++)
+				// Use preferred minute if provided and it's the preferred hour, otherwise use 0 or 30
+				var minute = 0;
+				if (request.PreferredDate.HasValue && preferredHour.HasValue && h == preferredHour.Value && preferredMinute.HasValue)
 				{
-					var hour = preferredHour.Value + offset;
-					if (hour >= 0 && hour < 24)
-					{
-						candidateHours.Add(hour);
-					}
+					minute = preferredMinute.Value;
 				}
-				// Also include some standard hours for variety
-				var standardHours = new[] { 8, 10, 12, 14, 18, 20 };
-				foreach (var h in standardHours)
+				else if (h % 2 == 0) // Even hours use :00, odd hours use :30 for variety
 				{
-					if (!candidateHours.Contains(h))
-					{
-						candidateHours.Add(h);
-					}
+					minute = 0;
 				}
-			}
-			else
-			{
-				// No preferred time - use standard hours
-				candidateHours = new List<int> { 8, 10, 12, 14, 18, 20 };
-			}
-			
-			foreach (var h in candidateHours)
-			{
-				// Use preferred minute if provided, otherwise use 0
-				var minute = (request.PreferredDate.HasValue && preferredHour.HasValue && h == preferredHour.Value && preferredMinute.HasValue) 
-					? preferredMinute.Value 
-					: 0;
+				else
+				{
+					minute = 30;
+				}
+				
 				var start = new DateTime(day.Year, day.Month, day.Day, h, minute, 0, DateTimeKind.Utc);
 				var end = start.Add(duration);
+				
+				// Skip if end time exceeds 23:59
+				if (end.Hour >= 23 && end.Minute > 0) continue;
+				
+				// Check for actual conflicts with existing bookings
+				if (HasConflict(start, end))
+				{
+					continue; // Skip conflicting slots
+				}
+				
 				var reasons = new List<string>();
 				double score = 0.5; // base
+
+				// Strong preference for same day (dayOffset = 0)
+				if (dayOffset == 0)
+				{
+					reasons.Add("Same day as your preference");
+					score += 0.6; // Strong boost for same day
+				}
+				else
+				{
+					// Penalize different days - only use if same day has no available slots
+					score -= dayOffset * 0.2; // Reduce score for later days
+					reasons.Add($"Alternative day ({dayOffset} day{(dayOffset > 1 ? "s" : "")} later)");
+				}
 
 				// Favor underutilizers; discourage overutilizers during peak
 				if (userFairness < 100m)
@@ -586,34 +645,31 @@ public class AIService : IAIService
 					var prefHour = preferredHour.Value;
 					var prefMinute = preferredMinute ?? 0;
 					var hourDelta = Math.Abs(prefHour - h);
-					var minuteDelta = h == prefHour ? Math.Abs(prefMinute - minute) : 60; // Only check minutes if same hour
+					var minuteDelta = h == prefHour ? Math.Abs(prefMinute - minute) : 60;
 					
-					// Strong preference for exact or very close time
-					if (hourDelta == 0 && minuteDelta <= 30)
+					// Strong preference for exact or very close time (but only if same day)
+					if (dayOffset == 0)
 					{
-						reasons.Add("Matches your preferred time");
-						score += 0.5; // Strong boost for exact match
-					}
-					else if (hourDelta == 0)
-					{
-						reasons.Add("Same hour as your preference");
-						score += 0.4;
-					}
-					else if (hourDelta == 1)
-					{
-						reasons.Add("Close to your preferred time");
-						score += 0.3;
-					}
-					else if (hourDelta == 2)
-					{
-						reasons.Add("Near your preferred time");
-						score += 0.15;
-					}
-					else
-					{
-						// Still give some preference for same day
-						var align = Math.Max(0, 1.0 - hourDelta / 6.0);
-						score += align * 0.1;
+						if (hourDelta == 0 && minuteDelta <= 30)
+						{
+							reasons.Add("Matches your preferred time");
+							score += 0.5; // Strong boost for exact match
+						}
+						else if (hourDelta == 0)
+						{
+							reasons.Add("Same hour as your preference");
+							score += 0.4;
+						}
+						else if (hourDelta == 1)
+						{
+							reasons.Add("Close to your preferred time");
+							score += 0.3;
+						}
+						else if (hourDelta == 2)
+						{
+							reasons.Add("Near your preferred time");
+							score += 0.15;
+						}
 					}
 				}
 
@@ -629,14 +685,15 @@ public class AIService : IAIService
 					score += 0.1;
 				}
 
-				candidates.Add((start, end, reasons, Math.Clamp(score, 0.0, 1.0)));
+				candidates.Add((start, end, reasons, Math.Clamp(score, 0.0, 1.0), dayOffset));
 			}
 		}
 
-		// Rank and select top 5
+		// Rank: prioritize same day (dayOffset = 0), then by score, then by time
 		var top = candidates
-			.OrderByDescending(c => c.score)
-			.ThenBy(c => c.start)
+			.OrderBy(c => c.dayOffset) // Same day first
+			.ThenByDescending(c => c.score) // Then by score
+			.ThenBy(c => c.start) // Then by time
 			.Take(5)
 			.Select(c => new BookingSuggestion
 			{

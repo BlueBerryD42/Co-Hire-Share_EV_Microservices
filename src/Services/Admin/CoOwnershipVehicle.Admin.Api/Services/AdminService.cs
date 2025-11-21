@@ -406,24 +406,6 @@ public class AdminService : IAdminService
         var alerts = new List<AlertDto>();
         var now = DateTime.UtcNow;
 
-        // Overdue maintenance alerts - get from Vehicle service
-        var vehicles = await _vehicleServiceClient.GetVehiclesAsync();
-        var overdueMaintenance = vehicles.Count(v => 
-            v.LastServiceDate == null || v.LastServiceDate < now.AddMonths(-6));
-
-        if (overdueMaintenance > 0)
-        {
-            alerts.Add(new AlertDto
-            {
-                Type = "Maintenance",
-                Title = "Overdue Maintenance",
-                Message = $"{overdueMaintenance} vehicles require maintenance",
-                Severity = "Warning",
-                CreatedAt = now,
-                IsRead = false
-            });
-        }
-
         // Pending KYC alerts - get from User service
         var users = await _userServiceClient.GetUsersAsync();
         var pendingKyc = users.Count(u => u.KycStatus == KycStatus.Pending);
@@ -1477,6 +1459,16 @@ public class AdminService : IAdminService
     {
         // Get groups from Group service via HTTP
         var allGroups = await _groupServiceClient.GetGroupsAsync();
+        
+        // Fetch all vehicles from Vehicle service to get accurate vehicle counts
+        var allVehicles = await _vehicleServiceClient.GetVehiclesAsync();
+        
+        // Group vehicles by GroupId for quick lookup
+        var vehicleCountByGroupId = allVehicles
+            .Where(v => v.GroupId.HasValue)
+            .GroupBy(v => v.GroupId.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+
         var query = allGroups.AsQueryable();
 
         // Apply search filter
@@ -1527,7 +1519,7 @@ public class AdminService : IAdminService
                 Description = g.Description,
                 Status = g.Status,
                 MemberCount = g.Members != null ? g.Members.Count : 0,
-                VehicleCount = g.Vehicles != null ? g.Vehicles.Count : 0,
+                VehicleCount = vehicleCountByGroupId.ContainsKey(g.Id) ? vehicleCountByGroupId[g.Id] : 0,
                 CreatedAt = g.CreatedAt,
                 ActivityScore = 0, // Would need to calculate from group details
                 HealthStatus = GroupHealthStatus.Healthy, // Would need to calculate from group details
@@ -3262,6 +3254,21 @@ public class AdminService : IAdminService
         {
             // Get vehicles from Vehicle service via HTTP
             var vehicles = await _vehicleServiceClient.GetVehiclesAsync();
+            
+            // Fetch all groups to get group names for vehicles
+            var allGroups = await _groupServiceClient.GetGroupsAsync();
+            var groupNameMap = allGroups
+                .Where(g => g.Id != Guid.Empty)
+                .ToDictionary(g => g.Id, g => g.Name);
+            
+            // Populate groupName for vehicles
+            foreach (var vehicle in vehicles)
+            {
+                if (vehicle.GroupId.HasValue && groupNameMap.ContainsKey(vehicle.GroupId.Value))
+                {
+                    vehicle.GroupName = groupNameMap[vehicle.GroupId.Value];
+                }
+            }
             
             // Apply filtering and sorting in memory
             var query = vehicles.AsQueryable();
