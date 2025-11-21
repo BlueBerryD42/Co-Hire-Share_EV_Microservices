@@ -418,7 +418,7 @@ namespace CoOwnershipVehicle.Payment.Api.Migrations.PaymentDb
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("InvoiceId")
+                    b.Property<Guid?>("InvoiceId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Method")
@@ -557,7 +557,7 @@ namespace CoOwnershipVehicle.Payment.Api.Migrations.PaymentDb
                         .WithMany("Payments")
                         .HasForeignKey("InvoiceId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .IsRequired(false); // Nullable to support fund deposits
 
                     b.Navigation("Invoice");
                 });

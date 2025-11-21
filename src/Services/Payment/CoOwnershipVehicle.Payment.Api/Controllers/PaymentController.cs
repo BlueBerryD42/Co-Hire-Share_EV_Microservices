@@ -6,7 +6,9 @@ using CoOwnershipVehicle.Shared.Contracts.DTOs;
 using CoOwnershipVehicle.Shared.Contracts.Events;
 using CoOwnershipVehicle.Domain.Entities;
 using CoOwnershipVehicle.Payment.Api.Services;
+using CoOwnershipVehicle.Payment.Api.Services.Interfaces;
 using MassTransit;
+using Microsoft.Extensions.Configuration;
 
 namespace CoOwnershipVehicle.Payment.Api.Controllers;
 
@@ -19,17 +21,29 @@ public class PaymentController : ControllerBase
     private readonly IVnPayService _vnPayService;
     private readonly IPublishEndpoint _publishEndpoint;
     private readonly ILogger<PaymentController> _logger;
+    private readonly IGroupServiceClient _groupServiceClient;
+    private readonly IUserServiceClient _userServiceClient;
+    private readonly IFundServiceClient _fundServiceClient;
+    private readonly IConfiguration _configuration;
 
     public PaymentController(
         PaymentDbContext context,
         IVnPayService vnPayService,
         IPublishEndpoint publishEndpoint,
-        ILogger<PaymentController> logger)
+        ILogger<PaymentController> logger,
+        IGroupServiceClient groupServiceClient,
+        IUserServiceClient userServiceClient,
+        IFundServiceClient fundServiceClient,
+        IConfiguration configuration)
     {
         _context = context;
         _vnPayService = vnPayService;
         _publishEndpoint = publishEndpoint;
         _logger = logger;
+        _groupServiceClient = groupServiceClient;
+        _userServiceClient = userServiceClient;
+        _fundServiceClient = fundServiceClient;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -44,11 +58,16 @@ public class PaymentController : ControllerBase
                 return BadRequest(ModelState);
 
             var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
 
-            // TODO: Verify user has access to the group via Group Service HTTP call
-            // For now, skip the check - this should be implemented with IGroupServiceClient
-            // var hasAccess = await _groupServiceClient.IsUserInGroupAsync(createDto.GroupId, userId, accessToken);
-            // if (!hasAccess) return Forbidden(new { message = "Access denied to this group" });
+            // Verify user has access to the group via Group Service HTTP call
+            // This is required since Payment service doesn't store Group/Member entities
+            var hasAccess = await _groupServiceClient.IsUserInGroupAsync(createDto.GroupId, userId, accessToken);
+            if (!hasAccess)
+            {
+                _logger.LogWarning("User {UserId} attempted to create expense for group {GroupId} without access", userId, createDto.GroupId);
+                return Forbidden(new { message = "Access denied to this group" });
+            }
 
             var expense = new Domain.Entities.Expense
             {
@@ -105,7 +124,88 @@ public class PaymentController : ControllerBase
     }
 
     /// <summary>
+    /// Pay an expense from group fund
+    /// Deducts the expense amount from the group's shared fund
+    /// </summary>
+    [HttpPost("expenses/{expenseId:guid}/pay-from-fund")]
+    public async Task<IActionResult> PayExpenseFromFund(Guid expenseId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
+
+            // Get expense
+            var expense = await _context.Expenses
+                .FirstOrDefaultAsync(e => e.Id == expenseId);
+
+            if (expense == null)
+            {
+                return NotFound(new { message = "Expense not found" });
+            }
+
+            // Verify user has access to the group
+            var hasAccess = await _groupServiceClient.IsUserInGroupAsync(expense.GroupId, userId, accessToken);
+            if (!hasAccess)
+            {
+                _logger.LogWarning("User {UserId} attempted to pay expense {ExpenseId} without access", userId, expenseId);
+                return Forbidden(new { message = "Access denied to this group" });
+            }
+
+            // Check if fund has sufficient balance
+            var hasBalance = await _fundServiceClient.HasSufficientBalanceAsync(expense.GroupId, expense.Amount, accessToken);
+            if (!hasBalance)
+            {
+                return BadRequest(new { message = "Insufficient fund balance to pay this expense" });
+            }
+
+            // Pay expense from fund via Group Service
+            var fundTransaction = await _fundServiceClient.PayExpenseFromFundAsync(
+                expense.GroupId,
+                expenseId,
+                expense.Amount,
+                $"Payment for expense: {expense.Description}",
+                userId,
+                accessToken);
+
+            if (fundTransaction == null)
+            {
+                return StatusCode(500, new { message = "Failed to process fund payment" });
+            }
+
+            // Mark all invoices for this expense as paid
+            var invoices = await _context.Invoices
+                .Where(i => i.ExpenseId == expenseId)
+                .ToListAsync();
+
+            foreach (var invoice in invoices)
+            {
+                invoice.Status = InvoiceStatus.Paid;
+                invoice.PaidAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Expense {ExpenseId} paid from fund for group {GroupId}. Fund transaction: {FundTransactionId}",
+                expenseId, expense.GroupId, fundTransaction.Id);
+
+            return Ok(new
+            {
+                message = "Expense paid successfully from group fund",
+                expenseId = expenseId,
+                fundTransaction = fundTransaction
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error paying expense {ExpenseId} from fund", expenseId);
+            return StatusCode(500, new { message = "An error occurred while paying expense from fund" });
+        }
+    }
+
+    /// <summary>
     /// Get all payments (admin/staff only)
+    /// Note: Payer information is not included as User entity is in User service (microservices architecture)
     /// </summary>
     [HttpGet("payments")]
     [Authorize(Roles = "SystemAdmin,Staff")]
@@ -113,9 +213,11 @@ public class PaymentController : ControllerBase
     {
         try
         {
+            // Query payments without including ignored navigation properties (Payer, Expense.Group, etc.)
+            // These are stored in other microservices and must be fetched via HTTP if needed
             var query = _context.Payments
                 .Include(p => p.Invoice)
-                    .ThenInclude(i => i.Expense)
+                    .ThenInclude(i => i.Expense) // Expense is OK - it's in Payment service
                 .AsQueryable();
 
             if (from.HasValue)
@@ -131,8 +233,7 @@ public class PaymentController : ControllerBase
                 {
                     Id = p.Id,
                     InvoiceId = p.InvoiceId,
-                    PayerId = p.PayerId,
-                    PayerName = "N/A", // Payer info is in another service
+                    PayerId = p.PayerId, // Only return ID - fetch user details via User service if needed
                     Amount = p.Amount,
                     Method = (PaymentMethod)p.Method,
                     Status = (PaymentStatus)p.Status,
@@ -154,6 +255,7 @@ public class PaymentController : ControllerBase
 
     /// <summary>
     /// Get expenses for user's groups
+    /// Note: Fetches group and user data via HTTP calls since these entities are in other microservices
     /// </summary>
     [HttpGet("expenses/{expenseId}")]
     public async Task<IActionResult> GetExpenseById(Guid expenseId)
@@ -172,43 +274,79 @@ public class PaymentController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
 
-            // TODO: The query originally filtered expenses based on the user's group membership.
-            // This requires a call to the Group service to get the user's groups.
-            // For now, we'll just query expenses directly.
-            // A more robust solution would involve an API call to the Group service
-            // to get a list of group IDs for the current user, then filtering by those IDs.
+            // First, get user's groups from Group Service to filter expenses
+            // We need to check which groups the user belongs to since we can't query Group.Members here
+            var userGroups = await _groupServiceClient.GetUserGroups(accessToken);
+            var userGroupIds = userGroups.Select(g => g.Id).ToList();
 
-            var query = _context.Expenses.AsQueryable();
+            if (!userGroupIds.Any())
+            {
+                return Ok(new List<ExpenseDto>()); // User is not in any groups
+            }
+
+            // Query expenses - only use foreign key IDs, no navigation properties
+            var query = _context.Expenses
+                .Where(e => userGroupIds.Contains(e.GroupId));
 
             if (groupId.HasValue)
             {
-                // This part can remain as it filters by a provided ID.
+                // Verify user has access to this specific group
+                if (!userGroupIds.Contains(groupId.Value))
+                {
+                    return Forbidden(new { message = "Access denied to this group" });
+                }
                 query = query.Where(e => e.GroupId == groupId.Value);
             }
 
             var expenses = await query
                 .OrderByDescending(e => e.DateIncurred)
-                .Select(e => new ExpenseDto
+                .ToListAsync();
+
+            // Fetch group and user data via HTTP calls
+            var groupIds = expenses.Select(e => e.GroupId).Distinct().ToList();
+            var userIds = expenses.Select(e => e.CreatedBy).Distinct().ToList();
+
+            var groupsDict = new Dictionary<Guid, GroupDetailsDto>();
+            var usersDict = await _userServiceClient.GetUsersAsync(userIds, accessToken);
+
+            // Fetch group details for each unique group
+            foreach (var groupIdValue in groupIds)
+            {
+                var groupDetails = await _groupServiceClient.GetGroupDetailsAsync(groupIdValue, accessToken);
+                if (groupDetails != null)
+                {
+                    groupsDict[groupIdValue] = groupDetails;
+                }
+            }
+
+            // Map expenses to DTOs with fetched data
+            var expenseDtos = expenses.Select(e =>
+            {
+                var group = groupsDict.GetValueOrDefault(e.GroupId);
+                var creator = usersDict.GetValueOrDefault(e.CreatedBy);
+
+                return new ExpenseDto
                 {
                     Id = e.Id,
                     GroupId = e.GroupId,
-                    GroupName = "N/A", // Not available in this context
+                    GroupName = group?.Name ?? "Unknown Group",
                     VehicleId = e.VehicleId,
-                    VehicleModel = "N/A", // Not available in this context
+                    VehicleModel = null, // Vehicle details would need VehicleServiceClient if needed
                     ExpenseType = (ExpenseType)e.ExpenseType,
                     Amount = e.Amount,
                     Description = e.Description,
                     DateIncurred = e.DateIncurred,
                     CreatedBy = e.CreatedBy,
-                    CreatedByName = "N/A", // Not available in this context
+                    CreatedByName = creator != null ? $"{creator.FirstName} {creator.LastName}" : "Unknown User",
                     Notes = e.Notes,
                     IsRecurring = e.IsRecurring,
                     CreatedAt = e.CreatedAt
-                })
-                .ToListAsync();
+                };
+            }).ToList();
 
-            return Ok(expenses);
+            return Ok(expenseDtos);
         }
         catch (Exception ex)
         {
@@ -219,6 +357,7 @@ public class PaymentController : ControllerBase
 
     /// <summary>
     /// Get invoices for user
+    /// Note: Fetches expense, group, and user data via HTTP calls since these entities are in other microservices
     /// </summary>
     [HttpGet("invoices")]
     public async Task<IActionResult> GetInvoices([FromQuery] Guid? groupId = null)
@@ -226,9 +365,11 @@ public class PaymentController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
 
+            // Query invoices - only use foreign key IDs, no ignored navigation properties
             var query = _context.Invoices
-                .Include(i => i.Expense) // Expense is in the same context, so this is okay.
+                .Include(i => i.Expense) // Expense is OK - it's in Payment service
                 .Where(i => i.PayerId == userId);
 
             if (groupId.HasValue)
@@ -238,12 +379,37 @@ public class PaymentController : ControllerBase
 
             var invoices = await query
                 .OrderByDescending(i => i.CreatedAt)
-                .Select(i => new InvoiceDto
+                .ToListAsync();
+
+            // Fetch related data via HTTP calls
+            var groupIds = invoices.Select(i => i.Expense.GroupId).Distinct().ToList();
+            var payerIds = invoices.Select(i => i.PayerId).Distinct().ToList();
+
+            var groupsDict = new Dictionary<Guid, GroupDetailsDto>();
+            var usersDict = await _userServiceClient.GetUsersAsync(payerIds, accessToken);
+
+            // Fetch group details for each unique group
+            foreach (var groupIdValue in groupIds)
+            {
+                var groupDetails = await _groupServiceClient.GetGroupDetailsAsync(groupIdValue, accessToken);
+                if (groupDetails != null)
+                {
+                    groupsDict[groupIdValue] = groupDetails;
+                }
+            }
+
+            // Map invoices to DTOs with fetched data
+            var invoiceDtos = invoices.Select(i =>
+            {
+                var payer = usersDict.GetValueOrDefault(i.PayerId);
+                var group = groupsDict.GetValueOrDefault(i.Expense.GroupId);
+
+                return new InvoiceDto
                 {
                     Id = i.Id,
                     ExpenseId = i.ExpenseId,
                     PayerId = i.PayerId,
-                    PayerName = "N/A", // Not available in this context
+                    PayerName = payer != null ? $"{payer.FirstName} {payer.LastName}" : "Unknown User",
                     Amount = i.Amount,
                     InvoiceNumber = i.InvoiceNumber,
                     Status = (InvoiceStatus)i.Status,
@@ -253,16 +419,17 @@ public class PaymentController : ControllerBase
                     Expense = new ExpenseDto
                     {
                         Id = i.Expense.Id,
-                        GroupName = "N/A", // Not available in this context
+                        GroupId = i.Expense.GroupId,
+                        GroupName = group?.Name ?? "Unknown Group",
                         ExpenseType = (ExpenseType)i.Expense.ExpenseType,
                         Description = i.Expense.Description,
                         Amount = i.Expense.Amount,
                         DateIncurred = i.Expense.DateIncurred
                     }
-                })
-                .ToListAsync();
+                };
+            }).ToList();
 
-            return Ok(invoices);
+            return Ok(invoiceDtos);
         }
         catch (Exception ex)
         {
@@ -360,8 +527,6 @@ public class PaymentController : ControllerBase
 
             // Find the payment record
             var payment = await _context.Payments
-                .Include(p => p.Invoice)
-                    .ThenInclude(i => i.Expense)
                 .FirstOrDefaultAsync(p => p.TransactionReference == response.OrderId);
 
             if (payment == null)
@@ -370,44 +535,125 @@ public class PaymentController : ControllerBase
                 return NotFound(new { message = "Payment record not found" });
             }
 
-            // Update payment status
-            payment.Status = Domain.Entities.PaymentStatus.Completed;
-            payment.TransactionReference = response.TransactionId;
-            payment.PaidAt = response.PayDate;
-            payment.UpdatedAt = DateTime.UtcNow;
-
-            // Update invoice status
-            payment.Invoice.Status = Domain.Entities.InvoiceStatus.Paid;
-            payment.Invoice.PaidAt = response.PayDate;
-
-            await _context.SaveChangesAsync();
-
-            // Publish payment settled event
-            await _publishEndpoint.Publish(new PaymentSettledEvent
+            // Check if this is a fund deposit payment (order ID starts with "FUND_")
+            if (response.OrderId.StartsWith("FUND_"))
             {
-                PaymentId = payment.Id,
-                InvoiceId = payment.InvoiceId,
-                ExpenseId = payment.Invoice.ExpenseId,
-                PayerId = payment.PayerId,
-                Amount = payment.Amount,
-                Method = PaymentMethod.EWallet,
-                TransactionReference = response.TransactionId,
-                PaidAt = response.PayDate
-            });
+                // Handle fund deposit payment
+                var orderParts = response.OrderId.Split('_');
+                if (orderParts.Length >= 2 && Guid.TryParse(orderParts[1], out var groupId))
+                {
+                    // Complete fund deposit via Group Service
+                    // Note: We need to get access token, but callback is anonymous
+                    // We'll need to store userId in payment notes or use a different approach
+                    // For now, we'll extract userId from payment record
+                    var userId = payment.PayerId;
+                    
+                    // Get access token from payment notes or use a service account approach
+                    // Since callback is anonymous, we'll need to handle this differently
+                    // For now, we'll call Group service without auth (it should validate internally)
+                    // Actually, we need to get the access token somehow - let's store it in payment notes temporarily
+                    // Or better: Group service endpoint should accept payment reference validation
+                    
+                    // Call Group service to complete deposit
+                    // We'll need to pass the payment reference for validation
+                    var fundTransaction = await _fundServiceClient.CompleteFundDepositAsync(
+                        groupId,
+                        response.Amount,
+                        payment.Notes ?? "Nạp quỹ qua VNPay",
+                        response.TransactionId,
+                        userId,
+                        response.OrderId,
+                        string.Empty // No access token in callback - Group service should validate payment reference
+                    );
 
-            _logger.LogInformation("VNPay payment completed for order {OrderId}, amount {Amount} VND", 
-                response.OrderId, response.Amount);
+                    if (fundTransaction == null)
+                    {
+                        _logger.LogError("Failed to complete fund deposit for group {GroupId} after VNPay payment", groupId);
+                        // Still update payment status as completed since VNPay payment succeeded
+                        payment.Status = Domain.Entities.PaymentStatus.Completed;
+                        payment.TransactionReference = response.TransactionId;
+                        payment.PaidAt = response.PayDate;
+                        payment.UpdatedAt = DateTime.UtcNow;
+                        await _context.SaveChangesAsync();
+                        
+                        return BadRequest(new { message = "Fund deposit completion failed", response });
+                    }
 
-            // Redirect to success page (in production, this would be your frontend URL)
-            return Ok(new
+                    // Update payment status
+                    payment.Status = Domain.Entities.PaymentStatus.Completed;
+                    payment.TransactionReference = response.TransactionId;
+                    payment.PaidAt = response.PayDate;
+                    payment.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation("VNPay fund deposit completed for group {GroupId}, order {OrderId}, amount {Amount} VND", 
+                        groupId, response.OrderId, response.Amount);
+
+                    // Redirect to frontend callback page
+                    // Get frontend URL from configuration or use default
+                    var frontendBaseUrl = _configuration["FrontendBaseUrl"] ?? "http://localhost:5173";
+                    var frontendCallbackUrl = $"{frontendBaseUrl}/payment/callback?success=true&type=fund&groupId={groupId}&orderId={response.OrderId}&amount={response.Amount}";
+                    return Redirect(frontendCallbackUrl);
+                }
+                else
+                {
+                    _logger.LogError("Invalid fund deposit order ID format: {OrderId}", response.OrderId);
+                    return BadRequest(new { message = "Invalid order ID format" });
+                }
+            }
+            else
             {
-                Success = true,
-                Message = "Payment completed successfully",
-                OrderId = response.OrderId,
-                TransactionId = response.TransactionId,
-                Amount = response.Amount,
-                PaymentDate = response.PayDate
-            });
+                // Handle invoice payment (existing flow)
+                // Note: Only include Expense (which is in Payment service), not Group (which is ignored)
+                var paymentWithInvoice = await _context.Payments
+                    .Include(p => p.Invoice)
+                        .ThenInclude(i => i.Expense) // Expense is OK - it's in Payment service
+                    .FirstOrDefaultAsync(p => p.Id == payment.Id);
+
+                if (paymentWithInvoice?.Invoice == null)
+                {
+                    _logger.LogError("Invoice not found for payment {PaymentId}", payment.Id);
+                    return NotFound(new { message = "Invoice not found" });
+                }
+
+                // Update payment status
+                payment.Status = Domain.Entities.PaymentStatus.Completed;
+                payment.TransactionReference = response.TransactionId;
+                payment.PaidAt = response.PayDate;
+                payment.UpdatedAt = DateTime.UtcNow;
+
+                // Update invoice status
+                paymentWithInvoice.Invoice.Status = Domain.Entities.InvoiceStatus.Paid;
+                paymentWithInvoice.Invoice.PaidAt = response.PayDate;
+
+                await _context.SaveChangesAsync();
+
+                // Publish payment settled event (only for invoice payments)
+                if (paymentWithInvoice.InvoiceId.HasValue)
+                {
+                    await _publishEndpoint.Publish(new PaymentSettledEvent
+                    {
+                        PaymentId = payment.Id,
+                        InvoiceId = paymentWithInvoice.InvoiceId.Value,
+                        ExpenseId = paymentWithInvoice.Invoice.ExpenseId,
+                        PayerId = payment.PayerId,
+                        Amount = payment.Amount,
+                        Method = PaymentMethod.EWallet,
+                        TransactionReference = response.TransactionId,
+                        PaidAt = response.PayDate
+                    });
+                }
+
+                _logger.LogInformation("VNPay payment completed for order {OrderId}, amount {Amount} VND", 
+                    response.OrderId, response.Amount);
+
+                // Redirect to frontend callback page
+                var frontendBaseUrl = _configuration["FrontendBaseUrl"] ?? "http://localhost:5173";
+                var frontendCallbackUrl = paymentWithInvoice.InvoiceId.HasValue
+                    ? $"{frontendBaseUrl}/payment/callback?success=true&type=invoice&invoiceId={paymentWithInvoice.InvoiceId.Value}&orderId={response.OrderId}"
+                    : $"{frontendBaseUrl}/payment/callback?success=true&type=payment&orderId={response.OrderId}";
+                return Redirect(frontendCallbackUrl);
+            }
         }
         catch (Exception ex)
         {
@@ -416,47 +662,167 @@ public class PaymentController : ControllerBase
         }
     }
 
-    private async Task CreateCostSplittingInvoicesAsync(Guid expenseId)
+    /// <summary>
+    /// Create VNPay payment URL for fund deposit
+    /// </summary>
+    [HttpPost("fund/{groupId:guid}/deposit-vnpay")]
+    public async Task<IActionResult> CreateFundDepositVnPayPayment(Guid groupId, [FromBody] CreateFundDepositPaymentDto createDto)
     {
-        // TODO: This method needs to call Group API to get members instead of using navigation property
-        // Temporarily skip invoice creation to avoid cross-boundary reference issue
-        _logger.LogWarning("Skipping invoice creation for expense {ExpenseId} - Group API integration needed", expenseId);
-        await Task.CompletedTask;
+        try
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
 
-        // ORIGINAL CODE COMMENTED OUT - CAUSES CROSS-BOUNDARY REFERENCE ERROR
-        // The code below tries to access e.Group which doesn't belong to Payment bounded context
-        // Future implementation should call Group API to get member list
+            var userId = GetCurrentUserId();
+            var accessToken = GetAccessToken();
+
+            // Verify user has access to the group
+            var hasAccess = await _groupServiceClient.IsUserInGroupAsync(groupId, userId, accessToken);
+            if (!hasAccess)
+            {
+                _logger.LogWarning("User {UserId} attempted to create fund deposit payment for group {GroupId} without access", userId, groupId);
+                return Forbidden(new { message = "Access denied to this group" });
+            }
+
+            // Create VNPay payment request
+            var orderId = $"FUND_{groupId}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+            var paymentRequest = new VnPayPaymentRequest
+            {
+                OrderId = orderId,
+                Amount = createDto.Amount,
+                OrderInfo = $"Nạp quỹ nhóm: {createDto.Description}",
+                OrderType = "fund_deposit",
+                IpAddress = GetClientIpAddress(),
+                BankCode = null
+            };
+
+            var paymentUrl = _vnPayService.CreatePaymentUrl(paymentRequest);
+
+            // Create payment record for fund deposit
+            // Note: We don't have an Invoice for fund deposits, so InvoiceId is null
+            var payment = new Domain.Entities.Payment
+            {
+                Id = Guid.NewGuid(),
+                InvoiceId = null, // No invoice for fund deposits
+                PayerId = userId,
+                Amount = createDto.Amount,
+                Method = Domain.Entities.PaymentMethod.EWallet, // VNPay is e-wallet
+                Status = Domain.Entities.PaymentStatus.Pending,
+                TransactionReference = orderId,
+                Notes = $"Fund deposit for group {groupId}: {createDto.Description}",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.Payments.Add(payment);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("VNPay fund deposit payment created for group {GroupId}, order {OrderId}", 
+                groupId, orderId);
+
+            return Ok(new FundDepositPaymentResponse
+            {
+                PaymentUrl = paymentUrl,
+                OrderId = orderId,
+                Amount = createDto.Amount,
+                PaymentId = payment.Id,
+                GroupId = groupId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating VNPay fund deposit payment");
+            return StatusCode(500, new { message = "An error occurred while creating payment" });
+        }
     }
 
-    private async Task<ExpenseDto> GetExpenseByIdAsync(Guid expenseId)
+    /// <summary>
+    /// Create cost splitting invoices for all group members based on their ownership percentages
+    /// Note: Fetches group members via HTTP call since Group/Member entities are in Group service
+    /// </summary>
+    private async Task CreateCostSplittingInvoicesAsync(Guid expenseId)
     {
         var expense = await _context.Expenses
-            .AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == expenseId);
 
         if (expense == null)
         {
-            // This scenario should be unlikely if called right after creation,
-            // but it's good practice to handle it.
-            return null;
+            _logger.LogWarning("Expense {ExpenseId} not found when creating cost splitting invoices", expenseId);
+            return;
         }
 
-        // TODO: In a real-world scenario, you might need to make API calls
-        // to other services (Group, Vehicle, User) to enrich this DTO.
-        // For now, we return only the data available in the Payment service.
+        // Fetch group details including members from Group Service
+        var accessToken = GetAccessToken();
+        var groupDetails = await _groupServiceClient.GetGroupDetailsAsync(expense.GroupId, accessToken);
+
+        if (groupDetails == null || !groupDetails.Members.Any())
+        {
+            _logger.LogWarning("Group {GroupId} not found or has no members when creating invoices for expense {ExpenseId}", 
+                expense.GroupId, expenseId);
+            return;
+        }
+
+        var invoiceNumber = 1;
+
+        foreach (var member in groupDetails.Members)
+        {
+            // Calculate member's share of the expense based on ownership percentage
+            var memberAmount = expense.Amount * member.SharePercentage;
+
+            var invoice = new Domain.Entities.Invoice
+            {
+                Id = Guid.NewGuid(),
+                ExpenseId = expense.Id,
+                PayerId = member.UserId,
+                Amount = memberAmount,
+                InvoiceNumber = $"INV-{expense.Id.ToString("N")[..8]}-{invoiceNumber:D3}",
+                Status = Domain.Entities.InvoiceStatus.Pending,
+                DueDate = DateTime.UtcNow.AddDays(30),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.Invoices.Add(invoice);
+            invoiceNumber++;
+        }
+
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Created {Count} invoices for expense {ExpenseId} split among {MemberCount} members", 
+            invoiceNumber - 1, expenseId, groupDetails.Members.Count);
+    }
+
+    /// <summary>
+    /// Get expense by ID with related data fetched via HTTP calls
+    /// Note: Fetches group and user data via HTTP since these entities are in other microservices
+    /// </summary>
+    private async Task<ExpenseDto> GetExpenseByIdAsync(Guid expenseId)
+    {
+        var expense = await _context.Expenses
+            .FirstOrDefaultAsync(e => e.Id == expenseId);
+
+        if (expense == null)
+        {
+            throw new InvalidOperationException($"Expense {expenseId} not found");
+        }
+
+        // Fetch related data via HTTP calls
+        var accessToken = GetAccessToken();
+        var groupDetails = await _groupServiceClient.GetGroupDetailsAsync(expense.GroupId, accessToken);
+        var creator = await _userServiceClient.GetUserAsync(expense.CreatedBy, accessToken);
+
         return new ExpenseDto
         {
             Id = expense.Id,
             GroupId = expense.GroupId,
-            GroupName = "N/A", // Not available in this context
+            GroupName = groupDetails?.Name ?? "Unknown Group",
             VehicleId = expense.VehicleId,
-            VehicleModel = "N/A", // Not available in this context
+            VehicleModel = null, // Vehicle details would need VehicleServiceClient if needed
             ExpenseType = (ExpenseType)expense.ExpenseType,
             Amount = expense.Amount,
             Description = expense.Description,
             DateIncurred = expense.DateIncurred,
             CreatedBy = expense.CreatedBy,
-            CreatedByName = "N/A", // Not available in this context
+            CreatedByName = creator != null ? $"{creator.FirstName} {creator.LastName}" : "Unknown User",
             Notes = expense.Notes,
             IsRecurring = expense.IsRecurring,
             CreatedAt = expense.CreatedAt
@@ -471,6 +837,16 @@ public class PaymentController : ControllerBase
             throw new UnauthorizedAccessException("Invalid user ID in token");
         }
         return userId;
+    }
+
+    private string GetAccessToken()
+    {
+        var authHeader = HttpContext.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            return string.Empty;
+        }
+        return authHeader.Substring("Bearer ".Length).Trim();
     }
 
     private string GetClientIpAddress()

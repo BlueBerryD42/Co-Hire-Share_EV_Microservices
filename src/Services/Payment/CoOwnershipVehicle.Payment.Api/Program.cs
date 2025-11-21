@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using CoOwnershipVehicle.Payment.Api.Data;
 using CoOwnershipVehicle.Payment.Api.Services;
+using CoOwnershipVehicle.Payment.Api.Services.Interfaces;
 using CoOwnershipVehicle.Shared.Configuration;
 using MassTransit;
 
@@ -70,6 +71,35 @@ builder.Services.AddMassTransit(x =>
 
 // Add application services
 builder.Services.AddScoped<IVnPayService, VnPayService>();
+
+// Register HTTP Clients for inter-service communication
+// These are used to fetch data from other microservices since Payment service doesn't store cross-service entities
+builder.Services.AddHttpClient<IGroupServiceClient, GroupServiceClient>(client =>
+{
+    // Get Group Service URL from configuration or environment variable, with fallback to default
+    var groupServiceUrl = builder.Configuration["ServiceUrls:Group"] 
+                       ?? Environment.GetEnvironmentVariable("GROUP_SERVICE_URL")
+                       ?? "https://localhost:61600";
+    client.BaseAddress = new Uri(groupServiceUrl);
+});
+
+builder.Services.AddHttpClient<IUserServiceClient, UserServiceClient>(client =>
+{
+    // Get User Service URL from configuration or environment variable, with fallback to default
+    var userServiceUrl = builder.Configuration["ServiceUrls:User"] 
+                      ?? Environment.GetEnvironmentVariable("USER_SERVICE_URL")
+                      ?? "https://localhost:61602";
+    client.BaseAddress = new Uri(userServiceUrl);
+});
+
+builder.Services.AddHttpClient<IFundServiceClient, FundServiceClient>(client =>
+{
+    // Fund service endpoints are in Group Service, so use the same URL
+    var groupServiceUrl = builder.Configuration["ServiceUrls:Group"] 
+                       ?? Environment.GetEnvironmentVariable("GROUP_SERVICE_URL")
+                       ?? "https://localhost:61600";
+    client.BaseAddress = new Uri(groupServiceUrl);
+});
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

@@ -182,6 +182,31 @@ public class UserServiceClient : IUserServiceClient
         }
     }
 
+    public async Task<List<KycDocumentDto>> GetAllKycDocumentsAsync()
+    {
+        try
+        {
+            SetAuthorizationHeader();
+            var response = await _httpClient.GetAsync("api/User/kyc/documents/all");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<List<KycDocumentDto>>(content, _jsonOptions) ?? new List<KycDocumentDto>();
+            }
+            else
+            {
+                _logger.LogWarning("Failed to get all KYC documents. Status: {StatusCode}", response.StatusCode);
+                return new List<KycDocumentDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling User service to get all KYC documents");
+            return new List<KycDocumentDto>();
+        }
+    }
+
     public async Task<KycDocumentDto> ReviewKycDocumentAsync(Guid documentId, ReviewKycDocumentDto reviewDto)
     {
         try

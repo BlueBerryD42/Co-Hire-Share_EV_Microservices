@@ -63,7 +63,7 @@ public class InvoiceDto
 public class PaymentDto
 {
     public Guid Id { get; set; }
-    public Guid InvoiceId { get; set; }
+    public Guid? InvoiceId { get; set; } // Nullable to support fund deposits without invoices
     public Guid PayerId { get; set; }
     public string PayerName { get; set; } = string.Empty;
     public decimal Amount { get; set; }
@@ -103,5 +103,54 @@ public class GroupMemberCostDto
     public string UserName { get; set; } = string.Empty;
     public decimal SharePercentage { get; set; }
     public decimal AmountOwed { get; set; }
+}
+
+public class CreateFundDepositPaymentDto
+{
+    [Required]
+    public Guid GroupId { get; set; }
+    
+    [Required]
+    [Range(0.01, double.MaxValue)]
+    public decimal Amount { get; set; }
+    
+    [Required]
+    [StringLength(500)]
+    public string Description { get; set; } = string.Empty;
+    
+    [StringLength(200)]
+    public string? Reference { get; set; }
+}
+
+public class FundDepositPaymentResponse
+{
+    public string PaymentUrl { get; set; } = string.Empty;
+    public string OrderId { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public Guid PaymentId { get; set; }
+    public Guid GroupId { get; set; }
+}
+
+public class CompleteFundDepositDto
+{
+    [Required]
+    public Guid GroupId { get; set; }
+    
+    [Required]
+    [Range(0.01, double.MaxValue)]
+    public decimal Amount { get; set; }
+    
+    [Required]
+    [StringLength(500)]
+    public string Description { get; set; } = string.Empty;
+    
+    [Required]
+    public string PaymentReference { get; set; } = string.Empty;
+    
+    [Required]
+    public Guid InitiatedBy { get; set; }
+    
+    [StringLength(200)]
+    public string? Reference { get; set; }
 }
 

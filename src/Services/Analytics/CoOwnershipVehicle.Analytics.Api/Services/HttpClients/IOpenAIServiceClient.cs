@@ -8,6 +8,7 @@ public interface IOpenAIServiceClient
 	Task<SuggestBookingResponse?> SuggestBookingTimesAsync(string prompt, CancellationToken cancellationToken = default);
 	Task<UsagePredictionResponse?> PredictUsageAsync(string prompt, CancellationToken cancellationToken = default);
 	Task<CostOptimizationResponse?> OptimizeCostsAsync(string prompt, CancellationToken cancellationToken = default);
+	Task<PredictiveMaintenanceResponse?> GetPredictiveMaintenanceAsync(string prompt, CancellationToken cancellationToken = default);
 }
 
 
