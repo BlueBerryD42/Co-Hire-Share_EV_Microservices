@@ -105,6 +105,31 @@ namespace CoOwnershipVehicle.Auth.Api.Services
             return await SendEmailAsync(email, subject, body);
         }
 
+        public async Task<bool> SendBookingEndingSoonAsync(string email, DateTime endAt, string vehicleModel, TimeSpan? timeLeft = null)
+        {
+            var remaining = timeLeft ?? endAt - DateTime.UtcNow;
+            var remainingText = remaining.TotalMinutes > 0
+                ? $"{Math.Floor(remaining.TotalHours)}h {remaining.Minutes}m"
+                : "less than 1 hour";
+            var subject = "Reminder: Your vehicle booking ends soon";
+            var body = $@"
+                <html>
+                <body style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
+                    <h2 style='color: #2c3e50;'>Your booking is ending soon</h2>
+                    <p>This is a friendly reminder that your booking for <strong>{WebUtility.HtmlEncode(vehicleModel)}</strong> is nearing its end.</p>
+                    <p><strong>End time:</strong> {endAt.ToLocalTime():f}</p>
+                    <p><strong>Time remaining (approx):</strong> {remainingText}</p>
+                    <p>Please plan to return the vehicle on time. If you need more time, update your booking if allowed.</p>
+                    <hr style='margin: 30px 0; border: none; border-top: 1px solid #ecf0f1;'>
+                    <p style='color: #7f8c8d; font-size: 12px;'>
+                        This is an automated message. Do not reply to this email.
+                    </p>
+                </body>
+                </html>";
+
+            return await SendEmailAsync(email, subject, body);
+        }
+
         public async Task<bool> SendEmailAsync(string to, string subject, string body, bool isHtml = true)
         {
             try

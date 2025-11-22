@@ -7,6 +7,7 @@ using CoOwnershipVehicle.Shared.Contracts.Events;
 using MassTransit;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
 
 namespace CoOwnershipVehicle.Auth.Api.Controllers;
 
@@ -849,6 +850,47 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Send a reminder email when a booking is nearing its end time.
+    /// </summary>
+    [HttpPost("booking-ending-reminder")]
+    public async Task<IActionResult> SendBookingEndingReminder([FromBody] BookingEndingReminderRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        string? email = request.Email;
+        if (string.IsNullOrWhiteSpace(email) && request.UserId.HasValue)
+        {
+            var user = await _userManager.FindByIdAsync(request.UserId.Value.ToString());
+            email = user?.Email;
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return BadRequest(new { message = "Email or UserId with an email is required" });
+        }
+
+        var timeLeft = request.MinutesLeft.HasValue
+            ? TimeSpan.FromMinutes(request.MinutesLeft.Value)
+            : (TimeSpan?)null;
+
+        var sent = await _emailService.SendBookingEndingSoonAsync(
+            email!,
+            request.EndAt,
+            request.VehicleModel,
+            timeLeft);
+
+        if (sent)
+        {
+            return Ok(new { message = "Reminder email sent" });
+        }
+
+        return StatusCode(500, new { message = "Failed to send reminder email" });
+    }
+
     private string GenerateConfirmationLink(Guid userId, string token)
     {
         var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "http://localhost:5173";
@@ -885,4 +927,25 @@ public class CorrectEmailRequest
 {
     public string CurrentEmail { get; set; } = string.Empty;
     public string NewEmail { get; set; } = string.Empty;
+}
+
+public class BookingEndingReminderRequest
+{
+    [EmailAddress]
+    public string? Email { get; set; }
+
+    public Guid? UserId { get; set; }
+
+    [Required]
+    public DateTime EndAt { get; set; }
+
+    [Required]
+    [StringLength(200)]
+    public string VehicleModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional override for remaining time (minutes) to display in email.
+    /// </summary>
+    [Range(1, 1440)]
+    public int? MinutesLeft { get; set; }
 }
