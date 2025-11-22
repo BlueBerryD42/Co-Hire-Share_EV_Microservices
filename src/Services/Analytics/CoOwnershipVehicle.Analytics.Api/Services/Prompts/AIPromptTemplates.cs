@@ -66,7 +66,8 @@ public static class AIPromptTemplates
 		int durationMinutes,
 		decimal userFairnessScore,
 		decimal groupFairnessScore,
-		List<HistoricalBookingPattern> bookingPatterns)
+		List<HistoricalBookingPattern> bookingPatterns,
+		List<BookingDto>? existingBookings = null)
 	{
 		var sb = new StringBuilder();
 		sb.AppendLine("You are an AI assistant suggesting optimal booking times for vehicle co-ownership.");
@@ -86,17 +87,33 @@ public static class AIPromptTemplates
 		sb.AppendLine($"User Fairness Score: {userFairnessScore:F2}% (100% = fair share)");
 		sb.AppendLine($"Group Fairness Score: {groupFairnessScore:F2}%");
 		sb.AppendLine();
+		
+		// Add existing bookings information to help avoid conflicts
+		if (existingBookings != null && existingBookings.Any())
+		{
+			sb.AppendLine("Existing Bookings (DO NOT suggest overlapping times):");
+			foreach (var booking in existingBookings.Take(20))
+			{
+				sb.AppendLine($"  - {booking.StartAt:yyyy-MM-dd HH:mm} to {booking.EndAt:yyyy-MM-dd HH:mm}");
+			}
+			sb.AppendLine();
+		}
+		
 		sb.AppendLine("Historical Booking Patterns:");
 		foreach (var pattern in bookingPatterns.Take(10))
 		{
 			sb.AppendLine($"  - {pattern.DayOfWeek} at {pattern.Hour}:00 - {pattern.Frequency} bookings");
 		}
 		sb.AppendLine();
-		sb.AppendLine("Suggest 5 optimal booking time slots considering:");
-		sb.AppendLine("1. User's current fairness (prioritize underutilizers)");
-		sb.AppendLine("2. Historical booking preferences");
-		sb.AppendLine("3. Group balance and avoiding conflicts");
-		sb.AppendLine("4. Peak vs off-peak times");
+		sb.AppendLine("IMPORTANT: Suggest 5 optimal booking time slots following these priorities:");
+		sb.AppendLine("1. PRIORITY: Keep the SAME DAY as preferred date, but suggest DIFFERENT HOURS if conflicts exist");
+		sb.AppendLine("   - If preferred time has conflicts, suggest alternative hours on the SAME DAY first");
+		sb.AppendLine("   - Only suggest different days if no available hours exist on the preferred day");
+		sb.AppendLine("   - DO NOT keep the same hour and just change the day");
+		sb.AppendLine("2. User's current fairness (prioritize underutilizers)");
+		sb.AppendLine("3. Historical booking preferences");
+		sb.AppendLine("4. Group balance and avoiding conflicts with existing bookings");
+		sb.AppendLine("5. Peak vs off-peak times");
 		sb.AppendLine();
 		sb.AppendLine("Return JSON in this exact format:");
 		sb.AppendLine("{");
