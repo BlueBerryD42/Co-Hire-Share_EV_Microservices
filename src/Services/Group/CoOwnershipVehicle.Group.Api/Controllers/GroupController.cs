@@ -122,16 +122,45 @@ public class GroupController : ControllerBase
     {
         try
         {
+            _logger.LogInformation("GetGroup endpoint called - Method: {Method}, Path: {Path}, ID: {Id}", 
+                HttpContext.Request.Method, HttpContext.Request.Path, id);
+            
             var userId = GetCurrentUserId();
+            
+            // First check if group exists
+            var groupExists = await _context.OwnershipGroups.AnyAsync(g => g.Id == id);
+            if (!groupExists)
+            {
+                _logger.LogWarning("Group {GroupId} does not exist", id);
+                return NotFound(new { message = "Group not found" });
+            }
+
+            // Check if user is a member
+            var isMember = await _context.GroupMembers.AnyAsync(m => m.GroupId == id && m.UserId == userId);
+            if (!isMember)
+            {
+                _logger.LogWarning("User {UserId} is not a member of group {GroupId}", userId, id);
+                // Log all members for debugging
+                var allMembers = await _context.GroupMembers
+                    .Where(m => m.GroupId == id)
+                    .Select(m => m.UserId)
+                    .ToListAsync();
+                _logger.LogInformation("Group {GroupId} has {Count} members: {MemberIds}", 
+                    id, allMembers.Count, string.Join(", ", allMembers));
+                return NotFound(new { message = "Group not found or access denied" });
+            }
             
             // Note: Vehicles are not included because Vehicle entity is in Vehicle service
             var group = await _context.OwnershipGroups
                 .Include(g => g.Members)
-                .Where(g => g.Id == id && g.Members.Any(m => m.UserId == userId))
+                .Where(g => g.Id == id)
                 .FirstOrDefaultAsync();
 
             if (group == null)
+            {
+                _logger.LogWarning("Group {GroupId} not found after membership check", id);
                 return NotFound(new { message = "Group not found or access denied" });
+            }
 
             // Fetch user data via HTTP
             var accessToken = GetAccessToken();
@@ -378,14 +407,23 @@ public class GroupController : ControllerBase
     /// Create a new group
     /// </summary>
     [HttpPost]
+    [Route("")]
     public async Task<IActionResult> CreateGroup([FromBody] CreateGroupDto createDto)
     {
         try
         {
+            _logger.LogInformation("CreateGroup endpoint called - Method: {Method}, Path: {Path}", 
+                HttpContext.Request.Method, HttpContext.Request.Path);
+            
             if (!ModelState.IsValid)
+            {
+                _logger.LogWarning("ModelState is invalid: {Errors}", 
+                    string.Join(", ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                 return BadRequest(ModelState);
+            }
 
             var userId = GetCurrentUserId();
+            _logger.LogInformation("Creating group for user {UserId}", userId);
 
             // Validate share percentages sum to 100%
             var totalShares = createDto.Members.Sum(m => m.SharePercentage);
@@ -447,8 +485,43 @@ public class GroupController : ControllerBase
 
             _logger.LogInformation("Group {GroupId} created by user {UserId}", group.Id, userId);
 
-            // Return the created group
-            return await GetGroup(group.Id);
+            // Fetch user data for response
+            var accessToken = GetAccessToken();
+            var memberUserIds = members.Select(m => m.UserId).Distinct().ToList();
+            var users = await _userServiceClient.GetUsersAsync(memberUserIds, accessToken);
+
+            // Return the created group (don't call GetGroup action method to avoid routing issues)
+            var groupDto = new GroupDto
+            {
+                Id = group.Id,
+                Name = group.Name,
+                Description = group.Description,
+                Status = (GroupStatus)group.Status,
+                CreatedBy = group.CreatedBy,
+                CreatedAt = group.CreatedAt,
+                RejectionReason = group.RejectionReason,
+                SubmittedAt = group.SubmittedAt,
+                ReviewedBy = group.ReviewedBy,
+                ReviewedAt = group.ReviewedAt,
+                Members = members.Select(m =>
+                {
+                    var user = users.GetValueOrDefault(m.UserId);
+                    return new GroupMemberDto
+                    {
+                        Id = m.Id,
+                        UserId = m.UserId,
+                        UserFirstName = user?.FirstName ?? "Unknown",
+                        UserLastName = user?.LastName ?? "",
+                        UserEmail = user?.Email ?? "",
+                        SharePercentage = m.SharePercentage,
+                        RoleInGroup = (GroupRole)m.RoleInGroup,
+                        JoinedAt = m.JoinedAt
+                    };
+                }).ToList(),
+                Vehicles = new List<VehicleDto>()
+            };
+
+            return Ok(groupDto);
         }
         catch (Exception ex)
         {
@@ -655,6 +728,165 @@ public class GroupController : ControllerBase
         {
             _logger.LogError(ex, "Error resubmitting group {GroupId}", id);
             return StatusCode(500, new { message = "An error occurred while resubmitting group" });
+        }
+    }
+
+    /// <summary>
+    /// Browse/search groups for marketplace (public groups only - Active status)
+    /// </summary>
+    [HttpGet("browse")]
+    [AllowAnonymous] // Allow unauthenticated access for marketplace browsing
+    public async Task<IActionResult> BrowseGroups([FromQuery] BrowseGroupsRequestDto request)
+    {
+        try
+        {
+            _logger.LogInformation("BrowseGroups called with filters: Search={Search}, Location={Location}, VehicleType={VehicleType}, Availability={Availability}, Page={Page}, PageSize={PageSize}",
+                request.Search, request.Location, request.VehicleType, request.Availability, request.Page, request.PageSize);
+
+            // Only show Active groups in marketplace
+            var query = _context.OwnershipGroups
+                .Include(g => g.Members)
+                .Where(g => g.Status == Domain.Entities.GroupStatus.Active)
+                .AsQueryable();
+
+            // Search filter (by group name or description)
+            if (!string.IsNullOrWhiteSpace(request.Search))
+            {
+                var searchLower = request.Search.ToLower();
+                query = query.Where(g => 
+                    g.Name.ToLower().Contains(searchLower) || 
+                    (g.Description != null && g.Description.ToLower().Contains(searchLower)));
+            }
+
+            // Location filter (if location field exists in future)
+            // For now, skip location filter as it's not in the Group entity
+
+            // Vehicle type filter (would need to join with Vehicle service - skip for now)
+            // For now, skip vehicle type filter
+
+            // Member count filter
+            if (request.MinMembers.HasValue)
+            {
+                query = query.Where(g => g.Members.Count >= request.MinMembers.Value);
+            }
+            if (request.MaxMembers.HasValue)
+            {
+                query = query.Where(g => g.Members.Count <= request.MaxMembers.Value);
+            }
+
+            // Calculate total count before pagination
+            var totalCount = await query.CountAsync();
+
+            // Calculate available ownership percentage and filter by availability
+            // Note: SharePercentage is stored as decimal (0-1), need to convert to percentage (0-100)
+            // Hardcoded max 10 members for now - each member can own up to 10% (100% / 10 members)
+            const int MAX_MEMBERS = 10;
+            const decimal MAX_OWNERSHIP_PERCENTAGE = 100m; // 100% total ownership
+            
+            var groupsWithOwnership = await query
+                .Select(g => new
+                {
+                    Group = g,
+                    TotalOwnership = g.Members.Sum(m => m.SharePercentage) * 100m, // Convert to percentage
+                    MemberCount = g.Members.Count
+                })
+                .ToListAsync();
+
+            // Filter by availability
+            // Available ownership = MAX_OWNERSHIP_PERCENTAGE - current ownership (based on max 10 members)
+            var filteredGroups = groupsWithOwnership
+                .Select(x => new
+                {
+                    x.Group,
+                    x.TotalOwnership,
+                    x.MemberCount,
+                    AvailableOwnership = Math.Max(0, MAX_OWNERSHIP_PERCENTAGE - x.TotalOwnership)
+                })
+                .Where(x =>
+                {
+                    if (request.Availability == "Open")
+                        return x.AvailableOwnership > 0;
+                    if (request.Availability == "Full")
+                        return x.AvailableOwnership <= 0;
+                    return true; // "Any" or null
+                })
+                .ToList();
+
+            // Apply sorting
+            var sortedGroups = request.SortBy?.ToLower() switch
+            {
+                "name" => request.SortDescending
+                    ? filteredGroups.OrderByDescending(x => x.Group.Name).ToList()
+                    : filteredGroups.OrderBy(x => x.Group.Name).ToList(),
+                "members" => request.SortDescending
+                    ? filteredGroups.OrderByDescending(x => x.MemberCount).ToList()
+                    : filteredGroups.OrderBy(x => x.MemberCount).ToList(),
+                _ => request.SortDescending
+                    ? filteredGroups.OrderByDescending(x => x.MemberCount).ToList()
+                    : filteredGroups.OrderBy(x => x.MemberCount).ToList()
+            };
+
+            // Apply pagination
+            var page = Math.Max(1, request.Page);
+            var pageSize = Math.Clamp(request.PageSize, 1, 100);
+            var paginatedGroups = sortedGroups
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            // Map to MarketplaceGroupDto
+            var marketplaceGroups = paginatedGroups.Select(x =>
+            {
+                var group = x.Group;
+                var availableOwnership = x.AvailableOwnership;
+                var totalOwnership = x.TotalOwnership;
+
+                _logger.LogInformation("Mapping group {GroupId}: CurrentMembers={CurrentMembers}, TotalMembers={TotalMembers}", 
+                    group.Id, x.MemberCount, MAX_MEMBERS);
+
+                return new MarketplaceGroupDto
+                {
+                    GroupId = group.Id,
+                    GroupName = group.Name,
+                    Description = group.Description,
+                    Status = group.Status.ToString(),
+                    VehicleId = null, // Vehicle info would need to be fetched from Vehicle service
+                    VehiclePhoto = null,
+                    VehicleMake = null,
+                    VehicleModel = null,
+                    VehicleYear = null,
+                    VehiclePlateNumber = null,
+                    Location = null, // Location not available in current Group entity
+                    TotalOwnershipPercentage = totalOwnership,
+                    AvailableOwnershipPercentage = availableOwnership,
+                    TotalMembers = MAX_MEMBERS, // Hardcoded max 10 members
+                    CurrentMembers = x.MemberCount,
+                    MonthlyEstimatedCost = null, // Would need to calculate from expenses/analytics
+                    UtilizationRate = null,
+                    ParticipationRate = null,
+                    TotalBookings = null,
+                    TotalVehicles = null
+                };
+            }).ToList();
+
+            var response = new BrowseGroupsResponseDto
+            {
+                Groups = marketplaceGroups,
+                TotalCount = filteredGroups.Count,
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = (int)Math.Ceiling((double)filteredGroups.Count / pageSize)
+            };
+
+            _logger.LogInformation("BrowseGroups returned {Count} groups (page {Page} of {TotalPages})", 
+                marketplaceGroups.Count, page, response.TotalPages);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error browsing groups: {Message}", ex.Message);
+            return StatusCode(500, new { message = "An error occurred while browsing groups", details = ex.Message });
         }
     }
 

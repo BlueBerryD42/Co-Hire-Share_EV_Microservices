@@ -161,6 +161,7 @@ builder.Services.AddHttpClient<CoOwnershipVehicle.Group.Api.Services.Interfaces.
 // Register Background Services
 builder.Services.AddHostedService<CoOwnershipVehicle.Group.Api.BackgroundServices.SignatureReminderBackgroundService>();
 builder.Services.AddHostedService<CoOwnershipVehicle.Group.Api.BackgroundServices.ProposalExpirationBackgroundService>();
+builder.Services.AddHostedService<CoOwnershipVehicle.Group.Api.BackgroundServices.ProposalVotingReminderBackgroundService>();
 
 // Configure request size limits for file uploads (50MB)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
@@ -220,10 +221,25 @@ builder.Services.AddAuthentication(options =>
 // Add MassTransit
 builder.Services.AddMassTransit(x =>
 {
+    // Register consumers
+    x.AddConsumer<CoOwnershipVehicle.Group.Api.Consumers.ProposalCreatedEventConsumer>();
+    x.AddConsumer<CoOwnershipVehicle.Group.Api.Consumers.ProposalClosedEventConsumer>();
+
     x.UsingRabbitMq((context, cfg) =>
     {
         var rabbitMqConnectionString = EnvironmentHelper.GetRabbitMqConnection(builder.Configuration);
         cfg.Host(rabbitMqConnectionString);
+
+        // Configure consumers
+        cfg.ReceiveEndpoint("proposal-created", e =>
+        {
+            e.ConfigureConsumer<CoOwnershipVehicle.Group.Api.Consumers.ProposalCreatedEventConsumer>(context);
+        });
+
+        cfg.ReceiveEndpoint("proposal-closed", e =>
+        {
+            e.ConfigureConsumer<CoOwnershipVehicle.Group.Api.Consumers.ProposalClosedEventConsumer>(context);
+        });
     });
 });
 

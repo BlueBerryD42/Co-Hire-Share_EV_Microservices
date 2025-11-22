@@ -45,11 +45,11 @@ public class NotificationService : INotificationService
         {
             var subject = reminderType switch
             {
-                ReminderType.ThreeDaysBefore => $"⏰ Reminder: Document Signature Due in 3 Days - {document.FileName}",
-                ReminderType.OneDayBefore => $"⚠️ Urgent: Document Signature Due Tomorrow - {document.FileName}",
-                ReminderType.Overdue => $"🔴 Overdue: Document Signature Required - {document.FileName}",
-                ReminderType.Manual => $"📄 Signature Reminder: {document.FileName}",
-                _ => $"📝 Signature Required: {document.FileName}"
+                ReminderType.ThreeDaysBefore => $"Reminder: Document Signature Due in 3 Days - {document.FileName}",
+                ReminderType.OneDayBefore => $"Urgent: Document Signature Due Tomorrow - {document.FileName}",
+                ReminderType.Overdue => $"Overdue: Document Signature Required - {document.FileName}",
+                ReminderType.Manual => $"Signature Reminder: {document.FileName}",
+                _ => $"Signature Required: {document.FileName}"
             };
 
             var body = GenerateSignatureReminderEmail(signer, document, signingUrl, reminderType, customMessage);
@@ -70,7 +70,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"✅ Document Signed: {document.FileName}";
+            var subject = $"Document Signed: {document.FileName}";
             var body = $@"
 <!DOCTYPE html>
 <html>
@@ -87,7 +87,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>✅ Document Signature Received</h2>
+            <h2>Document Signature Received</h2>
         </div>
         <div class='content'>
             <p>Hi {documentOwner.FirstName},</p>
@@ -193,7 +193,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"📝 Your Turn to Sign: {document.FileName}";
+            var subject = $"Your Turn to Sign: {document.FileName}";
             var body = $@"
 <!DOCTYPE html>
 <html>
@@ -211,7 +211,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>📝 It's Your Turn to Sign</h2>
+            <h2>It's Your Turn to Sign</h2>
         </div>
         <div class='content'>
             <p>Hi {nextSigner.FirstName},</p>
@@ -259,7 +259,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"⚠️ Signature Expiring in {daysRemaining} Day(s): {document.FileName}";
+            var subject = $"Signature Expiring in {daysRemaining} Day(s): {document.FileName}";
             var body = GenerateExpiringNotificationEmail(signer, document, signingUrl, daysRemaining);
 
             return await SendEmailAsync(signer.Email, subject, body);
@@ -278,7 +278,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"🔴 Signature Expired: {document.FileName}";
+            var subject = $"Signature Expired: {document.FileName}";
 
             // Notify signer
             var signerBody = $@"
@@ -296,7 +296,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>🔴 Signature Request Expired</h2>
+            <h2>Signature Request Expired</h2>
         </div>
         <div class='content'>
             <p>Hi {signer.FirstName},</p>
@@ -329,7 +329,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>🔴 Signature Request Expired</h2>
+            <h2>Signature Request Expired</h2>
         </div>
         <div class='content'>
             <p>Hi {documentOwner.FirstName},</p>
@@ -367,7 +367,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"🗑️ Document Deleted: {document.FileName}";
+            var subject = $"Document Deleted: {document.FileName}";
             var body = $@"
 <!DOCTYPE html>
 <html>
@@ -400,7 +400,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"♻️ Document Restored: {document.FileName}";
+            var subject = $"Document Restored: {document.FileName}";
             var body = $@"
 <!DOCTYPE html>
 <html>
@@ -422,6 +422,219 @@ public class NotificationService : INotificationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send document restored notification");
+            return false;
+        }
+    }
+
+    public async Task<bool> SendProposalStartedNotificationAsync(
+        List<UserInfoDto> groupMembers,
+        string proposalTitle,
+        Guid proposalId,
+        Guid groupId,
+        string groupName,
+        DateTime votingEndDate,
+        string proposalUrl)
+    {
+        try
+        {
+            var subject = $"New Proposal: {proposalTitle}";
+            var votingEndDateStr = votingEndDate.ToString("dd/MM/yyyy HH:mm");
+            
+            var tasks = groupMembers.Select(member =>
+            {
+                var body = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #2196F3; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
+        .content {{ background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }}
+        .button {{ display: inline-block; padding: 12px 24px; background-color: #2196F3; color: white; text-decoration: none; border-radius: 5px; margin: 15px 0; }}
+        .info-box {{ background-color: white; padding: 15px; border-left: 4px solid #2196F3; margin: 15px 0; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h2>New Proposal Started</h2>
+        </div>
+        <div class='content'>
+            <p>Hi {member.FirstName},</p>
+            
+            <p>A new proposal has been created in your group <strong>{groupName}</strong> and voting has started!</p>
+            
+            <div class='info-box'>
+                <strong>Proposal:</strong> {proposalTitle}<br>
+                <strong>Group:</strong> {groupName}<br>
+                <strong>Voting ends:</strong> {votingEndDateStr}
+            </div>
+            
+            <p>Please review the proposal and cast your vote before the voting period ends.</p>
+            
+            <a href='{proposalUrl}' class='button'>View & Vote on Proposal</a>
+            
+            <p style='margin-top: 20px; font-size: 12px; color: #666;'>
+                This is an automated notification from the Co-Ownership Vehicle System.
+            </p>
+        </div>
+    </div>
+</body>
+</html>";
+                return SendEmailAsync(member.Email, subject, body);
+            });
+            
+            var results = await Task.WhenAll(tasks);
+            return results.All(r => r);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send proposal started notification");
+            return false;
+        }
+    }
+
+    public async Task<bool> SendProposalPassedNotificationAsync(
+        List<UserInfoDto> groupAdmins,
+        string proposalTitle,
+        Guid proposalId,
+        Guid groupId,
+        string groupName,
+        string proposalType,
+        decimal? amount,
+        string proposalUrl)
+    {
+        try
+        {
+            var subject = $"Proposal Passed: {proposalTitle} - Action Required";
+            var amountText = amount.HasValue ? amount.Value.ToString("N0") + " ₫" : "N/A";
+            
+            var tasks = groupAdmins.Select(admin =>
+            {
+                var body = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
+        .content {{ background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }}
+        .button {{ display: inline-block; padding: 12px 24px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 15px 0; }}
+        .info-box {{ background-color: white; padding: 15px; border-left: 4px solid #4CAF50; margin: 15px 0; }}
+        .action-box {{ background-color: #FFF3CD; padding: 15px; border-left: 4px solid #FFC107; margin: 15px 0; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h2> Proposal Passed</h2>
+        </div>
+        <div class='content'>
+            <p>Hi {admin.FirstName},</p>
+            
+            <p>The proposal in your group <strong>{groupName}</strong> has been approved by the members!</p>
+            
+            <div class='info-box'>
+                <strong>Proposal:</strong> {proposalTitle}<br>
+                <strong>Type:</strong> {proposalType}<br>
+                <strong>Amount:</strong> {amountText}<br>
+                <strong>Group:</strong> {groupName}
+            </div>
+            
+            <div class='action-box'>
+                <strong>Action Required:</strong> As a group admin, you need to take action on this approved proposal. 
+                Please review the proposal details and proceed with the necessary steps.
+            </div>
+            
+            <a href='{proposalUrl}' class='button'>View Proposal Details</a>
+            
+            <p style='margin-top: 20px; font-size: 12px; color: #666;'>
+                This is an automated notification from the Co-Ownership Vehicle System.
+            </p>
+        </div>
+    </div>
+</body>
+</html>";
+                return SendEmailAsync(admin.Email, subject, body);
+            });
+            
+            var results = await Task.WhenAll(tasks);
+            return results.All(r => r);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send proposal passed notification");
+            return false;
+        }
+    }
+
+    public async Task<bool> SendProposalVotingReminderAsync(
+        UserInfoDto member,
+        string proposalTitle,
+        Guid proposalId,
+        Guid groupId,
+        string groupName,
+        DateTime votingEndDate,
+        string proposalUrl)
+    {
+        try
+        {
+            var subject = $"Reminder: Vote on Proposal - {proposalTitle}";
+            var votingEndDateStr = votingEndDate.ToString("dd/MM/yyyy HH:mm");
+            
+            var body = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #FF9800; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
+        .content {{ background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }}
+        .button {{ display: inline-block; padding: 12px 24px; background-color: #FF9800; color: white; text-decoration: none; border-radius: 5px; margin: 15px 0; }}
+        .info-box {{ background-color: white; padding: 15px; border-left: 4px solid #FF9800; margin: 15px 0; }}
+        .urgent-box {{ background-color: #FFF3CD; padding: 15px; border-left: 4px solid #FFC107; margin: 15px 0; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h2>Voting Reminder</h2>
+        </div>
+        <div class='content'>
+            <p>Hi {member.FirstName},</p>
+            
+            <p>You haven't voted on a proposal in your group <strong>{groupName}</strong> yet!</p>
+            
+            <div class='urgent-box'>
+                <strong>Voting ends in less than 12 hours!</strong>
+            </div>
+            
+            <div class='info-box'>
+                <strong>Proposal:</strong> {proposalTitle}<br>
+                <strong>Group:</strong> {groupName}<br>
+                <strong>Voting ends:</strong> {votingEndDateStr}
+            </div>
+            
+            <p>Please cast your vote before the voting period ends. Your participation is important for the group's decision-making process.</p>
+            
+            <a href='{proposalUrl}' class='button'>Vote Now</a>
+            
+            <p style='margin-top: 20px; font-size: 12px; color: #666;'>
+                This is an automated reminder from the Co-Ownership Vehicle System.
+            </p>
+        </div>
+    </div>
+</body>
+</html>";
+            
+            return await SendEmailAsync(member.Email, subject, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send proposal voting reminder to {Email}", member.Email);
             return false;
         }
     }
@@ -497,7 +710,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>📝 Document Signature Reminder</h2>
+            <h2>Document Signature Reminder</h2>
         </div>
         <div class='content'>
             <p>Hi {signer.FirstName},</p>
@@ -548,7 +761,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>⚠️ Signature Request Expiring Soon</h2>
+            <h2>Signature Request Expiring Soon</h2>
         </div>
         <div class='content'>
             <p>Hi {signer.FirstName},</p>

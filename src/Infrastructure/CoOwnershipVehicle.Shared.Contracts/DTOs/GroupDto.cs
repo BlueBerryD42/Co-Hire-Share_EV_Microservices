@@ -85,3 +85,69 @@ public class PendingGroupDto : GroupDto
     public bool HasGroupAdmin { get; set; }
 }
 
+/// <summary>
+/// Request DTO for browsing/searching groups in marketplace
+/// </summary>
+public class BrowseGroupsRequestDto
+{
+    public string? Search { get; set; }
+    public string? Location { get; set; }
+    public string? VehicleType { get; set; }
+    public decimal? MinPrice { get; set; }
+    public decimal? MaxPrice { get; set; }
+    public int? MinMembers { get; set; }
+    public int? MaxMembers { get; set; }
+    public string? Availability { get; set; } // "Any", "Open", "Full"
+    public string? SortBy { get; set; } // "members", "utilization", "price", "name"
+    public bool SortDescending { get; set; } = true;
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+}
+
+/// <summary>
+/// Response DTO for marketplace group listing
+/// </summary>
+public class MarketplaceGroupDto
+{
+    public Guid GroupId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Status { get; set; } = string.Empty;
+    
+    // Vehicle info
+    public Guid? VehicleId { get; set; }
+    public string? VehiclePhoto { get; set; }
+    public string? VehicleMake { get; set; }
+    public string? VehicleModel { get; set; }
+    public int? VehicleYear { get; set; }
+    public string? VehiclePlateNumber { get; set; }
+    public string? Location { get; set; }
+    
+    // Ownership info
+    public decimal TotalOwnershipPercentage { get; set; }
+    public decimal AvailableOwnershipPercentage { get; set; }
+    public int TotalMembers { get; set; }
+    public int CurrentMembers { get; set; }
+    
+    // Cost info
+    public decimal? MonthlyEstimatedCost { get; set; }
+    
+    // Analytics info (optional, can be fetched separately)
+    public decimal? UtilizationRate { get; set; }
+    public decimal? ParticipationRate { get; set; }
+    public int? TotalBookings { get; set; }
+    public int? TotalVehicles { get; set; }
+}
+
+/// <summary>
+/// Paginated response for marketplace groups
+/// </summary>
+public class BrowseGroupsResponseDto
+{
+    public List<MarketplaceGroupDto> Groups { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}
+

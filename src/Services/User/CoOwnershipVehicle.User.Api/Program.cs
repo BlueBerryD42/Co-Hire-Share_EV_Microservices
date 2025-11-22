@@ -71,13 +71,13 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<UserRegisteredConsumer>();
+    x.AddConsumer<KycStatusChangedEventConsumer>();
     
     x.UsingRabbitMq((context, cfg) =>
     {
         cfg.Host(EnvironmentHelper.GetRabbitMqConnection(builder.Configuration));
         
         // Configure endpoints - MassTransit automatically creates queues/exchanges for consumers
-        // When UserRegisteredEvent is published, it will be routed to UserRegisteredConsumer
         cfg.ConfigureEndpoints(context);
     });
 });
@@ -94,6 +94,7 @@ builder.Services.AddHttpClient();
 // Add application services
 builder.Services.AddScoped<IUserService, CoOwnershipVehicle.User.Api.Services.UserService>();
 builder.Services.AddScoped<IUserSyncService, CoOwnershipVehicle.User.Api.Services.UserSyncService>();
+builder.Services.AddScoped<IEmailService, CoOwnershipVehicle.User.Api.Services.EmailService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

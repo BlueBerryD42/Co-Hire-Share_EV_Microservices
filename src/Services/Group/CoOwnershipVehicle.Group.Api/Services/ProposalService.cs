@@ -343,6 +343,63 @@ public class ProposalService : IProposalService
         _logger.LogInformation("Vote cast on proposal {ProposalId} by user {UserId} with choice {Choice}",
             proposalId, userId, voteDto.Choice);
 
+        // Check if all members have voted - if so, auto-close the proposal
+        // Query proposal fresh with votes to ensure we have the latest data
+        var proposalWithVotes = await _context.Proposals
+            .Include(p => p.Votes)
+            .FirstOrDefaultAsync(p => p.Id == proposalId);
+
+        if (proposalWithVotes == null)
+        {
+            _logger.LogWarning("Proposal {ProposalId} not found after vote cast", proposalId);
+        }
+        else if (proposalWithVotes.Status == ProposalStatus.Active)
+        {
+            var totalOwnership = await _context.GroupMembers
+                .Where(m => m.GroupId == proposalWithVotes.GroupId)
+                .SumAsync(m => m.SharePercentage);
+            
+            var votedOwnership = proposalWithVotes.Votes.Sum(v => v.Weight);
+            // Use small tolerance (0.01%) to account for decimal precision issues
+            var allMembersVoted = votedOwnership >= (totalOwnership * 0.9999m);
+
+            _logger.LogInformation(
+                "Checking auto-close for proposal {ProposalId}: votedOwnership={VotedOwnership}, totalOwnership={TotalOwnership}, allMembersVoted={AllMembersVoted}",
+                proposalId, votedOwnership, totalOwnership, allMembersVoted);
+
+            if (allMembersVoted)
+            {
+                // Calculate outcome
+                var yesWeight = proposalWithVotes.Votes.Where(v => v.Choice == VoteChoice.Yes).Sum(v => v.Weight);
+                var totalWeight = proposalWithVotes.Votes.Sum(v => v.Weight);
+                var quorumMet = totalWeight >= (totalOwnership * proposalWithVotes.RequiredMajority);
+                var passed = quorumMet && yesWeight >= (totalWeight * proposalWithVotes.RequiredMajority);
+
+                proposalWithVotes.Status = passed ? ProposalStatus.Passed : ProposalStatus.Rejected;
+                proposalWithVotes.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Proposal {ProposalId} auto-closed after all members voted. Status: {Status}, Passed: {Passed}, QuorumMet: {QuorumMet}",
+                    proposalId, proposalWithVotes.Status, passed, quorumMet);
+
+                // Publish event to notify other services
+                await _publishEndpoint.Publish(new ProposalClosedEvent
+                {
+                    ProposalId = proposalId,
+                    GroupId = proposalWithVotes.GroupId,
+                    Passed = passed,
+                    YesPercentage = totalWeight > 0 ? yesWeight / totalWeight : 0m,
+                    NoPercentage = totalWeight > 0 ? (totalWeight - yesWeight) / totalWeight : 0m,
+                    ClosedAt = DateTime.UtcNow
+                });
+
+                _logger.LogInformation(
+                    "Published ProposalClosedEvent for proposal {ProposalId} with status {Status}",
+                    proposalId, proposalWithVotes.Status);
+            }
+        }
+
         // Get voter name via HTTP call
         var accessToken = GetAccessToken();
         var voter = await _userServiceClient.GetUserAsync(userId, accessToken);
