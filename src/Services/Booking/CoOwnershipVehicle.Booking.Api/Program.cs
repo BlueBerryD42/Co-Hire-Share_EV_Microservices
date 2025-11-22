@@ -10,6 +10,7 @@ using CoOwnershipVehicle.Booking.Api.Repositories;
 using CoOwnershipVehicle.Booking.Api.Contracts;
 using CoOwnershipVehicle.Booking.Api.Services;
 using CoOwnershipVehicle.Shared.Configuration;
+using System.Net.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -70,6 +71,8 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ICheckInService, CheckInService>();
 builder.Services.AddMemoryCache();
 builder.Services.Configure<TripPricingOptions>(builder.Configuration.GetSection("TripPricing"));
+builder.Services.AddHttpClient();
+builder.Services.AddHostedService<BookingReminderBackgroundService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
