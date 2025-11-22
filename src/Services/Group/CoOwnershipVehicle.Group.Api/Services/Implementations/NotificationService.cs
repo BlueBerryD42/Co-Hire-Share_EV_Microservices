@@ -45,11 +45,11 @@ public class NotificationService : INotificationService
         {
             var subject = reminderType switch
             {
-                ReminderType.ThreeDaysBefore => $"⏰ Reminder: Document Signature Due in 3 Days - {document.FileName}",
-                ReminderType.OneDayBefore => $"⚠️ Urgent: Document Signature Due Tomorrow - {document.FileName}",
-                ReminderType.Overdue => $"🔴 Overdue: Document Signature Required - {document.FileName}",
-                ReminderType.Manual => $"📄 Signature Reminder: {document.FileName}",
-                _ => $"📝 Signature Required: {document.FileName}"
+                ReminderType.ThreeDaysBefore => $"Reminder: Document Signature Due in 3 Days - {document.FileName}",
+                ReminderType.OneDayBefore => $"Urgent: Document Signature Due Tomorrow - {document.FileName}",
+                ReminderType.Overdue => $"Overdue: Document Signature Required - {document.FileName}",
+                ReminderType.Manual => $"Signature Reminder: {document.FileName}",
+                _ => $"Signature Required: {document.FileName}"
             };
 
             var body = GenerateSignatureReminderEmail(signer, document, signingUrl, reminderType, customMessage);
@@ -70,7 +70,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"✅ Document Signed: {document.FileName}";
+            var subject = $"Document Signed: {document.FileName}";
             var body = $@"
 <!DOCTYPE html>
 <html>
@@ -87,7 +87,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>✅ Document Signature Received</h2>
+            <h2>Document Signature Received</h2>
         </div>
         <div class='content'>
             <p>Hi {documentOwner.FirstName},</p>
@@ -193,7 +193,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"📝 Your Turn to Sign: {document.FileName}";
+            var subject = $"Your Turn to Sign: {document.FileName}";
             var body = $@"
 <!DOCTYPE html>
 <html>
@@ -211,7 +211,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>📝 It's Your Turn to Sign</h2>
+            <h2>It's Your Turn to Sign</h2>
         </div>
         <div class='content'>
             <p>Hi {nextSigner.FirstName},</p>
@@ -259,7 +259,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"⚠️ Signature Expiring in {daysRemaining} Day(s): {document.FileName}";
+            var subject = $"Signature Expiring in {daysRemaining} Day(s): {document.FileName}";
             var body = GenerateExpiringNotificationEmail(signer, document, signingUrl, daysRemaining);
 
             return await SendEmailAsync(signer.Email, subject, body);
@@ -278,7 +278,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"🔴 Signature Expired: {document.FileName}";
+            var subject = $"Signature Expired: {document.FileName}";
 
             // Notify signer
             var signerBody = $@"
@@ -296,7 +296,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>🔴 Signature Request Expired</h2>
+            <h2>Signature Request Expired</h2>
         </div>
         <div class='content'>
             <p>Hi {signer.FirstName},</p>
@@ -329,7 +329,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>🔴 Signature Request Expired</h2>
+            <h2>Signature Request Expired</h2>
         </div>
         <div class='content'>
             <p>Hi {documentOwner.FirstName},</p>
@@ -367,7 +367,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"🗑️ Document Deleted: {document.FileName}";
+            var subject = $"Document Deleted: {document.FileName}";
             var body = $@"
 <!DOCTYPE html>
 <html>
@@ -400,7 +400,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"♻️ Document Restored: {document.FileName}";
+            var subject = $"Document Restored: {document.FileName}";
             var body = $@"
 <!DOCTYPE html>
 <html>
@@ -437,7 +437,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"🗳️ New Proposal: {proposalTitle}";
+            var subject = $"New Proposal: {proposalTitle}";
             var votingEndDateStr = votingEndDate.ToString("dd/MM/yyyy HH:mm");
             
             var tasks = groupMembers.Select(member =>
@@ -458,7 +458,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>🗳️ New Proposal Started</h2>
+            <h2>New Proposal Started</h2>
         </div>
         <div class='content'>
             <p>Hi {member.FirstName},</p>
@@ -507,7 +507,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"✅ Proposal Passed: {proposalTitle} - Action Required";
+            var subject = $"Proposal Passed: {proposalTitle} - Action Required";
             var amountText = amount.HasValue ? amount.Value.ToString("N0") + " ₫" : "N/A";
             
             var tasks = groupAdmins.Select(admin =>
@@ -544,7 +544,7 @@ public class NotificationService : INotificationService
             </div>
             
             <div class='action-box'>
-                <strong>⚠️ Action Required:</strong> As a group admin, you need to take action on this approved proposal. 
+                <strong>Action Required:</strong> As a group admin, you need to take action on this approved proposal. 
                 Please review the proposal details and proceed with the necessary steps.
             </div>
             
@@ -581,7 +581,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var subject = $"⏰ Reminder: Vote on Proposal - {proposalTitle}";
+            var subject = $"Reminder: Vote on Proposal - {proposalTitle}";
             var votingEndDateStr = votingEndDate.ToString("dd/MM/yyyy HH:mm");
             
             var body = $@"
@@ -601,7 +601,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>⏰ Voting Reminder</h2>
+            <h2>Voting Reminder</h2>
         </div>
         <div class='content'>
             <p>Hi {member.FirstName},</p>
@@ -609,7 +609,7 @@ public class NotificationService : INotificationService
             <p>You haven't voted on a proposal in your group <strong>{groupName}</strong> yet!</p>
             
             <div class='urgent-box'>
-                <strong>⏰ Voting ends in less than 12 hours!</strong>
+                <strong>Voting ends in less than 12 hours!</strong>
             </div>
             
             <div class='info-box'>
@@ -710,7 +710,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>📝 Document Signature Reminder</h2>
+            <h2>Document Signature Reminder</h2>
         </div>
         <div class='content'>
             <p>Hi {signer.FirstName},</p>
@@ -761,7 +761,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>⚠️ Signature Request Expiring Soon</h2>
+            <h2>Signature Request Expiring Soon</h2>
         </div>
         <div class='content'>
             <p>Hi {signer.FirstName},</p>
