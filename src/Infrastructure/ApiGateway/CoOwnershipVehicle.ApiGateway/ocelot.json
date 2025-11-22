@@ -25,7 +25,41 @@
       "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH"]
     },
     {
-      "DownstreamPathTemplate": "/api/group/{everything}",
+      "DownstreamPathTemplate": "/api/Group",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "group-api",
+          "Port": 8080
+        }
+      ],
+      "UpstreamPathTemplate": "/api/group",
+      "UpstreamHttpMethod": ["POST"],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "Priority": 0
+    },
+    {
+      "DownstreamPathTemplate": "/api/Group",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "group-api",
+          "Port": 8080
+        }
+      ],
+      "UpstreamPathTemplate": "/api/group",
+      "UpstreamHttpMethod": ["GET"],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "Priority": 0
+    },
+    {
+      "DownstreamPathTemplate": "/api/Group/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
@@ -38,7 +72,8 @@
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
-      }
+      },
+      "Priority": 1
     },
     {
       "DownstreamPathTemplate": "/api/document/{everything}",

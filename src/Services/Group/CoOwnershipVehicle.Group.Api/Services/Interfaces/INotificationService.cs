@@ -73,4 +73,41 @@ public interface INotificationService
         List<UserInfoDto> groupAdmins,
         Document document,
         UserInfoDto restoredBy);
+
+    /// <summary>
+    /// Send notification when a proposal starts voting
+    /// </summary>
+    Task<bool> SendProposalStartedNotificationAsync(
+        List<UserInfoDto> groupMembers,
+        string proposalTitle,
+        Guid proposalId,
+        Guid groupId,
+        string groupName,
+        DateTime votingEndDate,
+        string proposalUrl);
+
+    /// <summary>
+    /// Send notification to group admins when a proposal passes
+    /// </summary>
+    Task<bool> SendProposalPassedNotificationAsync(
+        List<UserInfoDto> groupAdmins,
+        string proposalTitle,
+        Guid proposalId,
+        Guid groupId,
+        string groupName,
+        string proposalType,
+        decimal? amount,
+        string proposalUrl);
+
+    /// <summary>
+    /// Send reminder to members who haven't voted yet (12 hours before voting ends)
+    /// </summary>
+    Task<bool> SendProposalVotingReminderAsync(
+        UserInfoDto member,
+        string proposalTitle,
+        Guid proposalId,
+        Guid groupId,
+        string groupName,
+        DateTime votingEndDate,
+        string proposalUrl);
 }
