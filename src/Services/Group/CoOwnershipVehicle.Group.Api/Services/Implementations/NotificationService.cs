@@ -529,7 +529,7 @@ public class NotificationService : INotificationService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>✅ Proposal Passed</h2>
+            <h2> Proposal Passed</h2>
         </div>
         <div class='content'>
             <p>Hi {admin.FirstName},</p>

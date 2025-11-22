@@ -19,7 +19,7 @@ public class EmailService : IEmailService
 
     public async Task<bool> SendKycApprovedEmailAsync(string email, string firstName, string kycUrl)
     {
-        var subject = "✅ KYC của bạn đã được phê duyệt";
+        var subject = " KYC của bạn đã được phê duyệt";
         var body = $@"
 <!DOCTYPE html>
 <html>
@@ -36,7 +36,7 @@ public class EmailService : IEmailService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>✅ KYC Đã Được Phê Duyệt</h2>
+            <h2> KYC Đã Được Phê Duyệt</h2>
         </div>
         <div class='content'>
             <p>Xin chào {firstName},</p>
@@ -65,7 +65,7 @@ public class EmailService : IEmailService
 
     public async Task<bool> SendKycRejectedEmailAsync(string email, string firstName, string reason, string kycUrl)
     {
-        var subject = "⚠️ KYC của bạn cần cập nhật";
+        var subject = " KYC của bạn cần cập nhật";
         var body = $@"
 <!DOCTYPE html>
 <html>
@@ -83,7 +83,7 @@ public class EmailService : IEmailService
 <body>
     <div class='container'>
         <div class='header'>
-            <h2>⚠️ KYC Cần Cập Nhật</h2>
+            <h2> KYC Cần Cập Nhật</h2>
         </div>
         <div class='content'>
             <p>Xin chào {firstName},</p>
